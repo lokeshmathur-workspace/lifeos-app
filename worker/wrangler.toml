@@ -1,0 +1,7 @@
+name = "lifeos-ai-proxy"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+# Secrets (never put these here — set them with `wrangler secret put`):
+#   ANTHROPIC_API_KEY     your Anthropic API key
+#   WORKER_SHARED_SECRET  a random string only the app and this Worker know
