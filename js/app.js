@@ -4,7 +4,8 @@ import { readQuote, readImproveTomorrow, writeReflections, writeMorningQuote } f
 import { PILLARS, BIZ, VIT, HPH, CYCLE } from "./constants.js";
 import { quoteForDate, randomQuote } from "./quotes.js";
 import { todayISO, nowHM, addDays, dayOfWeekName, dayKeyOf, prettyDate } from "./dateutil.js";
-import { streak, hphAvg, coreCount, top3Of, computeAll } from "./derive.js";
+import { streak, hphAvg, coreCount, top3Of } from "./derive.js";
+import { refreshComputed } from "./recompute.js";
 import { loadAiConfig, saveAiConfig, clearAiConfig, pickQuoteAI, draftEveningAI, AiError } from "./ai.js";
 import { copyDayForOneNote, downloadFullBackup } from "./export.js";
 import { renderWeekView, copyWeekForOneNote } from "./week.js";
@@ -629,6 +630,7 @@ function wireToday(dateISO, doc, state) {
     S.planning = false;
     flash("Plan saved.");
     renderToday();
+    refreshComputed(S.store, dateISO); // fire-and-forget; a new day's file changes lastJournalDate/streaks too
   });
 
   document.querySelectorAll(".task[data-group='morning-top3']").forEach((btn) => {
@@ -772,47 +774,6 @@ function wireToday(dateISO, doc, state) {
     S.eveningEditing = false;
     flash("Evening review saved.");
     renderToday();
-    refreshComputed(dateISO); // fire-and-forget; doesn't block the save the user is waiting on
+    refreshComputed(S.store, dateISO); // fire-and-forget; doesn't block the save the user is waiting on
   });
-}
-
-/* ═══ computed.json write-back ════════════════════════════ */
-// Keeps life-os/state/computed.json in sync with what scripts/recompute.py would
-// produce, so validate.yml's staleness check stays green even though nothing runs
-// the Python script in this flow anymore. Runs in the background after an evening
-// save; failures are non-fatal (computed.json is derived data — a stale run just
-// means it regenerates cleanly next time).
-async function refreshComputed(latestISO) {
-  try {
-    const [y, m] = latestISO.split("-").map(Number);
-    const monthDates = [];
-    const daysInMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
-    for (let d = 1; d <= daysInMonth; d++) {
-      monthDates.push(`${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`);
-    }
-    const monthMap = await S.store.loadJournalMap(monthDates.filter((d) => d <= latestISO));
-    const streakMap = await S.store.loadBackToGap(latestISO);
-    const merged = new Map([...monthMap, ...streakMap]);
-
-    // learningPending / careerSprint come from outside life-os/journal — read
-    // them fresh rather than zeroing them, matching recompute.py's own inputs.
-    const [{ json: queue }, { json: career }] = await Promise.all([
-      S.store.gh.getFile("learning/queue.json"),
-      S.store.gh.getFile("life-os/state/career-ascent.json"),
-    ]);
-    let learningPending = 0;
-    for (const item of queue?.items || []) {
-      learningPending += (item.actionItems || []).filter((a) => a.status === "pending").length;
-    }
-    const tasks = career?.activeSprint?.tasks || [];
-    const done = tasks.filter((t) => t.status === "done").length;
-    const careerSprint = tasks.length
-      ? { completed: done, total: tasks.length, pct: Math.round((100 * done) / tasks.length) }
-      : {};
-
-    const computed = computeAll(merged, { learningPending, careerSprint });
-    await S.store.saveComputed(computed);
-  } catch {
-    // best-effort — see comment above
-  }
 }

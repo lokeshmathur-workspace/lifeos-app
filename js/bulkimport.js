@@ -4,6 +4,7 @@ import { PILLARS } from "./constants.js";
 import { DAYKEYS, todayISO, nowHM, dayOfWeekName } from "./dateutil.js";
 import { nextTaskId } from "./compact.js";
 import { flash } from "./flash.js";
+import { refreshComputed } from "./recompute.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -142,6 +143,7 @@ export function openBulkImport(store) {
         if (ok) {
           flash(`Imported ${entries.length} note${entries.length === 1 ? "" : "s"} into ${dateISO}.`);
           back.remove();
+          refreshComputed(store, dateISO); // a new day's file changes lastJournalDate/streaks too
         } else {
           note.textContent = "Couldn't save — see the error banner behind this dialog.";
         }
