@@ -53,7 +53,7 @@ function renderSetup() {
       <h2>Connect your data</h2>
       <p class="empty" style="padding:0 0 14px">Paste a GitHub fine-grained token for the private repo that holds your journal. Create it at GitHub → Settings → Developer settings → Fine-grained tokens. Repository access: <b>only</b> the data repo. Permissions: <b>Contents → Read and write</b>, nothing else.</p>
       <label class="fld"><span>Token</span><input type="password" id="tok" placeholder="github_pat_…" autocomplete="off" spellcheck="false"></label>
-      <label class="fld"><span>Repository (owner/name)</span><input type="text" id="repo" placeholder="lokeshmathur-workspace/Claude" spellcheck="false"></label>
+      <label class="fld"><span>Repository (owner/name)</span><input type="text" id="repo" value="lokeshmathur-workspace/Claude" spellcheck="false"></label>
       <div class="btnrow"><button class="btn pri" id="save">Connect</button></div>
       <p class="savenote" id="note" style="margin-top:10px"></p>
     </section>`;
