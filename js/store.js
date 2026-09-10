@@ -121,6 +121,9 @@ export class Store {
     return this.state.doc;
   }
 
+  // Resolves true/false (never rejects) so fire-and-forget callers stay safe,
+  // while a caller that wants real confirmation can `if (await store.saveX(...))`.
+  // Errors are always reported via onFlash regardless of whether the caller checks.
   _write(path, getCache, setCache, message, immediate, debounceMs = 500) {
     clearTimeout(this.saveTimers.get(path));
     const doWrite = async () => {
@@ -128,8 +131,10 @@ export class Store {
       try {
         const { sha } = await this.gh.putFile(path, cache.doc, cache.sha, message);
         setCache({ ...cache, sha });
+        return true;
       } catch (e) {
         this.onFlash(e instanceof GitHubStoreError ? e.message : "Couldn't save.", true);
+        return false;
       }
     };
     if (immediate) return doWrite();
@@ -138,11 +143,14 @@ export class Store {
 
   // patch is deep-merged into the in-memory doc immediately (so the UI reflects it
   // synchronously); the network write is debounced unless immediate is passed.
+  // Returns the write's promise so a caller that wants real confirmation (not
+  // just the optimistic local update above) can await it. Callers that don't
+  // care can ignore the return value — it also just works as fire-and-forget.
   saveDay(dateISO, patch, immediate, message) {
     const cur = this.docs.get(dateISO) || { doc: { date: dateISO, dayOfWeek: "" }, sha: null };
     const merged = deepMerge({ ...cur.doc }, patch);
     this.docs.set(dateISO, { doc: merged, sha: cur.sha });
-    this._write(
+    return this._write(
       journalPath(dateISO),
       () => this.docs.get(dateISO),
       (next) => this.docs.set(dateISO, next),
@@ -160,7 +168,7 @@ export class Store {
       lastUpdatedBy: "lifeos-app",
     };
     this.state = { doc: merged, sha: cur.sha };
-    this._write(
+    return this._write(
       STATE_PATH,
       () => this.state,
       (next) => (this.state = next),

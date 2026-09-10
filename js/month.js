@@ -4,6 +4,7 @@
 import { PILLARS, HPH } from "./constants.js";
 import { todayISO, monthName, daysInMonth, dayOfWeekName, D, isoOf } from "./dateutil.js";
 import { hphAvg, top3Of, evening } from "./derive.js";
+import { flash } from "./flash.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -207,14 +208,16 @@ function wireMonth(store, state, monthNum) {
     wireRemove("#keydateslist");
   });
 
-  $("#saveplan")?.addEventListener("click", () => {
+  $("#saveplan")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
     const intentions = [...document.querySelectorAll("#intentlist .t3row")]
       .map((row) => ({ intention: row.querySelector(".intenttext").value.trim(), pillar: row.querySelector(".intentpillar").value, status: "not_started", progress: 0 }))
       .filter((i) => i.intention);
     const keyDates = [...document.querySelectorAll("#keydateslist .t3row")]
       .map((row) => ({ date: row.querySelector(".kddate").value, event: row.querySelector(".kdevent").value.trim() }))
       .filter((k) => k.event);
-    store.saveState(
+    btn.disabled = true;
+    const ok = await store.saveState(
       {
         currentMonth: {
           sprintTheme: $("#theme").value.trim(),
@@ -227,6 +230,8 @@ function wireMonth(store, state, monthNum) {
       true,
       `life-os: month-plan ${state.currentMonth.year}-${String(monthNum).padStart(2, "0")}`
     );
+    btn.disabled = false;
+    if (ok) flash("Month plan saved.");
   });
 }
 

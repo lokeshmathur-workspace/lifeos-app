@@ -9,6 +9,7 @@ import { loadAiConfig, saveAiConfig, clearAiConfig, pickQuoteAI, draftEveningAI,
 import { copyDayForOneNote, downloadFullBackup } from "./export.js";
 import { renderWeekView } from "./week.js";
 import { renderMonthView } from "./month.js";
+import { flash } from "./flash.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -25,14 +26,6 @@ const S = {
   planning: false,
   eveningEditing: false,
 };
-
-function flash(msg, isErr) {
-  const b = document.createElement("div");
-  b.className = "banner" + (isErr ? " err" : "");
-  b.textContent = msg;
-  main().prepend(b);
-  setTimeout(() => b.remove(), 6000);
-}
 
 /* ═══ boot / auth / pin ═══════════════════════════════════ */
 
@@ -462,14 +455,47 @@ function eveningForm(dateISO, doc) {
 
 function daySummary(dateISO, doc) {
   const e = doc.evening;
+  const m = doc.morning || {};
+  const q = readQuote(m);
   const avg = hphAvg(doc);
+  const top3 = e.top3Results?.length ? e.top3Results : m.top3 || [];
+  const hph = e.hph || {};
+
   return `
-    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+    ${
+      q || m.successAnchor || m.excitedAbout
+        ? `<section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      <h2>This morning</h2>
+      ${q ? `<div class="affirm"><p class="serif">"${esc(q.text)}"</p>${q.author ? `<div class="anchor"><b>—</b><span>${esc(q.author)}</span></div>` : ""}</div>` : ""}
+      ${m.successAnchor ? `<div class="anchor" style="margin-top:12px"><b>Anchor</b><span>${esc(m.successAnchor)}</span></div>` : ""}
+      ${m.excitedAbout ? `<p style="margin:10px 0 0"><b>Excited about:</b> ${esc(m.excitedAbout)}</p>` : ""}
+      ${m.potentialChallenge ? `<p style="margin:6px 0 0"><b>Challenge:</b> ${esc(m.potentialChallenge)}${m.challengePlan ? ` — ${esc(m.challengePlan)}` : ""}</p>` : ""}
+      ${(m.peopleToConnect || []).length ? `<p style="margin:6px 0 0"><b>People:</b> ${esc(m.peopleToConnect.join(", "))}</p>` : ""}
+    </section>`
+        : ""
+    }
+    ${
+      top3.length
+        ? `<section class="blk" ${q || m.successAnchor ? "" : `style="border-top:0;padding-top:0;margin-top:0"`}>
+      <h2>Top 3</h2>
+      <div class="tasks">${top3.map((t) => `<div class="task" data-s="${t.status || "not_started"}" style="cursor:default"><span class="box"></span><span class="body"><span class="t">${esc(t.task)}</span><span class="meta">${esc(PILLARS[t.pillar] || t.pillar)}</span></span></div>`).join("")}</div>
+    </section>`
+        : ""
+    }
+    <section class="blk">
       <div class="stats">
         <div class="stat"><div class="k">HPH avg</div><div class="v">${avg != null ? avg.toFixed(1) : "—"}</div></div>
         <div class="stat"><div class="k">Anchor met</div><div class="v" style="font-size:20px">${esc(e.successAnchorMet || "—")}</div></div>
       </div>
     </section>
+    ${
+      Object.keys(hph).length
+        ? `<section class="blk"><h2>HPH</h2><div class="hphlist">${HPH.map(
+            ([k, l]) =>
+              `<div class="hphrow"><span class="nm">${l}</span><div class="track"><div class="fill" style="width:${((hph[k] || 0) / 10) * 100}%"></div></div><span class="num">${hph[k] ?? "—"}</span></div>`
+          ).join("")}</div>${e.hphNote ? `<p class="savenote" style="margin-top:8px">${esc(e.hphNote)}</p>` : ""}</section>`
+        : ""
+    }
     ${e.synthesis ? `<section class="blk"><h2>Synthesis</h2><p>${esc(e.synthesis)}</p></section>` : ""}
     <section class="blk">
       <h2>Reflections</h2>

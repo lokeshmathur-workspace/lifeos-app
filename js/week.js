@@ -6,6 +6,7 @@ import { PILLARS, BIZ, VIT, HPH } from "./constants.js";
 import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO } from "./dateutil.js";
 import { hphAvg, coreCount, top3Of, evening } from "./derive.js";
 import { nextTaskId } from "./compact.js";
+import { flash } from "./flash.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -174,8 +175,12 @@ function weekdayColumn(dk, tasks, dates) {
 }
 
 function wireWeek(store, state, dates) {
-  $("#savefocus")?.addEventListener("click", () => {
-    store.saveState({ currentWeek: { keyFocus: $("#keyfocus").value.trim() } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
+  $("#savefocus")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const ok = await store.saveState({ currentWeek: { keyFocus: $("#keyfocus").value.trim() } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
+    btn.disabled = false;
+    if (ok) flash("Key focus saved.");
   });
   $("#addgoal")?.addEventListener("click", () => {
     const list = $("#goalslist");
@@ -190,7 +195,8 @@ function wireWeek(store, state, dates) {
     wireGoalRemove(list);
   });
   wireGoalRemove($("#goalslist"));
-  $("#savegoals")?.addEventListener("click", () => {
+  $("#savegoals")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
     const goals = [...document.querySelectorAll("#goalslist .t3row")]
       .map((row) => ({
         goal: row.querySelector(".goaltext").value.trim(),
@@ -199,31 +205,35 @@ function wireWeek(store, state, dates) {
         source: "manual",
       }))
       .filter((g) => g.goal);
-    store.saveState({ currentWeek: { goals } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
+    btn.disabled = true;
+    const ok = await store.saveState({ currentWeek: { goals } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
+    btn.disabled = false;
+    if (ok) flash("Goals saved.");
   });
 
   document.querySelectorAll(".ptask").forEach((el) => {
-    el.addEventListener("click", () => {
+    el.addEventListener("click", async () => {
       const id = el.dataset.id;
       const tasks = (state.currentWeek.tasks || []).map((t) =>
         t.id === id ? { ...t, status: t.status === "done" ? "not_started" : "done" } : t
       );
       state.currentWeek.tasks = tasks;
       el.dataset.s = tasks.find((t) => t.id === id).status;
-      store.saveState({ currentWeek: { tasks } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
+      await store.saveState({ currentWeek: { tasks } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
     });
   });
 
-  $("#addtask")?.addEventListener("click", () => {
+  $("#addtask")?.addEventListener("click", async () => {
     const text = $("#newtask").value.trim();
     if (!text) return;
     const pillar = $("#newtaskpillar").value;
     const day = $("#newtaskday").value;
     const id = nextTaskId(todayISO(), [state.currentWeek.tasks || []]);
     const tasks = [...(state.currentWeek.tasks || []), { id, task: text, pillar, assignedDay: day, status: "not_started", source: "manual" }];
-    store.saveState({ currentWeek: { tasks } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
     state.currentWeek.tasks = tasks;
     $("#newtask").value = "";
+    const ok = await store.saveState({ currentWeek: { tasks } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
+    if (ok) flash("Task added.");
   });
 }
 
