@@ -365,6 +365,7 @@ function dayInProgress(dateISO, doc) {
         ${q.author ? `<div class="anchor"><b>—</b><span>${esc(q.author)}</span></div>` : ""}
       </div>
       <div class="anchor"><b>Anchor</b><span>${esc(doc.morning?.successAnchor || "—")}</span></div>
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm" id="editmorning">Edit morning</button></div>
     </section>
     <section class="blk">
       <h2>Top 3</h2>
@@ -471,6 +472,7 @@ function daySummary(dateISO, doc) {
       ${m.excitedAbout ? `<p style="margin:10px 0 0"><b>Excited about:</b> ${esc(m.excitedAbout)}</p>` : ""}
       ${m.potentialChallenge ? `<p style="margin:6px 0 0"><b>Challenge:</b> ${esc(m.potentialChallenge)}${m.challengePlan ? ` — ${esc(m.challengePlan)}` : ""}</p>` : ""}
       ${(m.peopleToConnect || []).length ? `<p style="margin:6px 0 0"><b>People:</b> ${esc(m.peopleToConnect.join(", "))}</p>` : ""}
+      <div class="btnrow" style="margin-top:10px"><button class="btn sm" id="editmorning">Edit morning</button></div>
     </section>`
         : ""
     }
@@ -532,6 +534,11 @@ function wireToday(dateISO, doc, state) {
 
   $("#startplan")?.addEventListener("click", () => {
     S.planning = true;
+    renderToday();
+  });
+  $("#editmorning")?.addEventListener("click", () => {
+    S.planning = true;
+    S.eveningEditing = false;
     renderToday();
   });
   $("#skiptoevening")?.addEventListener("click", () => {
