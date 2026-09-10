@@ -7,6 +7,7 @@ import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, D
 import { hphAvg, coreCount, top3Of, evening } from "./derive.js";
 import { nextTaskId } from "./compact.js";
 import { flash } from "./flash.js";
+import { buildSections, copyRichText } from "./export.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -287,4 +288,42 @@ export async function startNewWeek(store, oldWeek, newMonday) {
     };
   }
   store.saveState(patch, true, `life-os: weekly ${newMonday}`);
+}
+
+// OneNote export for the current week — mirrors what's on screen in renderWeekView.
+export async function copyWeekForOneNote(store) {
+  const state = await store.getState();
+  const cw = state.currentWeek || {};
+  const curMonday = mondayOf(todayISO());
+  if (cw.weekOf !== curMonday) {
+    flash("Start this week first — nothing to copy yet.", true);
+    return;
+  }
+  const dates = weekDates(curMonday);
+  const daysMap = await store.loadJournalMap(dates);
+  const stats = weekStats(dates, daysMap);
+
+  const title = `Week ${isoWeekNumber(curMonday)} — ${shortDate(curMonday)} – ${shortDate(sundayOf(curMonday))}`;
+  const groups = [
+    {
+      heading: "Review",
+      blocks: [
+        { type: "kv", label: "Days journaled", value: `${stats.journaled} / 7` },
+        { type: "kv", label: "HPH avg", value: stats.hphAvg != null ? stats.hphAvg.toFixed(1) : "—" },
+        { type: "kv", label: "Top 3 completion", value: stats.top3Rate != null ? `${stats.top3Rate}%` : "—" },
+      ],
+    },
+    { heading: "Key focus", blocks: [{ type: "para", text: cw.keyFocus || "—" }] },
+    { heading: "Goals", blocks: [{ type: "list", items: (cw.goals || []).map((g) => `${g.goal} (${PILLARS[g.pillar] || g.pillar})`) }] },
+    {
+      heading: "Task board",
+      blocks: [...DAYKEYS, ""].flatMap((dk) => {
+        const items = (cw.tasks || []).filter((t) => (t.assignedDay || "") === dk);
+        if (!items.length) return [];
+        return [{ type: "para", text: `${dk || "Unassigned"}:` }, { type: "tasks", items }];
+      }),
+    },
+  ];
+  await copyRichText(buildSections(title, groups));
+  flash("Week copied for OneNote.");
 }

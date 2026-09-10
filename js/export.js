@@ -1,59 +1,155 @@
-// Export/backup — REQUIREMENTS.md §4.4: a plain-text rendering for pasting into
+// Export/backup — REQUIREMENTS.md §4.4: plain-text rendering for pasting into
 // OneNote (his capture surface, never a data source — see life-os/CLAUDE.md's
-// standing rules) plus a full downloadable JSON backup.
+// standing rules), a full downloadable JSON backup, and bulk import support.
+//
+// One shared "section/block" model renders to BOTH plain text and HTML, so
+// Today/Week/Month exports stay structurally consistent and OneNote (which
+// accepts rich HTML on paste) gets real headings/bold/lists instead of a wall
+// of plain text.
 import { PILLARS, HPH } from "./constants.js";
 import { prettyDate } from "./dateutil.js";
 import { readQuote, readImproveTomorrow } from "./migrate.js";
 
-export function dayText(dateISO, doc) {
-  const m = doc.morning || {};
-  const e = doc.evening || {};
-  const q = readQuote(m);
+const escHtml = (s) =>
+  String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+/* ── block model ───────────────────────────────────────────
+   A "doc" is an array of sections: { heading?, blocks: Block[] }.
+   Block = { type: "quote", text, author }
+         | { type: "kv", label, value }
+         | { type: "para", text }
+         | { type: "tasks", items: [{ task, pillar, status }] }
+         | { type: "list", items: string[] }
+         | { type: "hph", hph, note? } */
+
+function renderText(sections) {
   const lines = [];
-  lines.push(prettyDate(dateISO));
-  lines.push("");
-  if (q) {
-    lines.push(`"${q.text}"${q.author ? ` — ${q.author}` : ""}`);
-    lines.push("");
-  }
-  if (m.successAnchor) lines.push(`Success anchor: ${m.successAnchor}`);
-  if ((m.top3 || []).length) {
-    lines.push("");
-    lines.push("Top 3:");
-    for (const t of m.top3) {
-      lines.push(`  [${t.status === "done" ? "x" : " "}] ${t.task} (${PILLARS[t.pillar] || t.pillar})`);
+  for (const s of sections) {
+    if (lines.length) lines.push("");
+    if (s.heading) {
+      lines.push(s.heading.toUpperCase());
+      lines.push("-".repeat(s.heading.length));
     }
-  }
-  if (e.completedAt) {
-    lines.push("");
-    lines.push("Evening review:");
-    if (e.synthesis) lines.push(e.synthesis);
-    if (e.successAnchorMet) lines.push(`Anchor met: ${e.successAnchorMet}`);
-    if (e.hph) {
-      lines.push("");
-      lines.push(`HPH: ${HPH.map(([k, l]) => `${l} ${e.hph[k] ?? "—"}`).join("  ")}  (avg ${e.hph.average ?? "—"})`);
-    }
-    const r = e.reflections;
-    if (r) {
-      lines.push("");
-      if (r.gratitude) lines.push(`Gratitude: ${r.gratitude}`);
-      if (r.taskHandledWell) lines.push(`Handled well: ${r.taskHandledWell}`);
-      if (r.learned) lines.push(`Learned: ${r.learned}`);
-      const improve = readImproveTomorrow(r);
-      if (improve) lines.push(`Improve tomorrow: ${improve}`);
-    }
-    if ((e.carriedForward || []).length) {
-      lines.push("");
-      lines.push(`Carried forward: ${e.carriedForward.join("; ")}`);
-    }
+    for (const b of s.blocks) lines.push(...blockText(b));
   }
   return lines.join("\n");
 }
 
-export async function copyDayForOneNote(dateISO, doc) {
-  const text = dayText(dateISO, doc);
-  await navigator.clipboard.writeText(text);
+function blockText(b) {
+  switch (b.type) {
+    case "quote":
+      return [`"${b.text}"${b.author ? ` — ${b.author}` : ""}`, ""];
+    case "kv":
+      return b.value ? [`${b.label}: ${b.value}`] : [];
+    case "para":
+      return b.text ? [b.text, ""] : [];
+    case "tasks":
+      return b.items.map((t) => `  [${t.status === "done" ? "x" : " "}] ${t.task}${t.pillar ? ` (${PILLARS[t.pillar] || t.pillar})` : ""}`);
+    case "list":
+      return b.items.map((i) => `  - ${i}`);
+    case "hph": {
+      const line = `HPH: ${HPH.map(([k, l]) => `${l} ${b.hph[k] ?? "—"}`).join("  ")}  (avg ${b.hph.average ?? "—"})`;
+      return b.note ? [line, b.note] : [line];
+    }
+    default:
+      return [];
+  }
+}
+
+function renderHtml(sections) {
+  const parts = [];
+  for (const s of sections) {
+    if (s.heading) parts.push(`<h3>${escHtml(s.heading)}</h3>`);
+    for (const b of s.blocks) parts.push(blockHtml(b));
+  }
+  return parts.join("\n");
+}
+
+function blockHtml(b) {
+  switch (b.type) {
+    case "quote":
+      return `<blockquote style="margin:0 0 10px;padding-left:10px;border-left:3px solid #ccc"><i>"${escHtml(b.text)}"</i>${b.author ? `<br>— ${escHtml(b.author)}` : ""}</blockquote>`;
+    case "kv":
+      return b.value ? `<p style="margin:2px 0"><b>${escHtml(b.label)}:</b> ${escHtml(b.value)}</p>` : "";
+    case "para":
+      return b.text ? `<p>${escHtml(b.text)}</p>` : "";
+    case "tasks":
+      return `<ul style="margin:4px 0">${b.items
+        .map((t) => `<li>${t.status === "done" ? "☑" : "☐"} ${escHtml(t.task)}${t.pillar ? ` <i>(${escHtml(PILLARS[t.pillar] || t.pillar)})</i>` : ""}</li>`)
+        .join("")}</ul>`;
+    case "list":
+      return `<ul style="margin:4px 0">${b.items.map((i) => `<li>${escHtml(i)}</li>`).join("")}</ul>`;
+    case "hph": {
+      const row = HPH.map(([k, l]) => `<b>${l}</b> ${b.hph[k] ?? "—"}`).join(" &nbsp; ");
+      return `<p style="margin:2px 0">${row} &nbsp; (avg ${b.hph.average ?? "—"})</p>${b.note ? `<p style="margin:2px 0"><i>${escHtml(b.note)}</i></p>` : ""}`;
+    }
+    default:
+      return "";
+  }
+}
+
+// Writes both text/html and text/plain to the clipboard so OneNote (and any
+// other rich-text target) gets real formatting on paste; falls back to plain
+// text if the browser can't do rich clipboard writes.
+export async function copyRichText(sections) {
+  const text = renderText(sections);
+  const html = `<div>${renderHtml(sections)}</div>`;
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/plain": new Blob([text], { type: "text/plain" }),
+        "text/html": new Blob([html], { type: "text/html" }),
+      }),
+    ]);
+  } catch {
+    await navigator.clipboard.writeText(text);
+  }
   return text;
+}
+
+/* ── Today ─────────────────────────────────────────────────── */
+
+function dayModel(dateISO, doc) {
+  const m = doc.morning || {};
+  const e = doc.evening || {};
+  const q = readQuote(m);
+  const sections = [{ blocks: [{ type: "para", text: prettyDate(dateISO) }] }];
+
+  const morningBlocks = [];
+  if (q) morningBlocks.push({ type: "quote", text: q.text, author: q.author });
+  morningBlocks.push({ type: "kv", label: "Success anchor", value: m.successAnchor });
+  if ((m.top3 || []).length) morningBlocks.push({ type: "tasks", items: m.top3 });
+  if (morningBlocks.length) sections.push({ heading: "This morning", blocks: morningBlocks });
+
+  if (e.completedAt) {
+    const r = e.reflections || {};
+    const eveningBlocks = [
+      { type: "para", text: e.synthesis },
+      { type: "kv", label: "Anchor met", value: e.successAnchorMet },
+      ...(e.hph ? [{ type: "hph", hph: e.hph, note: e.hphNote }] : []),
+      { type: "kv", label: "Gratitude", value: r.gratitude },
+      { type: "kv", label: "Handled well", value: r.taskHandledWell },
+      { type: "kv", label: "Learned", value: r.learned },
+      { type: "kv", label: "Improve tomorrow", value: readImproveTomorrow(r) },
+      ...((e.carriedForward || []).length ? [{ type: "list", items: e.carriedForward }] : []),
+    ];
+    sections.push({ heading: "Evening review", blocks: eveningBlocks });
+  }
+  return sections;
+}
+
+export function dayText(dateISO, doc) {
+  return renderText(dayModel(dateISO, doc));
+}
+
+export async function copyDayForOneNote(dateISO, doc) {
+  return copyRichText(dayModel(dateISO, doc));
+}
+
+/* ── shared model builder for Week/Month (data already computed by the view) ── */
+
+export function buildSections(title, groups) {
+  return [{ blocks: [{ type: "para", text: title }] }, ...groups];
 }
 
 function triggerDownload(filename, mimeType, content) {

@@ -7,9 +7,10 @@ import { todayISO, nowHM, addDays, dayOfWeekName, dayKeyOf, prettyDate } from ".
 import { streak, hphAvg, coreCount, top3Of, computeAll } from "./derive.js";
 import { loadAiConfig, saveAiConfig, clearAiConfig, pickQuoteAI, draftEveningAI, AiError } from "./ai.js";
 import { copyDayForOneNote, downloadFullBackup } from "./export.js";
-import { renderWeekView } from "./week.js";
-import { renderMonthView } from "./month.js";
+import { renderWeekView, copyWeekForOneNote } from "./week.js";
+import { renderMonthView, copyMonthForOneNote } from "./month.js";
 import { flash } from "./flash.js";
+import { openBulkImport } from "./bulkimport.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -121,8 +122,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const btn = e.currentTarget;
     const original = btn.textContent;
     try {
-      const doc = await S.store.getDay(S.day);
-      await copyDayForOneNote(S.day, doc);
+      if (S.view === "week") {
+        await copyWeekForOneNote(S.store);
+      } else if (S.view === "month") {
+        await copyMonthForOneNote(S.store);
+      } else {
+        const doc = await S.store.getDay(S.day);
+        await copyDayForOneNote(S.day, doc);
+      }
       btn.textContent = "Copied!";
     } catch {
       btn.textContent = "Couldn't copy";
@@ -144,6 +151,10 @@ document.addEventListener("DOMContentLoaded", () => {
       btn.disabled = false;
       btn.textContent = original;
     }
+  });
+  $("#importbtn").addEventListener("click", () => {
+    if (locked()) return;
+    openBulkImport(S.store);
   });
   boot();
 });

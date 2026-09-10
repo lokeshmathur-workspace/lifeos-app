@@ -5,6 +5,7 @@ import { PILLARS, HPH } from "./constants.js";
 import { todayISO, monthName, daysInMonth, dayOfWeekName, D, isoOf } from "./dateutil.js";
 import { hphAvg, top3Of, evening } from "./derive.js";
 import { flash } from "./flash.js";
+import { buildSections, copyRichText } from "./export.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -274,4 +275,47 @@ export async function startNewMonth(store, oldMonth, newYear, newMonthNum) {
     true,
     `life-os: month-start ${newYear}-${String(newMonthNum).padStart(2, "0")}`
   );
+}
+
+// OneNote export for the current month — mirrors what's on screen in renderMonthView.
+export async function copyMonthForOneNote(store) {
+  const state = await store.getState();
+  const cm = state.currentMonth || {};
+  const today = D(todayISO());
+  const realYear = today.getUTCFullYear();
+  const realMonthName = monthName(realYear, today.getUTCMonth() + 1).split(" ")[0];
+  if (cm.month !== realMonthName || cm.year !== realYear) {
+    flash("Start this month first — nothing to copy yet.", true);
+    return;
+  }
+
+  const monthNum = today.getUTCMonth() + 1;
+  const dates = monthDates(realYear, monthNum).filter((d) => d <= todayISO());
+  const daysMap = await store.loadJournalMap(dates);
+  const journaled = dates.filter((d) => daysMap.has(d)).length;
+  const avgs = dates.map((d) => daysMap.get(d)).filter(Boolean).map(hphAvg).filter((v) => v != null);
+  const monthAvg = avgs.length ? avgs.reduce((a, b) => a + b, 0) / avgs.length : null;
+  const health = pillarHealth(dates, daysMap);
+
+  const title = `${cm.month} ${cm.year} — ${cm.sprintTheme || "No theme set"}`;
+  const groups = [
+    {
+      heading: "Review",
+      blocks: [
+        { type: "kv", label: "Days journaled", value: `${journaled} / ${dates.length}` },
+        { type: "kv", label: "HPH avg", value: monthAvg != null ? monthAvg.toFixed(1) : "—" },
+        { type: "kv", label: "Habit focus", value: cm.hphFocusHabit || "—" },
+        { type: "kv", label: "One thing to protect", value: cm.oneThingToProtect || "—" },
+      ],
+    },
+    {
+      heading: "Pillar health",
+      blocks: [{ type: "list", items: Object.entries(PILLARS).map(([k, l]) => `${l}: ${health[k] != null ? health[k] + "%" : "—"}`) }],
+    },
+    { heading: "Weekly HPH", blocks: [{ type: "list", items: (cm.weeklyHPHAvgs || []).map((w) => `${w.week}: ${w.avg.toFixed(1)}`) }] },
+    { heading: "Intentions", blocks: [{ type: "list", items: (cm.intentions || []).map((i) => `${i.intention} (${PILLARS[i.pillar] || i.pillar})`) }] },
+    { heading: "Key dates", blocks: [{ type: "list", items: (cm.keyDates || []).map((k) => `${k.date}: ${k.event}`) }] },
+  ];
+  await copyRichText(buildSections(title, groups));
+  flash("Month copied for OneNote.");
 }
