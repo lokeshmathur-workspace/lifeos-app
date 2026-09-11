@@ -137,6 +137,8 @@ section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
 .step[aria-pressed="true"]{border-color:var(--good);background:var(--good-soft);color:var(--ink)}
 .step[aria-pressed="true"] .dot{background:var(--good);box-shadow:0 0 0 3px color-mix(in srgb,var(--good) 22%,transparent)}
 @media (max-width:520px){.rail{grid-template-columns:repeat(3,1fr)}}
+.rail.rail4{grid-template-columns:repeat(4,1fr)}
+@media (max-width:420px){.rail.rail4{grid-template-columns:repeat(2,1fr)}}
 
 /* ── notes / journal ────────────────────────────────────── */
 .notes{display:flex;flex-direction:column;gap:1px;margin-bottom:12px}
@@ -193,11 +195,23 @@ label.fld > span{
 .pill.ok{background:var(--good-soft);color:var(--good)}
 .pill.no{background:var(--stop-soft);color:var(--stop)}
 .savenote{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted)}
+.savenote.warn{color:var(--stop);font-weight:600;background:var(--stop-soft);padding:6px 10px;border-radius:6px;display:inline-block}
 .thinking{color:var(--muted);font-style:italic}
 .t3row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
 .t3row input{flex:1}
 .t3row select{width:140px;flex:none}
 @media(max-width:560px){.t3row{flex-wrap:wrap}.t3row select{width:100%}}
+
+/* task picker — "if there's time" / "plan tomorrow" */
+.picker{display:flex;flex-direction:column;gap:12px}
+.pickgroup{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--raised)}
+.pickgroup h4{margin:0 0 6px;font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;gap:6px;align-items:baseline}
+.pickgroup h4 span{font-weight:400;text-transform:none;letter-spacing:0}
+.pickrow{display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
+.pickrow:first-of-type{border-top:0}
+.pickrow input[type=checkbox]{width:16px;height:16px;flex:none;accent-color:var(--accent)}
+.pickrow .tk{font-size:13.5px;flex:1}
+.pickrow .pl{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .banner{background:var(--accent-soft);border:1px solid var(--accent);color:var(--ink);padding:11px 14px;border-radius:9px;font-size:13.5px;margin-bottom:18px}
 .banner.err{background:var(--stop-soft);border-color:var(--stop)}
 /* modal */

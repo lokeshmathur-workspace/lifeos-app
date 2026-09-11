@@ -1,9 +1,11 @@
-// Ported verbatim from reference-app.html — the fixed vocabulary from
-// lifeos-rebuild/REQUIREMENTS.md §3 ("do not redesign").
+// Originally ported verbatim from reference-app.html — the fixed vocabulary from
+// lifeos-rebuild/REQUIREMENTS.md §3. `personal` added 2026-09-11 (seventh pillar,
+// see life-os/reference/frameworks.md in the data repo and CHANGELOG.md there).
 export const PILLARS = {
   finances: "Finances",
   careerWork: "Career & Work",
   business: "Business",
+  personal: "Personal",
   vitality: "Vitality",
   relationships: "Relationships",
   mindGrowth: "Mind & Growth",
@@ -25,6 +27,16 @@ export const VIT = [
   ["exercise", "Exercise"],
   ["nutrition", "Nutrition"],
   ["sleep", "Sleep"],
+];
+
+// The subset shown as a quick check-in during the evening review (see app.js's
+// eveningForm) — the other two (dailyRead, sleep) stay toggleable via the
+// day-in-progress six-rail only, per what was actually asked for.
+export const VIT_EVENING_CHECKIN = [
+  ["meditation", "Meditate"],
+  ["hydrate", "Hydrate"],
+  ["nutrition", "Nutrition"],
+  ["exercise", "Exercise"],
 ];
 
 export const HPH = [

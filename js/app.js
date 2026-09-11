@@ -1,7 +1,7 @@
 import { Store, loadConfig, saveConfig, clearConfig, loadPinHash, savePinHash, clearPin, sha256Hex } from "./store.js";
 import { nextTaskId } from "./compact.js";
 import { readQuote, readImproveTomorrow, writeReflections, writeMorningQuote } from "./migrate.js";
-import { PILLARS, BIZ, VIT, HPH, CYCLE } from "./constants.js";
+import { PILLARS, BIZ, VIT, VIT_EVENING_CHECKIN, HPH, CYCLE } from "./constants.js";
 import { quoteForDate, randomQuote } from "./quotes.js";
 import { todayISO, nowHM, addDays, dayOfWeekName, dayKeyOf, prettyDate } from "./dateutil.js";
 import { streak, hphAvg, coreCount, top3Of } from "./derive.js";
@@ -11,7 +11,7 @@ import { copyDayForOneNote, downloadFullBackup } from "./export.js";
 import { renderWeekView, copyWeekForOneNote } from "./week.js";
 import { renderMonthView, copyMonthForOneNote } from "./month.js";
 import { flash } from "./flash.js";
-import { openBulkImport } from "./bulkimport.js";
+import { openBulkImport, parseTaskLines } from "./bulkimport.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -256,7 +256,7 @@ async function renderToday() {
   } else if (!doc.morning) {
     html.push(planPrompt(dateISO));
   } else if (S.eveningEditing) {
-    html.push(eveningForm(dateISO, doc));
+    html.push(eveningForm(dateISO, doc, state));
   } else if (!doc.evening?.completedAt) {
     html.push(dayInProgress(dateISO, doc));
   } else {
@@ -297,15 +297,55 @@ function planPrompt(dateISO) {
     </section>`;
 }
 
+function pickerGroup(title, hint, items, checkedIds) {
+  if (!items.length) return "";
+  return `
+    <div class="pickgroup">
+      <h4>${esc(title)} <span>${esc(hint)}</span></h4>
+      ${items
+        .map(
+          (t) => `
+        <label class="pickrow">
+          <input type="checkbox" class="addlpick" value="${esc(t.id)}" ${checkedIds.has(t.id) ? "checked" : ""}>
+          <span class="tk">${esc(t.task)}</span>
+          <span class="pl">${esc(PILLARS[t.pillar] || t.pillar)}</span>
+        </label>`
+        )
+        .join("")}
+    </div>`;
+}
+
 async function planningForm(dateISO, doc, state) {
   const q = doc.morning?.quote ? readQuote(doc.morning) : quoteForDate(dateISO);
   const dk = dayKeyOf(dateISO);
-  const suggested = (state.currentWeek?.tasks || []).filter(
-    (t) => t.assignedDay === dk && t.status !== "done"
-  );
-  const carried = (doc.morning?.top3 || []);
-  const prefill = carried.length ? carried : suggested.slice(0, 3);
+
+  // Prefill top3: re-editing an existing plan wins; otherwise prefer what was
+  // picked in yesterday's "Plan tomorrow" section; otherwise fall back to
+  // whatever the week board has assigned to today.
+  const existingTop3 = doc.morning?.top3 || [];
+  let prefillSource = existingTop3;
+  if (!prefillSource.length) {
+    const yesterday = await S.store.getDay(addDays(dateISO, -1));
+    const yesterdaysPlan = yesterday.evening?.tomorrowDraftTasks || [];
+    prefillSource = yesterdaysPlan.length
+      ? yesterdaysPlan
+      : (state.currentWeek?.tasks || []).filter((t) => t.assignedDay === dk && t.status !== "done").slice(0, 3);
+  }
+  const prefill = [...prefillSource];
   while (prefill.length < 3) prefill.push({ task: "", pillar: "careerWork" });
+
+  // "If there's time" — everything else on the week board, grouped, excluding
+  // whatever's already filled into Top 3 above.
+  const allWeekTasks = state.currentWeek?.tasks || [];
+  const usedTexts = new Set(prefill.map((t) => t.task).filter(Boolean));
+  const carriedOver = allWeekTasks.filter((t) => t.status === "carried_forward" && !usedTexts.has(t.task));
+  const plannedToday = allWeekTasks.filter(
+    (t) => t.status !== "carried_forward" && t.assignedDay === dk && t.status !== "done" && !usedTexts.has(t.task)
+  );
+  const unplanned = allWeekTasks.filter(
+    (t) => t.status !== "carried_forward" && !t.assignedDay && t.status !== "done" && !usedTexts.has(t.task)
+  );
+  const additionalIds = new Set((doc.morning?.additionalTasks || []).map((t) => t.id));
 
   const pillarOpts = (sel) =>
     Object.entries(PILLARS).map(([k, l]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${l}</option>`).join("");
@@ -321,14 +361,6 @@ async function planningForm(dateISO, doc, state) {
       <p class="savenote" id="quotenote" style="margin-top:8px"></p>
     </section>
     <section class="blk">
-      <h2>This morning</h2>
-      <label class="fld"><span>What are you excited about today?</span><textarea id="excited" rows="2">${esc(doc.morning?.excitedAbout || "")}</textarea></label>
-      <label class="fld"><span>Potential challenge</span><textarea id="challenge" rows="2">${esc(doc.morning?.potentialChallenge || "")}</textarea></label>
-      <label class="fld"><span>Plan for it</span><textarea id="challengeplan" rows="2">${esc(doc.morning?.challengePlan || "")}</textarea></label>
-      <label class="fld"><span>Today is a success if…</span><textarea id="anchor" rows="2">${esc(doc.morning?.successAnchor || "")}</textarea></label>
-      <label class="fld"><span>People to connect with (comma-separated)</span><input type="text" id="people" value="${esc((doc.morning?.peopleToConnect || []).join(", "))}"></label>
-    </section>
-    <section class="blk">
       <h2>Top 3</h2>
       ${prefill
         .map(
@@ -339,6 +371,27 @@ async function planningForm(dateISO, doc, state) {
         </div>`
         )
         .join("")}
+    </section>
+    ${
+      plannedToday.length || unplanned.length || carriedOver.length
+        ? `<section class="blk">
+      <h2>If there's time</h2>
+      <div class="picker">
+        ${pickerGroup("Planned for today", "from the week board", plannedToday, additionalIds)}
+        ${pickerGroup("Unplanned", "on the board, no day set", unplanned, additionalIds)}
+        ${pickerGroup("Carried over", "incomplete from earlier", carriedOver, additionalIds)}
+      </div>
+      <p class="savenote" style="margin-top:8px">Checked items ride along today, outside the Top 3 — no pressure, just visible if there's room.</p>
+    </section>`
+        : ""
+    }
+    <section class="blk">
+      <h2>This morning</h2>
+      <label class="fld"><span>What are you excited about today?</span><textarea id="excited" rows="2">${esc(doc.morning?.excitedAbout || "")}</textarea></label>
+      <label class="fld"><span>Potential challenge</span><textarea id="challenge" rows="2">${esc(doc.morning?.potentialChallenge || "")}</textarea></label>
+      <label class="fld"><span>Plan for it</span><textarea id="challengeplan" rows="2">${esc(doc.morning?.challengePlan || "")}</textarea></label>
+      <label class="fld"><span>Today is a success if…</span><textarea id="anchor" rows="2">${esc(doc.morning?.successAnchor || "")}</textarea></label>
+      <label class="fld"><span>People to connect with (comma-separated)</span><input type="text" id="people" value="${esc((doc.morning?.peopleToConnect || []).join(", "))}"></label>
     </section>
     <div class="btnrow">
       <button class="btn pri" id="saveplan">Save plan</button>
@@ -369,6 +422,7 @@ function taskRow(t, group, i) {
 function dayInProgress(dateISO, doc) {
   const q = readQuote(doc.morning) || {};
   const top3 = doc.morning?.top3 || [];
+  const additionalTasks = doc.morning?.additionalTasks || [];
   const notes = doc.notes || [];
   return `
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
@@ -383,6 +437,14 @@ function dayInProgress(dateISO, doc) {
       <h2>Top 3</h2>
       <div class="tasks">${top3.map((t, i) => taskRow(t, "morning-top3", i)).join("")}</div>
     </section>
+    ${
+      additionalTasks.length
+        ? `<section class="blk">
+      <h2>Also today <span class="count">if there's time</span></h2>
+      <div class="tasks">${additionalTasks.map((t, i) => taskRow(t, "morning-additional", i)).join("")}</div>
+    </section>`
+        : ""
+    }
     <section class="blk">
       <h2>Business core steps <span class="count">${coreCount(doc, "businessCoreSteps") ?? 0}/6</span></h2>
       ${coreStepsRail(doc, "businessCoreSteps", BIZ)}
@@ -411,11 +473,21 @@ function dayInProgress(dateISO, doc) {
     <div class="btnrow"><button class="btn pri" id="startevening">Evening review</button></div>`;
 }
 
-function eveningForm(dateISO, doc) {
+function eveningForm(dateISO, doc, state) {
   const e = doc.evening || {};
   const top3 = doc.morning?.top3 || e.top3Results || [];
+  const additionalTasks = doc.morning?.additionalTasks || e.additionalResults || [];
   const improve = readImproveTomorrow(e.reflections);
   const hph = e.hph || {};
+  const vit = e.vitalityCoreSteps || {};
+
+  // "Plan tomorrow" candidates: today's own unfinished items (carry-over), plus
+  // whatever's on the week board with no day assigned yet.
+  const unfinishedToday = [...top3, ...additionalTasks].filter((t) => t.status !== "done");
+  const weekTasks = state.currentWeek?.tasks || [];
+  const usedTexts = new Set(unfinishedToday.map((t) => t.task));
+  const unplanned = weekTasks.filter((t) => !t.assignedDay && t.status !== "done" && !usedTexts.has(t.task));
+
   return `
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
       <h2>Evening review</h2>
@@ -425,6 +497,14 @@ function eveningForm(dateISO, doc) {
       <h2>Top 3 — final status</h2>
       <div class="tasks">${top3.map((t, i) => taskRow(t, "evening-top3", i)).join("")}</div>
     </section>
+    ${
+      additionalTasks.length
+        ? `<section class="blk">
+      <h2>Also today — final status</h2>
+      <div class="tasks">${additionalTasks.map((t, i) => taskRow(t, "evening-additional", i)).join("")}</div>
+    </section>`
+        : ""
+    }
     <section class="blk">
       <div class="btnrow" style="margin-top:0"><button class="btn sm" id="aidraft">Draft with AI</button></div>
       <p class="savenote" id="draftnote" style="margin-top:8px"></p>
@@ -447,6 +527,16 @@ function eveningForm(dateISO, doc) {
       <label class="fld"><span>Improve tomorrow</span><textarea id="r_improve" rows="2">${esc(improve)}</textarea></label>
     </section>
     <section class="blk">
+      <h2>Vitality check-in</h2>
+      <div class="rail rail4">${VIT_EVENING_CHECKIN.map(
+        ([k, l]) => `
+        <button class="step eve-vit-step" data-key="${k}" aria-pressed="${vit[k] === true}">
+          <span class="dot"></span><span class="lb">${esc(l)}</span>
+        </button>`
+      ).join("")}</div>
+      <p class="savenote" style="margin-top:8px">Same checklist as the day view's rail — Daily Read and Sleep stay there, these four are just surfaced here too.</p>
+    </section>
+    <section class="blk">
       <h2>HPH — score honestly, 1–10</h2>
       <div class="hphlist">
         ${HPH.map(
@@ -460,6 +550,15 @@ function eveningForm(dateISO, doc) {
       </div>
       <label class="fld" style="margin-top:12px"><span>Note on anything below 6 (one sentence, no lecture)</span><input type="text" id="hphnote" value="${esc(e.hphNote || "")}"></label>
     </section>
+    <section class="blk">
+      <h2>Plan tomorrow</h2>
+      <div class="picker">
+        ${pickerGroup("Carry over?", "didn't finish today", unfinishedToday, new Set(unfinishedToday.map((t) => t.id)))}
+        ${pickerGroup("Unplanned on the board", "", unplanned, new Set())}
+      </div>
+      ${!unfinishedToday.length && !unplanned.length ? `<p class="empty">Nothing pending to carry forward.</p>` : ""}
+      <label class="fld" style="margin-top:10px;margin-bottom:0"><span>Add something new for tomorrow (one per line)</span><textarea id="tomorrownew" rows="2" placeholder="Type a task…"></textarea></label>
+    </section>
     <div class="btnrow">
       <button class="btn pri" id="saveevening">Save evening review</button>
       <button class="btn" id="cancelevening">Cancel</button>
@@ -472,6 +571,7 @@ function daySummary(dateISO, doc) {
   const q = readQuote(m);
   const avg = hphAvg(doc);
   const top3 = e.top3Results?.length ? e.top3Results : m.top3 || [];
+  const additionalTasks = e.additionalResults?.length ? e.additionalResults : m.additionalTasks || [];
   const hph = e.hph || {};
 
   return `
@@ -493,6 +593,14 @@ function daySummary(dateISO, doc) {
         ? `<section class="blk" ${q || m.successAnchor ? "" : `style="border-top:0;padding-top:0;margin-top:0"`}>
       <h2>Top 3</h2>
       <div class="tasks">${top3.map((t) => `<div class="task" data-s="${t.status || "not_started"}" style="cursor:default"><span class="box"></span><span class="body"><span class="t">${esc(t.task)}</span><span class="meta">${esc(PILLARS[t.pillar] || t.pillar)}</span></span></div>`).join("")}</div>
+    </section>`
+        : ""
+    }
+    ${
+      additionalTasks.length
+        ? `<section class="blk">
+      <h2>Also today</h2>
+      <div class="tasks">${additionalTasks.map((t) => `<div class="task" data-s="${t.status || "not_started"}" style="cursor:default"><span class="box"></span><span class="body"><span class="t">${esc(t.task)}</span><span class="meta">${esc(PILLARS[t.pillar] || t.pillar)}</span></span></div>`).join("")}</div>
     </section>`
         : ""
     }
@@ -588,7 +696,7 @@ function wireToday(dateISO, doc, state) {
       note.className = "savenote";
     } catch (err) {
       note.textContent = err instanceof AiError ? err.message : "Couldn't reach AI.";
-      note.className = "savenote";
+      note.className = "savenote warn";
     } finally {
       btn.disabled = false;
     }
@@ -614,6 +722,19 @@ function wireToday(dateISO, doc, state) {
       while (seen.has(t.id)) t.id = nextTaskId(dateISO, [...existing, top3]);
       seen.add(t.id);
     }
+
+    // "If there's time" — checked board tasks become this day's additionalTasks,
+    // each a fresh copy (own id/status) so ticking it off today doesn't touch
+    // the week board's own record of that task.
+    const checkedIds = new Set([...document.querySelectorAll(".addlpick:checked")].map((el) => el.value));
+    const weekTasks = state.currentWeek?.tasks || [];
+    const additionalTasks = [];
+    for (const wt of weekTasks) {
+      if (!checkedIds.has(wt.id)) continue;
+      const id = nextTaskId(dateISO, [...existing, top3, additionalTasks]);
+      additionalTasks.push({ id, task: wt.task, pillar: wt.pillar, status: "not_started" });
+    }
+
     const morning = writeMorningQuote(
       {
         completedAt: nowHM(),
@@ -623,6 +744,7 @@ function wireToday(dateISO, doc, state) {
         successAnchor: $("#anchor").value.trim(),
         peopleToConnect: $("#people").value.split(",").map((s) => s.trim()).filter(Boolean),
         top3,
+        additionalTasks,
       },
       quote
     );
@@ -643,17 +765,38 @@ function wireToday(dateISO, doc, state) {
       renderToday();
     });
   });
+  document.querySelectorAll(".task[data-group='morning-additional']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.i);
+      const additionalTasks = [...(doc.morning.additionalTasks || [])];
+      additionalTasks[i] = { ...additionalTasks[i], status: CYCLE[additionalTasks[i].status || "not_started"] };
+      S.store.saveDay(dateISO, { morning: { additionalTasks } }, true);
+      doc.morning.additionalTasks = additionalTasks;
+      renderToday();
+    });
+  });
+  // These cycle status in place (not renderToday()) — a full re-render mid-edit
+  // would wipe whatever's currently being typed into Synthesis/Reflections below.
   document.querySelectorAll(".task[data-group='evening-top3']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const i = Number(btn.dataset.i);
       const top3 = [...(doc.morning?.top3 || doc.evening?.top3Results || [])];
       top3[i] = { ...top3[i], status: CYCLE[top3[i].status || "not_started"] };
       doc.morning.top3 = top3;
-      renderToday();
+      btn.dataset.s = top3[i].status;
+    });
+  });
+  document.querySelectorAll(".task[data-group='evening-additional']").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const i = Number(btn.dataset.i);
+      const additionalTasks = [...(doc.morning?.additionalTasks || doc.evening?.additionalResults || [])];
+      additionalTasks[i] = { ...additionalTasks[i], status: CYCLE[additionalTasks[i].status || "not_started"] };
+      doc.morning.additionalTasks = additionalTasks;
+      btn.dataset.s = additionalTasks[i].status;
     });
   });
 
-  document.querySelectorAll(".step").forEach((btn) => {
+  document.querySelectorAll(".step:not(.eve-vit-step)").forEach((btn) => {
     btn.addEventListener("click", () => {
       const which = btn.dataset.which;
       const key = btn.dataset.key;
@@ -664,6 +807,21 @@ function wireToday(dateISO, doc, state) {
       S.store.saveDay(dateISO, { evening: { [which]: next } }, true);
       doc.evening = { ...doc.evening, [which]: next };
       renderToday();
+    });
+  });
+  // The evening review's own vitality check-in writes to the same
+  // evening.vitalityCoreSteps field as the day rail above, but toggling it here
+  // must NOT re-render the whole form — that would wipe whatever's mid-typing
+  // in Synthesis/Reflections. Update the button and save in place instead.
+  document.querySelectorAll(".eve-vit-step").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.key;
+      const cur = doc.evening?.vitalityCoreSteps || {};
+      const next = { ...cur, [key]: !cur[key] };
+      next.totalCompleted = VIT.filter(([k]) => next[k] === true).length;
+      S.store.saveDay(dateISO, { evening: { vitalityCoreSteps: next } }, true);
+      doc.evening = { ...doc.evening, vitalityCoreSteps: next };
+      btn.setAttribute("aria-pressed", String(next[key] === true));
     });
   });
 
@@ -728,7 +886,7 @@ function wireToday(dateISO, doc, state) {
       note.className = "savenote";
     } catch (err) {
       note.textContent = err instanceof AiError ? err.message : "Couldn't reach AI.";
-      note.className = "savenote";
+      note.className = "savenote warn";
     } finally {
       btn.disabled = false;
     }
@@ -743,6 +901,7 @@ function wireToday(dateISO, doc, state) {
 
   $("#saveevening")?.addEventListener("click", () => {
     const top3Results = [...(doc.morning?.top3 || doc.evening?.top3Results || [])];
+    const additionalResults = [...(doc.morning?.additionalTasks || doc.evening?.additionalResults || [])];
     const hph = {};
     let sum = 0;
     HPH.forEach(([k]) => {
@@ -759,16 +918,30 @@ function wireToday(dateISO, doc, state) {
       },
       $("#r_improve").value.trim()
     );
+
+    // "Plan tomorrow" — resolve checked picker ids against everything that could
+    // have supplied them (today's own tasks, plus the week board), then append
+    // whatever was typed free-text, one task per line.
+    const tomorrowPool = [...top3Results, ...additionalResults, ...(state.currentWeek?.tasks || [])];
+    const checkedTomorrowIds = new Set([...document.querySelectorAll(".addlpick:checked")].map((el) => el.value));
+    const tomorrowFromPicker = tomorrowPool
+      .filter((t) => checkedTomorrowIds.has(t.id))
+      .map((t) => ({ task: t.task, pillar: t.pillar }));
+    const tomorrowFreeText = parseTaskLines($("#tomorrownew")?.value || "").map((task) => ({ task, pillar: "careerWork" }));
+    const tomorrowDraftTasks = [...tomorrowFromPicker, ...tomorrowFreeText];
+
     const evening = {
       completedAt: nowHM(),
       synthesis: $("#e_synth").value.trim(),
       top3Results,
+      additionalResults,
       successAnchorMet: $("#anchormet").value,
       businessCoreSteps: doc.evening?.businessCoreSteps || {},
       vitalityCoreSteps: doc.evening?.vitalityCoreSteps || {},
       reflections,
       hph,
       hphNote: $("#hphnote").value.trim(),
+      tomorrowDraftTasks,
     };
     S.store.saveDay(dateISO, { evening }, true, `life-os: evening ${dateISO}`);
     S.eveningEditing = false;

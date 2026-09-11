@@ -15,7 +15,7 @@ const esc = (s) =>
 // where you don't have per-line timestamps; still one note per line.
 const TIME_PREFIX = /^(\d{1,2}:\d{2})\s+(.*)$/;
 
-function parseTaskLines(text) {
+export function parseTaskLines(text) {
   return text
     .split("\n")
     .map((l) => l.trim())

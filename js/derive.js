@@ -15,6 +15,7 @@ export const PILLARS = [
   "finances",
   "careerWork",
   "business",
+  "personal",
   "vitality",
   "relationships",
   "mindGrowth",
