@@ -5,7 +5,6 @@ import { PILLARS, BIZ, VIT, VIT_EVENING_CHECKIN, HPH, CYCLE } from "./constants.
 import { quoteForDate, randomQuote } from "./quotes.js";
 import { todayISO, nowHM, addDays, dayOfWeekName, dayKeyOf, prettyDate } from "./dateutil.js";
 import { streak, hphAvg, coreCount, top3Of } from "./derive.js";
-import { refreshComputed } from "./recompute.js";
 import { loadAiConfig, saveAiConfig, clearAiConfig, pickQuoteAI, draftEveningAI, AiError } from "./ai.js";
 import { copyDayForOneNote, downloadFullBackup } from "./export.js";
 import { renderWeekView, copyWeekForOneNote } from "./week.js";
@@ -752,7 +751,6 @@ function wireToday(dateISO, doc, state) {
     S.planning = false;
     flash("Plan saved.");
     renderToday();
-    refreshComputed(S.store, dateISO); // fire-and-forget; a new day's file changes lastJournalDate/streaks too
   });
 
   document.querySelectorAll(".task[data-group='morning-top3']").forEach((btn) => {
@@ -947,6 +945,5 @@ function wireToday(dateISO, doc, state) {
     S.eveningEditing = false;
     flash("Evening review saved.");
     renderToday();
-    refreshComputed(S.store, dateISO); // fire-and-forget; doesn't block the save the user is waiting on
   });
 }

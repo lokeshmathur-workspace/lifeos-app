@@ -4,6 +4,7 @@
 // Contents API instead of the artifact db capability.
 
 import { GitHubStore, GitHubStoreError } from "./github.js";
+import { refreshComputed } from "./recompute.js";
 
 const CONFIG_KEY = "lifeos.gh";
 const PIN_KEY = "lifeos.pin";
@@ -66,6 +67,21 @@ export class Store {
     this.state = null; // { doc, sha }
     this.saveTimers = new Map(); // path -> timeout id
     this.onFlash = onFlash || (() => {});
+    this.recomputeTimer = null;
+  }
+
+  // Every saveDay() (any journal-file write) can change what recompute.py
+  // tracks — habit streaks, week/month HPH and core-step averages, top3
+  // completion — not just the "big" saves (plan/evening/import). Rather than
+  // re-deriving which specific patch fields matter, debounce one recompute
+  // after the last journal write in a burst, so rapid clicks (task-status
+  // cycles, core-step toggles) coalesce into a single background call instead
+  // of one per click. Best-effort: failures are silent (see recompute.js).
+  _scheduleRecompute(dateISO) {
+    clearTimeout(this.recomputeTimer);
+    this.recomputeTimer = setTimeout(() => {
+      refreshComputed(this, dateISO);
+    }, 4000);
   }
 
   async getDay(dateISO) {
@@ -150,6 +166,7 @@ export class Store {
     const cur = this.docs.get(dateISO) || { doc: { date: dateISO, dayOfWeek: "" }, sha: null };
     const merged = deepMerge({ ...cur.doc }, patch);
     this.docs.set(dateISO, { doc: merged, sha: cur.sha });
+    this._scheduleRecompute(dateISO);
     return this._write(
       journalPath(dateISO),
       () => this.docs.get(dateISO),
