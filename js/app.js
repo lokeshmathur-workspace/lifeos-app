@@ -3,7 +3,7 @@ import { nextTaskId } from "./compact.js";
 import { readQuote, readImproveTomorrow, writeReflections, writeMorningQuote } from "./migrate.js";
 import { PILLARS, BIZ, VIT, VIT_EVENING_CHECKIN, HPH, CYCLE } from "./constants.js";
 import { quoteForDate, randomQuote } from "./quotes.js";
-import { todayISO, nowHM, addDays, dayOfWeekName, dayKeyOf, prettyDate, mondayOf } from "./dateutil.js";
+import { todayISO, nowHM, addDays, dayOfWeekName, dayKeyOf, prettyDate, mondayOf, monthKeyOf } from "./dateutil.js";
 import { streak, hphAvg, coreCount, top3Of } from "./derive.js";
 import { loadAiConfig, saveAiConfig, clearAiConfig, pickQuoteAI, draftEveningAI, AiError } from "./ai.js";
 import { copyDayForOneNote, downloadFullBackup } from "./export.js";
@@ -24,6 +24,7 @@ const S = {
   view: "today",
   day: todayISO(),
   week: mondayOf(todayISO()),
+  month: monthKeyOf(todayISO()),
   unlocked: false,
   planning: false,
   eveningEditing: false,
@@ -126,7 +127,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (S.view === "week") {
         await copyWeekForOneNote(S.store, S.week);
       } else if (S.view === "month") {
-        await copyMonthForOneNote(S.store);
+        await copyMonthForOneNote(S.store, S.month);
       } else {
         const doc = await S.store.getDay(S.day);
         await copyDayForOneNote(S.day, doc);
@@ -246,18 +247,18 @@ async function renderToday() {
   main().innerHTML = `<p class="empty">Loading…</p>`;
   const dateISO = S.day;
   const doc = await S.store.getDay(dateISO);
-  const state = await S.store.getState();
   const weekDoc = await S.store.getWeek(mondayOf(dateISO));
+  const monthDoc = await S.store.getMonth(monthKeyOf(dateISO));
 
   const html = [];
   html.push(dateHead(dateISO));
 
   if (S.planning) {
-    html.push(await planningForm(dateISO, doc, state, weekDoc));
+    html.push(await planningForm(dateISO, doc, monthDoc, weekDoc));
   } else if (!doc.morning) {
     html.push(planPrompt(dateISO));
   } else if (S.eveningEditing) {
-    html.push(eveningForm(dateISO, doc, state, weekDoc));
+    html.push(eveningForm(dateISO, doc, monthDoc, weekDoc));
   } else if (!doc.evening?.completedAt) {
     html.push(dayInProgress(dateISO, doc));
   } else {
@@ -265,7 +266,7 @@ async function renderToday() {
   }
 
   main().innerHTML = html.join("");
-  wireToday(dateISO, doc, state, weekDoc);
+  wireToday(dateISO, doc, monthDoc, weekDoc);
 }
 
 function dateHead(dateISO) {
@@ -316,7 +317,7 @@ function pickerGroup(title, hint, items, checkedIds) {
     </div>`;
 }
 
-async function planningForm(dateISO, doc, state, weekDoc) {
+async function planningForm(dateISO, doc, monthDoc, weekDoc) {
   const q = doc.morning?.quote ? readQuote(doc.morning) : quoteForDate(dateISO);
   const dk = dayKeyOf(dateISO);
 
@@ -476,7 +477,7 @@ function dayInProgress(dateISO, doc) {
     <div class="btnrow"><button class="btn pri" id="startevening">Evening review</button></div>`;
 }
 
-function eveningForm(dateISO, doc, state, weekDoc) {
+function eveningForm(dateISO, doc, monthDoc, weekDoc) {
   const e = doc.evening || {};
   const top3 = doc.morning?.top3 || e.top3Results || [];
   const additionalTasks = doc.morning?.additionalTasks || e.additionalResults || [];
@@ -634,7 +635,7 @@ function daySummary(dateISO, doc) {
 
 /* ═══ wiring ═══════════════════════════════════════════════ */
 
-function wireToday(dateISO, doc, state, weekDoc) {
+function wireToday(dateISO, doc, monthDoc, weekDoc) {
   $("#prevday")?.addEventListener("click", () => {
     S.day = addDays(dateISO, -1);
     S.planning = false;
@@ -690,7 +691,7 @@ function wireToday(dateISO, doc, state, weekDoc) {
     note.textContent = "Thinking…";
     note.className = "savenote thinking";
     try {
-      shuffled = await pickQuoteAI(dateISO, state, weekDoc);
+      shuffled = await pickQuoteAI(dateISO, monthDoc, weekDoc);
       const p = $(".affirm p");
       const a = $(".anchor span");
       if (p) p.textContent = `"${shuffled.text}"`;
@@ -880,7 +881,7 @@ function wireToday(dateISO, doc, state, weekDoc) {
     note.textContent = "Thinking…";
     note.className = "savenote thinking";
     try {
-      const draft = await draftEveningAI(dateISO, doc, state, weekDoc);
+      const draft = await draftEveningAI(dateISO, doc, monthDoc, weekDoc);
       $("#e_synth").value = draft.synthesis || "";
       $("#anchormet").value = draft.successAnchorMet || "yes";
       $("#r_grat").value = draft.reflections?.gratitude || "";

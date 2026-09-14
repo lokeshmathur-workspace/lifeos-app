@@ -12,7 +12,7 @@
 // past is read-only — carry-forward into a new week is an explicit pull, never
 // a mutation of the old week's file.
 import { PILLARS, BIZ, VIT } from "./constants.js";
-import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, D } from "./dateutil.js";
+import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, D, monthKeyOf } from "./dateutil.js";
 import { hphAvg, evening } from "./derive.js";
 import { nextTaskId } from "./compact.js";
 import { flash } from "./flash.js";
@@ -63,7 +63,7 @@ export async function renderWeekView(store, S, renderApp) {
   const isPast = weekOf < curMonday;
   const editable = !isPast;
 
-  const [weekDoc, state] = await Promise.all([store.getWeek(weekOf), store.getState()]);
+  const weekDoc = await store.getWeek(weekOf);
   const dates = weekDates(weekOf);
   const daysMap = await store.loadJournalMap(dates);
   const stats = weekStats(dates, daysMap);
@@ -72,14 +72,16 @@ export async function renderWeekView(store, S, renderApp) {
   const prevWeekDoc = editable ? await store.getWeek(prevMonday) : null;
 
   // "Progress toward this month" uses the real current month's data regardless
-  // of which week is being viewed — currentMonth is still a single global slot.
+  // of which week is being viewed — each month is still its own single file,
+  // not tied to which week you're looking at.
   const todayD = D(todayISO());
   const realYear = todayD.getUTCFullYear();
   const realMonthNum = todayD.getUTCMonth() + 1;
   const monthDatesToDate = monthDates(realYear, realMonthNum).filter((d) => d <= todayISO());
   const monthDaysMap = await store.loadJournalMap(monthDatesToDate);
   const health = pillarHealth(monthDatesToDate, monthDaysMap);
-  const intentions = state.currentMonth?.intentions || [];
+  const monthDoc = await store.getMonth(monthKeyOf(todayISO()));
+  const intentions = monthDoc.intentions || [];
 
   const tasks = weekDoc.tasks || [];
   const done = tasks.filter((t) => t.status === "done").length;

@@ -73,3 +73,13 @@ export const monthName = (year, month) =>
   );
 
 export const daysInMonth = (year, month) => new Date(Date.UTC(year, month, 0)).getUTCDate();
+
+// "2026-09-14" -> "2026-09" — the key state/months/<monthKey>.json files use.
+export const monthKeyOf = (dateISO) => dateISO.slice(0, 7);
+
+// "2026-09" + n -> "2026-10" (or "2025-12" for n=-9 etc.) — month navigation.
+export const addMonths = (monthKey, n) => {
+  const [y, m] = monthKey.split("-").map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+};

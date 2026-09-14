@@ -54,13 +54,13 @@ async function callAI(prompt, mode, modelTier) {
 
 // Standing context (month/week) — used by quote pick and the future insight/week/
 // month prompts. Kept short and factual, matching the reference app's ctxLines.
-// weekDoc is the viewed/relevant week's file (life-os/state/weeks/<monday>.json),
-// not part of `state` since state/current.json no longer carries week data.
-export function ctxLines(state, weekDoc) {
+// monthDoc/weekDoc are the viewed/relevant month's and week's files
+// (life-os/state/months/<YYYY-MM>.json, life-os/state/weeks/<monday>.json) — no
+// longer part of `state`, since state/current.json holds only `meta` now.
+export function ctxLines(monthDoc, weekDoc) {
   const lines = [];
-  const cm = state?.currentMonth;
-  if (cm?.sprintTheme) lines.push(`Month theme: ${cm.sprintTheme}`);
-  if (cm?.oneThingToProtect) lines.push(`Protecting: ${cm.oneThingToProtect}`);
+  if (monthDoc?.sprintTheme) lines.push(`Month theme: ${monthDoc.sprintTheme}`);
+  if (monthDoc?.oneThingToProtect) lines.push(`Protecting: ${monthDoc.oneThingToProtect}`);
   if (weekDoc?.keyFocus) lines.push(`This week: ${weekDoc.keyFocus}`);
   return lines.join("\n");
 }
@@ -68,12 +68,12 @@ export function ctxLines(state, weekDoc) {
 /* ── quote pick ──────────────────────────────────────────── */
 // Ported from reference-app.html's quotePickPrompt — picks an INDEX from the fixed
 // library only; the model never generates a quote.
-export function quotePickPrompt(dateISO, state, weekDoc) {
+export function quotePickPrompt(dateISO, monthDoc, weekDoc) {
   const list = QUOTES.map((q, i) => `${i}. "${q[0]}" — ${q[1]}`).join("\n");
   return `Choose the one quote from the numbered library below that best fits Lokesh's day.
 
 His context for ${prettyDate(dateISO)}:
-${ctxLines(state, weekDoc) || "(no month or week context set yet)"}
+${ctxLines(monthDoc, weekDoc) || "(no month or week context set yet)"}
 
 LIBRARY
 ${list}
@@ -82,8 +82,8 @@ Reply with only a JSON object: {"index": <number from the list>, "why": "<one se
 Pick for genuine fit with what he is actually facing, not for general uplift. Do not invent a quote; the index must come from the list.`;
 }
 
-export async function pickQuoteAI(dateISO, state, weekDoc) {
-  const r = await callAI(quotePickPrompt(dateISO, state, weekDoc), "json", "default");
+export async function pickQuoteAI(dateISO, monthDoc, weekDoc) {
+  const r = await callAI(quotePickPrompt(dateISO, monthDoc, weekDoc), "json", "default");
   const i = Math.max(0, Math.min(QUOTES.length - 1, Number(r.index) || 0));
   return { text: QUOTES[i][0], author: QUOTES[i][1], why: r.why || "" };
 }
@@ -91,7 +91,7 @@ export async function pickQuoteAI(dateISO, state, weekDoc) {
 /* ── evening draft ───────────────────────────────────────── */
 // Ported from reference-app.html's eveningPrompt. Returns a DRAFT the user edits
 // and explicitly saves — never written straight to the journal.
-export function eveningPrompt(dateISO, doc, state, weekDoc) {
+export function eveningPrompt(dateISO, doc, monthDoc, weekDoc) {
   const m = doc.morning || {};
   const e = doc.evening || {};
   const t3 = m.top3 || e.top3Results || [];
@@ -114,7 +114,7 @@ Journal:
 ${notes.slice(0, 6000)}
 
 WIDER CONTEXT
-${ctxLines(state, weekDoc) || "(none set)"}
+${ctxLines(monthDoc, weekDoc) || "(none set)"}
 
 Reply with only a JSON object of this shape:
 {"synthesis": "3-5 sentences on how the day actually went: planned vs actual on the top 3, the core-step counts, whether the success anchor was met, and anything from the journal worth flagging.",
@@ -126,12 +126,12 @@ Reply with only a JSON object of this shape:
 Rules: each reflection is one specific sentence drawn from the actual day above, written in his voice as a first-person draft he will edit — never generic. HPH scores are integers 1-10 based only on the evidence above; where there is little evidence, score near the middle rather than high.`;
 }
 
-export async function draftEveningAI(dateISO, doc, state, weekDoc) {
-  return callAI(eveningPrompt(dateISO, doc, state, weekDoc), "json", "default");
+export async function draftEveningAI(dateISO, doc, monthDoc, weekDoc) {
+  return callAI(eveningPrompt(dateISO, doc, monthDoc, weekDoc), "json", "default");
 }
 
 /* ── 28-day insight (text, streamed-equivalent) ─────────────── */
-export function insightPrompt(daysDescByDate, state) {
+export function insightPrompt(daysDescByDate, monthDoc) {
   const dates = [...daysDescByDate.keys()].sort().slice(-28);
   const lines = dates
     .map((dateISO) => {
@@ -153,7 +153,7 @@ export function insightPrompt(daysDescByDate, state) {
   return `You are looking at Lokesh's Life OS history to tell him something useful he probably has not noticed himself.
 
 Standing context:
-${ctxLines(state) || "(none set)"}
+${ctxLines(monthDoc) || "(none set)"}
 
 THE LAST ${dates.length} RECORDED DAYS
 ${lines || "(no history yet)"}
@@ -161,6 +161,6 @@ ${lines || "(no history yet)"}
 Write 2 to 4 short paragraphs. Each one must name a concrete pattern with the evidence from above — specific tasks, habits, pillars, dates or phrases he actually wrote — and then say what it suggests he do differently. Be direct and useful, not encouraging. No preamble, no headings, no bullet lists. If the history is too thin to say anything real, say exactly that in one sentence and name what would make it useful. Reply with only the prose.`;
 }
 
-export async function insightAI(daysDescByDate, state) {
-  return callAI(insightPrompt(daysDescByDate, state), "text", "complex");
+export async function insightAI(daysDescByDate, monthDoc) {
+  return callAI(insightPrompt(daysDescByDate, monthDoc), "text", "complex");
 }

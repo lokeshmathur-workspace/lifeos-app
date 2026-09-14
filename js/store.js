@@ -5,7 +5,7 @@
 
 import { GitHubStore, GitHubStoreError } from "./github.js";
 import { refreshComputed } from "./recompute.js";
-import { sundayOf, isoWeekNumber } from "./dateutil.js";
+import { sundayOf, isoWeekNumber, monthName } from "./dateutil.js";
 
 const CONFIG_KEY = "lifeos.gh";
 const PIN_KEY = "lifeos.pin";
@@ -58,8 +58,23 @@ function deepMerge(t, s) {
 
 const journalPath = (dateISO) => `life-os/journal/${dateISO.slice(0, 4)}/${dateISO}.json`;
 const weekPath = (weekOf) => `life-os/state/weeks/${weekOf}.json`;
-const STATE_PATH = "life-os/state/current.json";
+const monthPath = (monthKey) => `life-os/state/months/${monthKey}.json`;
 const COMPUTED_PATH = "life-os/state/computed.json";
+
+function defaultMonthDoc(monthKey) {
+  const [year, monthNum] = monthKey.split("-").map(Number);
+  return {
+    monthKey,
+    month: monthName(year, monthNum).split(" ")[0],
+    year,
+    sprintTheme: "",
+    oneThingToProtect: "",
+    hphFocusHabit: "",
+    intentions: [],
+    keyDates: [],
+    weeklyHPHAvgs: [],
+  };
+}
 
 export class Store {
   constructor(cfg, onFlash) {
@@ -67,7 +82,7 @@ export class Store {
     this.docs = new Map(); // dateISO -> { doc, sha }
     this.exists = new Map(); // dateISO -> boolean (a file was actually found, not a synthetic placeholder)
     this.weeks = new Map(); // weekOf (Monday) -> { doc, sha }
-    this.state = null; // { doc, sha }
+    this.months = new Map(); // monthKey ("YYYY-MM") -> { doc, sha }
     this.saveTimers = new Map(); // path -> timeout id
     this.onFlash = onFlash || (() => {});
     this.recomputeTimer = null;
@@ -133,13 +148,6 @@ export class Store {
     return m;
   }
 
-  async getState() {
-    if (this.state) return this.state.doc;
-    const { json, sha } = await this.gh.getFile(STATE_PATH);
-    this.state = { doc: json || { meta: {}, currentMonth: {} }, sha };
-    return this.state.doc;
-  }
-
   // weekOf is always a Monday (dateutil.js's mondayOf). One file per week — see
   // life-os/docs/SCHEMA.md's state/weeks/YYYY-MM-DD.json section. A week that
   // doesn't have a file yet (not planned, or in the future) comes back as an
@@ -173,6 +181,31 @@ export class Store {
       () => this.weeks.get(weekOf),
       (next) => this.weeks.set(weekOf, next),
       message || `life-os: week ${weekOf}`,
+      immediate
+    );
+  }
+
+  // monthKey is always "YYYY-MM". One file per month — see life-os/docs/SCHEMA.md's
+  // state/months/YYYY-MM.json section. A month with no file yet (not planned, or in
+  // the future) comes back as an empty synthetic doc, same pattern as getWeek.
+  async getMonth(monthKey) {
+    if (this.months.has(monthKey)) return this.months.get(monthKey).doc;
+    const { json, sha } = await this.gh.getFile(monthPath(monthKey));
+    const doc = json || defaultMonthDoc(monthKey);
+    this.months.set(monthKey, { doc, sha });
+    return doc;
+  }
+
+  // Same deepMerge/debounce contract as saveWeek.
+  saveMonth(monthKey, patch, immediate, message) {
+    const cur = this.months.get(monthKey) || { doc: defaultMonthDoc(monthKey), sha: null };
+    const merged = deepMerge({ ...cur.doc }, patch);
+    this.months.set(monthKey, { doc: merged, sha: cur.sha });
+    return this._write(
+      monthPath(monthKey),
+      () => this.months.get(monthKey),
+      (next) => this.months.set(monthKey, next),
+      message || `life-os: month ${monthKey}`,
       immediate
     );
   }
@@ -212,24 +245,6 @@ export class Store {
       () => this.docs.get(dateISO),
       (next) => this.docs.set(dateISO, next),
       message || `life-os: journal ${dateISO}`,
-      immediate
-    );
-  }
-
-  saveState(patch, immediate, message) {
-    const cur = this.state || { doc: {}, sha: null };
-    const merged = deepMerge({ ...cur.doc }, patch);
-    merged.meta = {
-      ...(merged.meta || {}),
-      lastUpdated: new Date().toISOString().slice(0, 19),
-      lastUpdatedBy: "lifeos-app",
-    };
-    this.state = { doc: merged, sha: cur.sha };
-    return this._write(
-      STATE_PATH,
-      () => this.state,
-      (next) => (this.state = next),
-      message || "life-os: state update",
       immediate
     );
   }
