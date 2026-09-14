@@ -11,12 +11,12 @@ const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
   String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
-function monthDates(year, month) {
+export function monthDates(year, month) {
   const n = daysInMonth(year, month);
   return Array.from({ length: n }, (_, i) => `${year}-${String(month).padStart(2, "0")}-${String(i + 1).padStart(2, "0")}`);
 }
 
-function pillarHealth(dates, daysMap) {
+export function pillarHealth(dates, daysMap) {
   const health = {};
   for (const p of Object.keys(PILLARS)) {
     let done = 0,

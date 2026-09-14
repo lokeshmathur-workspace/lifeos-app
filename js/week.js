@@ -1,13 +1,23 @@
-// Week view — REQUIREMENTS.md §4.2. There is only ever one "current week" record
-// (DATA-MODEL.md's Current state), so unlike Today there's no historical
-// navigation here — this view is always the live week, and rolls itself forward
-// when state.currentWeek.weekOf goes stale (DATA-MODEL.md's stale-week guard).
-import { PILLARS, BIZ, VIT, HPH } from "./constants.js";
-import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO } from "./dateutil.js";
-import { hphAvg, coreCount, top3Of, evening } from "./derive.js";
+// Week view — REQUIREMENTS.md §4.2, redesigned per the approved
+// week-redesign-mockup.html round: plan+progress first, stats moved down, a
+// clearer HPH-by-day chart, split Business/Vitality core-step tables, and an
+// always-editable by-category task plan with pull-ins from this month's
+// intentions and last week's incomplete tasks. Goals were dropped (redundant
+// with tasks).
+//
+// Data model: one file per week (life-os/state/weeks/<monday>.json) instead of
+// a single currentWeek slot — see life-os/docs/SCHEMA.md. That's what lets this
+// view navigate to any past/future week (S.week, like Today's S.day) instead of
+// only ever showing "the current week" behind a rollover prompt. A week in the
+// past is read-only — carry-forward into a new week is an explicit pull, never
+// a mutation of the old week's file.
+import { PILLARS, BIZ, VIT } from "./constants.js";
+import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, D } from "./dateutil.js";
+import { hphAvg, evening } from "./derive.js";
 import { nextTaskId } from "./compact.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
+import { pillarHealth, monthDates } from "./month.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -38,272 +48,347 @@ function weekStats(dates, daysMap) {
   };
 }
 
-function heatmapGrid(dates, daysMap) {
-  const cols = [...BIZ, ...VIT];
-  return `
-    <div class="chartwrap">
-      <table class="mono" style="border-collapse:collapse;font-size:10px;width:100%">
-        <thead><tr><th></th>${cols.map(([, l]) => `<th style="padding:3px;color:var(--muted);font-weight:500">${esc(l.slice(0, 3))}</th>`).join("")}</tr></thead>
-        <tbody>
-          ${dates
-            .map((d) => {
-              const doc = daysMap.get(d);
-              const has = !!doc;
-              const biz = has ? evening(doc).businessCoreSteps || {} : {};
-              const vit = has ? evening(doc).vitalityCoreSteps || {} : {};
-              const steps = { ...biz, ...vit };
-              return `<tr><td style="padding:3px;color:var(--muted)">${esc(dayOfWeekName(d).slice(0, 3))}</td>${cols
-                .map(([k]) => {
-                  const state = !has ? "sunk" : steps[k] === true ? "good" : "stop-soft";
-                  const bg = state === "sunk" ? "var(--sunk)" : state === "good" ? "var(--good)" : "var(--sunk)";
-                  return `<td style="padding:2px"><div style="width:16px;height:16px;border-radius:3px;background:${bg}"></div></td>`;
-                })
-                .join("")}</tr>`;
-            })
-            .join("")}
-        </tbody>
-      </table>
-    </div>`;
+function weekTag(weekOf, curMonday) {
+  if (weekOf === curMonday) return `<span class="tag new">this week</span>`;
+  if (weekOf < curMonday) return `<span class="tag">past</span>`;
+  return `<span class="tag moved">planning ahead</span>`;
 }
 
 export async function renderWeekView(store, S, renderApp) {
   const main = document.getElementById("main");
-  const state = await store.getState();
-  const cw = state.currentWeek || {};
+  main.innerHTML = `<p class="empty">Loading…</p>`;
+
+  const weekOf = S.week;
   const curMonday = mondayOf(todayISO());
+  const isPast = weekOf < curMonday;
+  const editable = !isPast;
 
-  if (cw.weekOf !== curMonday) {
-    main.innerHTML = `
-      <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
-        <div class="card">
-          <p style="margin:0 0 14px;color:var(--ink-2)">${cw.weekOf ? `Last week's plan (of ${esc(cw.weekOf)}) is done.` : "No week started yet."} Start the week of ${esc(shortDate(curMonday))}–${esc(shortDate(sundayOf(curMonday)))}?</p>
-          <div class="btnrow" style="margin-top:0"><button class="btn pri" id="startweek">Start this week</button></div>
-        </div>
-      </section>`;
-    $("#startweek").addEventListener("click", async () => {
-      await startNewWeek(store, cw, curMonday);
-      renderApp();
-    });
-    return;
-  }
-
-  const dates = weekDates(curMonday);
+  const [weekDoc, state] = await Promise.all([store.getWeek(weekOf), store.getState()]);
+  const dates = weekDates(weekOf);
   const daysMap = await store.loadJournalMap(dates);
   const stats = weekStats(dates, daysMap);
 
+  const prevMonday = addDays(weekOf, -7);
+  const prevWeekDoc = editable ? await store.getWeek(prevMonday) : null;
+
+  // "Progress toward this month" uses the real current month's data regardless
+  // of which week is being viewed — currentMonth is still a single global slot.
+  const todayD = D(todayISO());
+  const realYear = todayD.getUTCFullYear();
+  const realMonthNum = todayD.getUTCMonth() + 1;
+  const monthDatesToDate = monthDates(realYear, realMonthNum).filter((d) => d <= todayISO());
+  const monthDaysMap = await store.loadJournalMap(monthDatesToDate);
+  const health = pillarHealth(monthDatesToDate, monthDaysMap);
+  const intentions = state.currentMonth?.intentions || [];
+
+  const tasks = weekDoc.tasks || [];
+  const done = tasks.filter((t) => t.status === "done").length;
+  const inprog = tasks.filter((t) => t.status === "in_progress").length;
+  const total = tasks.length;
+  const donePct = total ? Math.round((100 * done) / total) : 0;
+  const inprogPct = total ? Math.round((100 * inprog) / total) : 0;
+  const restPct = Math.max(0, 100 - donePct - inprogPct);
+
+  const usedTexts = new Set(tasks.map((t) => t.task.trim().toLowerCase()));
+  const prevIncomplete = editable
+    ? (prevWeekDoc.tasks || []).filter((t) => t.status !== "done" && !usedTexts.has(t.task.trim().toLowerCase()))
+    : [];
+
   main.innerHTML = `
-    <div class="datehead" style="margin-bottom:22px">
-      <div><div class="sub">Week ${isoWeekNumber(curMonday)}</div><h1 class="serif">${esc(shortDate(curMonday))} – ${esc(shortDate(sundayOf(curMonday)))}</h1></div>
+    <div class="datehead" style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
+      <div style="display:flex;align-items:center;gap:12px">
+        <button class="iconbtn" id="prevweek" title="Previous week">‹</button>
+        <div>
+          <div class="sub">Week ${isoWeekNumber(weekOf)} ${weekTag(weekOf, curMonday)}</div>
+          <h1 class="serif">${esc(shortDate(weekOf))} – ${esc(shortDate(sundayOf(weekOf)))}</h1>
+        </div>
+        <button class="iconbtn" id="nextweek" title="Next week">›</button>
+      </div>
+      ${weekOf !== curMonday ? `<button class="btn sm" id="jumpthisweek">This week</button>` : ""}
     </div>
+
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      <h2>This week's plan</h2>
+      <div class="progressband">
+        <div class="top">
+          <div><span class="num">${done}</span> <span style="color:var(--muted);font-size:14px">of ${total} task${total === 1 ? "" : "s"} done</span></div>
+          <span class="lbl">${total ? donePct + "%" : "—"}</span>
+        </div>
+        <div class="track">
+          <div class="seg" style="width:${donePct}%;background:var(--good)"></div>
+          <div class="seg" style="width:${inprogPct}%;background:var(--d1)"></div>
+          <div class="seg" style="width:${restPct}%;background:var(--sunk)"></div>
+        </div>
+        <div class="keyfocus">
+          <b>Key focus</b>
+          ${
+            editable
+              ? `<textarea id="keyfocus" rows="2">${esc(weekDoc.keyFocus || "")}</textarea>
+                 <div class="btnrow" style="margin-top:8px"><button class="btn sm" id="savefocus">Save</button></div>`
+              : esc(weekDoc.keyFocus || "—")
+          }
+        </div>
+      </div>
+    </section>
+
+    <section class="blk">
+      <h2>Progress toward this month</h2>
+      ${
+        intentions.length
+          ? intentions
+              .map((it) => {
+                const v = health[it.pillar];
+                return `
+        <div class="monthcard">
+          <div class="row1"><span class="txt">${esc(it.intention)}</span><span class="pl">${esc(PILLARS[it.pillar] || it.pillar)}</span></div>
+          <div class="track"><div class="fill" style="width:${v ?? 0}%"></div></div>
+          <span class="pct">${v != null ? v + "%" : "—"} of ${esc(PILLARS[it.pillar] || it.pillar)} top-3s done this month</span>
+        </div>`;
+              })
+              .join("")
+          : `<p class="empty">No intentions set for this month yet.</p>`
+      }
+      <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Progress is by category, not this exact sentence — no task is linked to one specific intention yet, just tagged by pillar.</p>
+    </section>
+
+    <section class="blk">
+      <h2>By category</h2>
+      ${Object.entries(PILLARS)
+        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable))
+        .join("")}
+    </section>
+
+    <section class="blk">
+      <h2>Stats</h2>
       <div class="stats">
         <div class="stat"><div class="k">Days journaled</div><div class="v">${stats.journaled}<small> / 7</small></div></div>
         <div class="stat"><div class="k">HPH avg</div><div class="v">${stats.hphAvg != null ? stats.hphAvg.toFixed(1) : "—"}</div></div>
         <div class="stat"><div class="k">Top 3 completion</div><div class="v">${stats.top3Rate != null ? stats.top3Rate + "%" : "—"}</div></div>
       </div>
     </section>
+
     <section class="blk">
-      <h2>HPH by day <span class="count">threshold 6</span></h2>
-      <div style="display:flex;gap:6px;align-items:flex-end;height:70px">
-        ${stats.byDate
-          .map(
-            (d) => `
-          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;justify-content:flex-end;height:100%">
-            <div style="width:100%;background:${d.avg != null ? "var(--d1)" : "var(--sunk)"};height:${d.avg != null ? Math.max(4, (d.avg / 10) * 100) : 3}%;border-radius:3px 3px 0 0" title="${d.avg != null ? d.avg.toFixed(1) : "no entry"}"></div>
-            <span class="mono" style="font-size:9.5px;color:var(--muted)">${esc(dayOfWeekName(d.date).slice(0, 1))}</span>
-          </div>`
-          )
-          .join("")}
-      </div>
+      <h2>HPH by day</h2>
+      ${hphChartHtml(stats.byDate)}
+      <p style="font-size:12px;color:var(--muted);margin-top:6px">Dashed line = the 6 threshold. Empty days are a flat stub, not a gap.</p>
     </section>
+
     <section class="blk">
-      <h2>Core steps</h2>
-      ${heatmapGrid(dates, daysMap)}
+      <h2>Business core steps</h2>
+      ${coreTableHtml(dates, daysMap, "businessCoreSteps", BIZ)}
     </section>
+
     <section class="blk">
-      <h2>Key focus</h2>
-      <textarea id="keyfocus" rows="2">${esc(cw.keyFocus || "")}</textarea>
-      <div class="btnrow"><button class="btn sm" id="savefocus">Save</button></div>
-    </section>
-    <section class="blk">
-      <h2>Goals</h2>
-      <div id="goalslist">${(cw.goals || [])
-        .map(
-          (g, i) => `
-        <div class="t3row" data-i="${i}">
-          <input type="text" class="goaltext" value="${esc(g.goal)}">
-          <select class="goalpillar">${Object.entries(PILLARS).map(([k, l]) => `<option value="${k}" ${k === g.pillar ? "selected" : ""}>${l}</option>`).join("")}</select>
-          <button class="rm" data-rm="${i}" title="Remove">×</button>
-        </div>`
-        )
-        .join("")}</div>
-      <div class="btnrow"><button class="btn sm" id="addgoal">Add goal</button><button class="btn sm pri" id="savegoals">Save goals</button></div>
-    </section>
-    <section class="blk">
-      <h2>Task board</h2>
-      <div class="plan">
-        ${[...DAYKEYS, ""].map((dk) => weekdayColumn(dk, cw.tasks || [], dates)).join("")}
-      </div>
-      <div class="composer" style="margin-top:14px">
-        <input type="text" id="newtask" placeholder="New task…">
-        <select id="newtaskpillar">${Object.entries(PILLARS).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
-        <select id="newtaskday"><option value="">Unassigned</option>${DAYKEYS.map((dk) => `<option value="${dk}">${dk}</option>`).join("")}</select>
-        <button class="btn" id="addtask">Add</button>
-      </div>
+      <h2>Vitality core steps</h2>
+      ${coreTableHtml(dates, daysMap, "vitalityCoreSteps", VIT)}
     </section>`;
 
-  wireWeek(store, state, dates);
+  wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete);
 }
 
-function weekdayColumn(dk, tasks, dates) {
-  const idx = DAYKEYS.indexOf(dk);
-  const dateForDk = idx >= 0 ? dates[idx] : null;
-  const label = dk || "Unassigned";
-  const items = tasks.filter((t) => (t.assignedDay || "") === dk);
+function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable) {
+  const inPillar = tasks.filter((t) => t.pillar === key);
+  const usedTexts = new Set(inPillar.map((t) => t.task.trim().toLowerCase()));
+  // Pull-ins are an editing affordance — a past (read-only) week must never show
+  // an actionable "+ Add as task" button, since its handlers aren't wired (see
+  // wireWeek's early `if (!editable) return`) and it shouldn't be editable anyway.
+  const monthPullins = editable
+    ? intentions.filter((it) => it.pillar === key && !usedTexts.has(it.intention.trim().toLowerCase()))
+    : [];
+  const carryPullins = editable ? prevIncomplete.filter((t) => t.pillar === key) : [];
+
+  if (!editable && !inPillar.length && !monthPullins.length && !carryPullins.length) return "";
+
+  const done = inPillar.filter((t) => t.status === "done").length;
+
   return `
-    <div class="pday ${dateForDk && dateForDk === todayISO() ? "today" : ""}">
-      <h4>${esc(label)}${dateForDk ? ` <span>${esc(shortDate(dateForDk))}</span>` : ""}</h4>
-      ${items
-        .map(
-          (t) => `
-        <div class="ptask" data-id="${esc(t.id)}" data-s="${t.status}">
+    <div class="pillargroup" data-pillar="${key}">
+      <div class="pillarhead"><span class="nm">${esc(label)}</span><span class="prog">${done}/${inPillar.length}</span></div>
+      ${
+        inPillar
+          .map(
+            (t) => `
+        <div class="ptask2 ${t.status === "done" ? "done" : ""}" data-id="${esc(t.id)}">
+          <span class="box" ${editable ? 'data-toggle="1"' : ""}></span>
           <span class="tk">${esc(t.task)}</span>
-          <span class="pl">${esc(PILLARS[t.pillar] || t.pillar)}</span>
+          ${t.status === "carried_forward" ? `<span class="cf">carried over</span>` : `<span class="daychip">${esc(t.assignedDay || "—")}</span>`}
+          ${editable ? `<button class="rm" data-rm="${esc(t.id)}" title="Remove">×</button>` : ""}
         </div>`
-        )
-        .join("") || `<p class="empty" style="padding:6px 0;font-size:12.5px">—</p>`}
+          )
+          .join("") || (editable ? "" : `<p class="empty" style="padding:10px 14px;font-size:12.5px">Nothing planned.</p>`)
+      }
+      ${
+        monthPullins.length
+          ? `<div class="frommonth">
+        <span class="lbl">From this month's intentions</span>
+        ${monthPullins
+          .map(
+            (it) => `
+        <div class="item"><span>${esc(it.intention)}</span><button class="pull-month" data-pillar="${key}" data-text="${esc(it.intention)}">+ Add as task</button></div>`
+          )
+          .join("")}
+      </div>`
+          : ""
+      }
+      ${
+        carryPullins.length
+          ? `<div class="frommonth">
+        <span class="lbl">From last week (incomplete)</span>
+        ${carryPullins
+          .map(
+            (t) => `
+        <div class="item"><span>${esc(t.task)}</span><button class="pull-carry" data-pillar="${key}" data-id="${esc(t.id)}">+ Add as task</button></div>`
+          )
+          .join("")}
+      </div>`
+          : ""
+      }
+      ${
+        editable
+          ? `<div class="addrow" data-pillar="${key}">
+        <input type="text" class="newtaskinput" placeholder="Add a ${esc(label)} task…">
+        <select class="newtaskday"><option value="">No day</option>${DAYKEYS.map((dk) => `<option value="${dk}">${dk}</option>`).join("")}</select>
+        <button class="newtaskadd" data-pillar="${key}">Add</button>
+      </div>`
+          : ""
+      }
     </div>`;
 }
 
-function wireWeek(store, state, dates) {
+function hphChartHtml(byDate) {
+  return `
+    <div class="hphchart">
+      <div class="threshold" style="bottom:60%"><span>6</span></div>
+      ${byDate
+        .map((d) => {
+          const height = d.avg != null ? Math.max(4, (d.avg / 10) * 100) : 4;
+          return `
+        <div class="hbar ${d.date === todayISO() ? "today" : ""}">
+          <span class="val">${d.avg != null ? d.avg.toFixed(1) : "—"}</span>
+          <div class="col ${d.avg != null ? "filled" : "empty"}" style="height:${height}%"></div>
+          <span class="dow">${esc(dayOfWeekName(d.date).slice(0, 3))}</span>
+        </div>`;
+        })
+        .join("")}
+    </div>`;
+}
+
+function coreTableHtml(dates, daysMap, which, defs) {
+  return `
+    <table class="coretable">
+      <tr><th></th>${defs.map(([, l]) => `<th>${esc(l.slice(0, 4))}</th>`).join("")}</tr>
+      ${dates
+        .map((d) => {
+          const doc = daysMap.get(d);
+          const steps = doc ? evening(doc)[which] || {} : {};
+          return `<tr><td class="dow">${esc(dayOfWeekName(d).slice(0, 3))}</td>${defs
+            .map(([k]) => (steps[k] === true ? `<td style="color:var(--good)">■</td>` : `<td>▢</td>`))
+            .join("")}</tr>`;
+        })
+        .join("")}
+    </table>`;
+}
+
+function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete) {
+  $("#prevweek")?.addEventListener("click", () => {
+    S.week = addDays(weekOf, -7);
+    renderApp();
+  });
+  $("#nextweek")?.addEventListener("click", () => {
+    S.week = addDays(weekOf, 7);
+    renderApp();
+  });
+  $("#jumpthisweek")?.addEventListener("click", () => {
+    S.week = mondayOf(todayISO());
+    renderApp();
+  });
+
+  if (!editable) return;
+
   $("#savefocus")?.addEventListener("click", async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
-    const ok = await store.saveState({ currentWeek: { keyFocus: $("#keyfocus").value.trim() } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
+    const ok = await store.saveWeek(weekOf, { keyFocus: $("#keyfocus").value.trim() }, true, `life-os: weekly ${weekOf}`);
     btn.disabled = false;
     if (ok) flash("Key focus saved.");
   });
-  $("#addgoal")?.addEventListener("click", () => {
-    const list = $("#goalslist");
-    const i = list.children.length;
-    const div = document.createElement("div");
-    div.className = "t3row";
-    div.dataset.i = i;
-    div.innerHTML = `<input type="text" class="goaltext" placeholder="New goal"><select class="goalpillar">${Object.entries(PILLARS)
-      .map(([k, l]) => `<option value="${k}">${l}</option>`)
-      .join("")}</select><button class="rm" data-rm="${i}" title="Remove">×</button>`;
-    list.appendChild(div);
-    wireGoalRemove(list);
-  });
-  wireGoalRemove($("#goalslist"));
-  $("#savegoals")?.addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    const goals = [...document.querySelectorAll("#goalslist .t3row")]
-      .map((row) => ({
-        goal: row.querySelector(".goaltext").value.trim(),
-        pillar: row.querySelector(".goalpillar").value,
-        status: "not_started",
-        source: "manual",
-      }))
-      .filter((g) => g.goal);
-    btn.disabled = true;
-    const ok = await store.saveState({ currentWeek: { goals } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
-    btn.disabled = false;
-    if (ok) flash("Goals saved.");
-  });
 
-  document.querySelectorAll(".ptask").forEach((el) => {
-    el.addEventListener("click", async () => {
-      const id = el.dataset.id;
-      const tasks = (state.currentWeek.tasks || []).map((t) =>
-        t.id === id ? { ...t, status: t.status === "done" ? "not_started" : "done" } : t
-      );
-      state.currentWeek.tasks = tasks;
-      el.dataset.s = tasks.find((t) => t.id === id).status;
-      await store.saveState({ currentWeek: { tasks } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
+  const saveTasks = (tasks, message) => store.saveWeek(weekOf, { tasks }, true, message || `life-os: weekly ${weekOf}`);
+
+  document.querySelectorAll(".ptask2 .box[data-toggle]").forEach((box) => {
+    box.addEventListener("click", () => {
+      const id = box.closest(".ptask2").dataset.id;
+      const tasks = (weekDoc.tasks || []).map((t) => (t.id === id ? { ...t, status: t.status === "done" ? "not_started" : "done" } : t));
+      weekDoc.tasks = tasks;
+      saveTasks(tasks);
+      renderApp();
     });
   });
 
-  $("#addtask")?.addEventListener("click", async () => {
-    const text = $("#newtask").value.trim();
-    if (!text) return;
-    const pillar = $("#newtaskpillar").value;
-    const day = $("#newtaskday").value;
-    const id = nextTaskId(todayISO(), [state.currentWeek.tasks || []]);
-    const tasks = [...(state.currentWeek.tasks || []), { id, task: text, pillar, assignedDay: day, status: "not_started", source: "manual" }];
-    state.currentWeek.tasks = tasks;
-    $("#newtask").value = "";
-    const ok = await store.saveState({ currentWeek: { tasks } }, true, `life-os: weekly ${state.currentWeek.weekOf}`);
-    if (ok) flash("Task added.");
+  document.querySelectorAll(".ptask2 .rm").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const id = btn.dataset.rm;
+      const tasks = (weekDoc.tasks || []).filter((t) => t.id !== id);
+      weekDoc.tasks = tasks;
+      saveTasks(tasks);
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll(".newtaskadd").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const pillar = btn.dataset.pillar;
+      const row = btn.closest(".addrow");
+      const input = row.querySelector(".newtaskinput");
+      const text = input.value.trim();
+      if (!text) return;
+      const day = row.querySelector(".newtaskday").value;
+      const id = nextTaskId(todayISO(), [weekDoc.tasks || []]);
+      const tasks = [...(weekDoc.tasks || []), { id, task: text, pillar, assignedDay: day, status: "not_started", source: "manual" }];
+      weekDoc.tasks = tasks;
+      const ok = await saveTasks(tasks, `life-os: weekly ${weekOf}`);
+      if (ok) flash("Task added.");
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll(".pull-month").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const pillar = btn.dataset.pillar;
+      const text = btn.dataset.text;
+      const id = nextTaskId(todayISO(), [weekDoc.tasks || []]);
+      const tasks = [...(weekDoc.tasks || []), { id, task: text, pillar, assignedDay: "", status: "not_started", source: "manual" }];
+      weekDoc.tasks = tasks;
+      const ok = await saveTasks(tasks);
+      if (ok) flash("Added from this month's intentions.");
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll(".pull-carry").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const pillar = btn.dataset.pillar;
+      const source = prevIncomplete.find((t) => t.id === btn.dataset.id);
+      if (!source) return;
+      const id = nextTaskId(todayISO(), [weekDoc.tasks || []]);
+      const tasks = [...(weekDoc.tasks || []), { id, task: source.task, pillar, assignedDay: "", status: "carried_forward", source: "manual" }];
+      weekDoc.tasks = tasks;
+      const ok = await saveTasks(tasks);
+      if (ok) flash("Carried forward from last week.");
+      renderApp();
+    });
   });
 }
 
-function wireGoalRemove(list) {
-  list.querySelectorAll(".rm").forEach((btn) => {
-    btn.onclick = () => btn.closest(".t3row").remove();
-  });
-}
-
-// Rollover per .claude/commands/weekly.md's Save step, ported to code:
-// - incomplete tasks (status !== done) carry forward with status "carried_forward"
-//   and a NEW task id
-// - the closing week's HPH average is appended to currentMonth.weeklyHPHAvgs
-// - a fresh week starts with just the carried-forward tasks; goals/focus reset
-export async function startNewWeek(store, oldWeek, newMonday) {
-  const oldMonday = oldWeek.weekOf;
-  let closingAvg = null;
-  if (oldMonday) {
-    const oldDates = weekDates(oldMonday);
-    const daysMap = await store.loadJournalMap(oldDates);
-    const stats = weekStats(oldDates, daysMap);
-    closingAvg = stats.hphAvg;
-  }
-
-  const carried = (oldWeek.tasks || [])
-    .filter((t) => t.status !== "done")
-    .map((t) => ({ ...t, status: "carried_forward" }));
-  const assigned = [];
-  for (const t of carried) {
-    t.id = nextTaskId(todayISO(), [oldWeek.tasks || [], assigned]);
-    assigned.push(t);
-  }
-
-  const state = await store.getState();
-  const patch = {
-    currentWeek: {
-      weekNumber: isoWeekNumber(newMonday),
-      weekOf: newMonday,
-      weekEnding: sundayOf(newMonday),
-      keyFocus: "",
-      goals: [],
-      tasks: carried,
-    },
-  };
-  if (oldMonday && closingAvg != null) {
-    patch.currentMonth = {
-      weeklyHPHAvgs: [
-        ...((state.currentMonth && state.currentMonth.weeklyHPHAvgs) || []),
-        { week: `W${isoWeekNumber(oldMonday)}`, weekOf: oldMonday, avg: closingAvg },
-      ],
-    };
-  }
-  store.saveState(patch, true, `life-os: weekly ${newMonday}`);
-}
-
-// OneNote export for the current week — mirrors what's on screen in renderWeekView.
-export async function copyWeekForOneNote(store) {
-  const state = await store.getState();
-  const cw = state.currentWeek || {};
-  const curMonday = mondayOf(todayISO());
-  if (cw.weekOf !== curMonday) {
-    flash("Start this week first — nothing to copy yet.", true);
-    return;
-  }
-  const dates = weekDates(curMonday);
+// OneNote export for the currently-navigated week (S.week), not an assumed
+// single "current" week — matches the per-week-file navigation above.
+export async function copyWeekForOneNote(store, weekOf) {
+  const weekDoc = await store.getWeek(weekOf);
+  const dates = weekDates(weekOf);
   const daysMap = await store.loadJournalMap(dates);
   const stats = weekStats(dates, daysMap);
 
-  const title = `Week ${isoWeekNumber(curMonday)} — ${shortDate(curMonday)} – ${shortDate(sundayOf(curMonday))}`;
+  const title = `Week ${isoWeekNumber(weekOf)} — ${shortDate(weekOf)} – ${shortDate(sundayOf(weekOf))}`;
   const groups = [
     {
       heading: "Review",
@@ -313,14 +398,13 @@ export async function copyWeekForOneNote(store) {
         { type: "kv", label: "Top 3 completion", value: stats.top3Rate != null ? `${stats.top3Rate}%` : "—" },
       ],
     },
-    { heading: "Key focus", blocks: [{ type: "para", text: cw.keyFocus || "—" }] },
-    { heading: "Goals", blocks: [{ type: "list", items: (cw.goals || []).map((g) => `${g.goal} (${PILLARS[g.pillar] || g.pillar})`) }] },
+    { heading: "Key focus", blocks: [{ type: "para", text: weekDoc.keyFocus || "—" }] },
     {
-      heading: "Task board",
-      blocks: [...DAYKEYS, ""].flatMap((dk) => {
-        const items = (cw.tasks || []).filter((t) => (t.assignedDay || "") === dk);
+      heading: "Task plan",
+      blocks: Object.entries(PILLARS).flatMap(([key, label]) => {
+        const items = (weekDoc.tasks || []).filter((t) => t.pillar === key);
         if (!items.length) return [];
-        return [{ type: "para", text: `${dk || "Unassigned"}:` }, { type: "tasks", items }];
+        return [{ type: "para", text: `${label}:` }, { type: "tasks", items }];
       }),
     },
   ];

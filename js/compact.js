@@ -70,7 +70,7 @@ export function compact(doc, indent = 2) {
 const TASK_ID_RE = /^T(\d{8})-(\d+)$/;
 
 // dateISO: "2026-09-09". existingTaskArrays: array of arrays of task objects
-// (e.g. [dayDoc.morning.top3, dayDoc.evening.top3Results, state.currentWeek.tasks])
+// (e.g. [dayDoc.morning.top3, dayDoc.evening.top3Results, weekDoc.tasks])
 // to scan for the highest N already used for that day, so a new id never collides.
 export function nextTaskId(dateISO, existingTaskArrays) {
   const ymd = dateISO.replace(/-/g, "");

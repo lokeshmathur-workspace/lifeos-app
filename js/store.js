@@ -5,6 +5,7 @@
 
 import { GitHubStore, GitHubStoreError } from "./github.js";
 import { refreshComputed } from "./recompute.js";
+import { sundayOf, isoWeekNumber } from "./dateutil.js";
 
 const CONFIG_KEY = "lifeos.gh";
 const PIN_KEY = "lifeos.pin";
@@ -56,6 +57,7 @@ function deepMerge(t, s) {
 }
 
 const journalPath = (dateISO) => `life-os/journal/${dateISO.slice(0, 4)}/${dateISO}.json`;
+const weekPath = (weekOf) => `life-os/state/weeks/${weekOf}.json`;
 const STATE_PATH = "life-os/state/current.json";
 const COMPUTED_PATH = "life-os/state/computed.json";
 
@@ -64,6 +66,7 @@ export class Store {
     this.gh = new GitHubStore(cfg);
     this.docs = new Map(); // dateISO -> { doc, sha }
     this.exists = new Map(); // dateISO -> boolean (a file was actually found, not a synthetic placeholder)
+    this.weeks = new Map(); // weekOf (Monday) -> { doc, sha }
     this.state = null; // { doc, sha }
     this.saveTimers = new Map(); // path -> timeout id
     this.onFlash = onFlash || (() => {});
@@ -133,8 +136,45 @@ export class Store {
   async getState() {
     if (this.state) return this.state.doc;
     const { json, sha } = await this.gh.getFile(STATE_PATH);
-    this.state = { doc: json || { meta: {}, currentMonth: {}, currentWeek: {} }, sha };
+    this.state = { doc: json || { meta: {}, currentMonth: {} }, sha };
     return this.state.doc;
+  }
+
+  // weekOf is always a Monday (dateutil.js's mondayOf). One file per week — see
+  // life-os/docs/SCHEMA.md's state/weeks/YYYY-MM-DD.json section. A week that
+  // doesn't have a file yet (not planned, or in the future) comes back as an
+  // empty synthetic doc, same pattern as getDay's synthetic journal doc.
+  async getWeek(weekOf) {
+    if (this.weeks.has(weekOf)) return this.weeks.get(weekOf).doc;
+    const { json, sha } = await this.gh.getFile(weekPath(weekOf));
+    const doc = json || {
+      weekNumber: isoWeekNumber(weekOf),
+      weekOf,
+      weekEnding: sundayOf(weekOf),
+      keyFocus: "",
+      tasks: [],
+    };
+    this.weeks.set(weekOf, { doc, sha });
+    return doc;
+  }
+
+  // Same deepMerge/debounce contract as saveDay. Never mutates a different week's
+  // file — carry-forward and pull-ins write their tasks into the target week's own
+  // patch before calling this.
+  saveWeek(weekOf, patch, immediate, message) {
+    const cur = this.weeks.get(weekOf) || {
+      doc: { weekNumber: isoWeekNumber(weekOf), weekOf, weekEnding: sundayOf(weekOf), keyFocus: "", tasks: [] },
+      sha: null,
+    };
+    const merged = deepMerge({ ...cur.doc }, patch);
+    this.weeks.set(weekOf, { doc: merged, sha: cur.sha });
+    return this._write(
+      weekPath(weekOf),
+      () => this.weeks.get(weekOf),
+      (next) => this.weeks.set(weekOf, next),
+      message || `life-os: week ${weekOf}`,
+      immediate
+    );
   }
 
   // Resolves true/false (never rejects) so fire-and-forget callers stay safe,

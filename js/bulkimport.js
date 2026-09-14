@@ -1,7 +1,7 @@
 // Bulk import — for a batch of tasks (e.g. drafted elsewhere) or journal text
 // copied out of OneNote, pasted in one go rather than typed line by line.
 import { PILLARS } from "./constants.js";
-import { DAYKEYS, todayISO, nowHM, dayOfWeekName } from "./dateutil.js";
+import { DAYKEYS, todayISO, nowHM, dayOfWeekName, mondayOf } from "./dateutil.js";
 import { nextTaskId } from "./compact.js";
 import { flash } from "./flash.js";
 
@@ -102,15 +102,17 @@ export function openBulkImport(store) {
         }
         const pillar = $("#bulkpillar", back).value;
         const day = $("#bulkday", back).value;
-        const state = await store.getState();
-        const existing = state.currentWeek?.tasks || [];
+        const weekOf = mondayOf(todayISO());
+        const weekDoc = await store.getWeek(weekOf);
+        const existing = weekDoc.tasks || [];
         const newTasks = [];
         for (const task of lines) {
           const id = nextTaskId(todayISO(), [existing, newTasks]);
           newTasks.push({ id, task, pillar, assignedDay: day, status: "not_started", source: "manual" });
         }
-        const ok = await store.saveState(
-          { currentWeek: { tasks: [...existing, ...newTasks] } },
+        const ok = await store.saveWeek(
+          weekOf,
+          { tasks: [...existing, ...newTasks] },
           true,
           `life-os: bulk import ${newTasks.length} task(s)`
         );

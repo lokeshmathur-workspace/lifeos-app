@@ -3,7 +3,7 @@ import { nextTaskId } from "./compact.js";
 import { readQuote, readImproveTomorrow, writeReflections, writeMorningQuote } from "./migrate.js";
 import { PILLARS, BIZ, VIT, VIT_EVENING_CHECKIN, HPH, CYCLE } from "./constants.js";
 import { quoteForDate, randomQuote } from "./quotes.js";
-import { todayISO, nowHM, addDays, dayOfWeekName, dayKeyOf, prettyDate } from "./dateutil.js";
+import { todayISO, nowHM, addDays, dayOfWeekName, dayKeyOf, prettyDate, mondayOf } from "./dateutil.js";
 import { streak, hphAvg, coreCount, top3Of } from "./derive.js";
 import { loadAiConfig, saveAiConfig, clearAiConfig, pickQuoteAI, draftEveningAI, AiError } from "./ai.js";
 import { copyDayForOneNote, downloadFullBackup } from "./export.js";
@@ -23,6 +23,7 @@ const S = {
   store: null,
   view: "today",
   day: todayISO(),
+  week: mondayOf(todayISO()),
   unlocked: false,
   planning: false,
   eveningEditing: false,
@@ -123,7 +124,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const original = btn.textContent;
     try {
       if (S.view === "week") {
-        await copyWeekForOneNote(S.store);
+        await copyWeekForOneNote(S.store, S.week);
       } else if (S.view === "month") {
         await copyMonthForOneNote(S.store);
       } else {
@@ -246,16 +247,17 @@ async function renderToday() {
   const dateISO = S.day;
   const doc = await S.store.getDay(dateISO);
   const state = await S.store.getState();
+  const weekDoc = await S.store.getWeek(mondayOf(dateISO));
 
   const html = [];
   html.push(dateHead(dateISO));
 
   if (S.planning) {
-    html.push(await planningForm(dateISO, doc, state));
+    html.push(await planningForm(dateISO, doc, state, weekDoc));
   } else if (!doc.morning) {
     html.push(planPrompt(dateISO));
   } else if (S.eveningEditing) {
-    html.push(eveningForm(dateISO, doc, state));
+    html.push(eveningForm(dateISO, doc, state, weekDoc));
   } else if (!doc.evening?.completedAt) {
     html.push(dayInProgress(dateISO, doc));
   } else {
@@ -263,7 +265,7 @@ async function renderToday() {
   }
 
   main().innerHTML = html.join("");
-  wireToday(dateISO, doc, state);
+  wireToday(dateISO, doc, state, weekDoc);
 }
 
 function dateHead(dateISO) {
@@ -314,7 +316,7 @@ function pickerGroup(title, hint, items, checkedIds) {
     </div>`;
 }
 
-async function planningForm(dateISO, doc, state) {
+async function planningForm(dateISO, doc, state, weekDoc) {
   const q = doc.morning?.quote ? readQuote(doc.morning) : quoteForDate(dateISO);
   const dk = dayKeyOf(dateISO);
 
@@ -328,14 +330,14 @@ async function planningForm(dateISO, doc, state) {
     const yesterdaysPlan = yesterday.evening?.tomorrowDraftTasks || [];
     prefillSource = yesterdaysPlan.length
       ? yesterdaysPlan
-      : (state.currentWeek?.tasks || []).filter((t) => t.assignedDay === dk && t.status !== "done").slice(0, 3);
+      : (weekDoc.tasks || []).filter((t) => t.assignedDay === dk && t.status !== "done").slice(0, 3);
   }
   const prefill = [...prefillSource];
   while (prefill.length < 3) prefill.push({ task: "", pillar: "careerWork" });
 
   // "If there's time" — everything else on the week board, grouped, excluding
   // whatever's already filled into Top 3 above.
-  const allWeekTasks = state.currentWeek?.tasks || [];
+  const allWeekTasks = weekDoc.tasks || [];
   const usedTexts = new Set(prefill.map((t) => t.task).filter(Boolean));
   const carriedOver = allWeekTasks.filter((t) => t.status === "carried_forward" && !usedTexts.has(t.task));
   const plannedToday = allWeekTasks.filter(
@@ -458,13 +460,15 @@ function dayInProgress(dateISO, doc) {
         .map(
           (n, i) => `
         <div class="note ${n.kind === "insight" ? "insight" : ""}">
-          <time>${esc(n.t)}</time><span class="txt">${esc(n.text)}</span>
+          <input type="time" class="notetime-edit" data-i="${i}" value="${esc(n.t)}">
+          <span class="txt">${esc(n.text)}</span>
           <button class="del" data-i="${i}" title="Delete">×</button>
         </div>`
         )
         .join("")}</div>
       <div class="composer">
-        <textarea id="notetext" rows="1" placeholder="Add a note… (⌘/Ctrl+Enter to add)"></textarea>
+        <input type="time" id="notetime" value="${esc(nowHM())}" title="Time for this entry">
+        <textarea id="notetext" rows="4" placeholder="Add a note… (⌘/Ctrl+Enter to add)"></textarea>
         <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12.5px;color:var(--muted)"><input type="checkbox" id="noteinsight"> insight</label>
         <button class="btn" id="addnote">Add</button>
       </div>
@@ -472,7 +476,7 @@ function dayInProgress(dateISO, doc) {
     <div class="btnrow"><button class="btn pri" id="startevening">Evening review</button></div>`;
 }
 
-function eveningForm(dateISO, doc, state) {
+function eveningForm(dateISO, doc, state, weekDoc) {
   const e = doc.evening || {};
   const top3 = doc.morning?.top3 || e.top3Results || [];
   const additionalTasks = doc.morning?.additionalTasks || e.additionalResults || [];
@@ -483,7 +487,7 @@ function eveningForm(dateISO, doc, state) {
   // "Plan tomorrow" candidates: today's own unfinished items (carry-over), plus
   // whatever's on the week board with no day assigned yet.
   const unfinishedToday = [...top3, ...additionalTasks].filter((t) => t.status !== "done");
-  const weekTasks = state.currentWeek?.tasks || [];
+  const weekTasks = weekDoc.tasks || [];
   const usedTexts = new Set(unfinishedToday.map((t) => t.task));
   const unplanned = weekTasks.filter((t) => !t.assignedDay && t.status !== "done" && !usedTexts.has(t.task));
 
@@ -630,7 +634,7 @@ function daySummary(dateISO, doc) {
 
 /* ═══ wiring ═══════════════════════════════════════════════ */
 
-function wireToday(dateISO, doc, state) {
+function wireToday(dateISO, doc, state, weekDoc) {
   $("#prevday")?.addEventListener("click", () => {
     S.day = addDays(dateISO, -1);
     S.planning = false;
@@ -686,7 +690,7 @@ function wireToday(dateISO, doc, state) {
     note.textContent = "Thinking…";
     note.className = "savenote thinking";
     try {
-      shuffled = await pickQuoteAI(dateISO, state);
+      shuffled = await pickQuoteAI(dateISO, state, weekDoc);
       const p = $(".affirm p");
       const a = $(".anchor span");
       if (p) p.textContent = `"${shuffled.text}"`;
@@ -705,7 +709,7 @@ function wireToday(dateISO, doc, state) {
     const quote = shuffled || quoteForDate(dateISO);
     const top3Inputs = [...document.querySelectorAll(".t3task")];
     const pillarInputs = [...document.querySelectorAll(".t3pillar")];
-    const existing = [state.currentWeek?.tasks || [], doc.morning?.top3 || []];
+    const existing = [weekDoc.tasks || [], doc.morning?.top3 || []];
     const top3 = top3Inputs
       .map((inp, i) => ({ task: inp.value.trim(), pillar: pillarInputs[i].value }))
       .filter((t) => t.task)
@@ -726,7 +730,7 @@ function wireToday(dateISO, doc, state) {
     // each a fresh copy (own id/status) so ticking it off today doesn't touch
     // the week board's own record of that task.
     const checkedIds = new Set([...document.querySelectorAll(".addlpick:checked")].map((el) => el.value));
-    const weekTasks = state.currentWeek?.tasks || [];
+    const weekTasks = weekDoc.tasks || [];
     const additionalTasks = [];
     for (const wt of weekTasks) {
       if (!checkedIds.has(wt.id)) continue;
@@ -831,7 +835,8 @@ function wireToday(dateISO, doc, state) {
     const text = $("#notetext").value.trim();
     if (!text) return;
     const kind = $("#noteinsight").checked ? "insight" : "note";
-    const notes = [...(doc.notes || []), { t: nowHM(), text, kind }];
+    const t = $("#notetime")?.value || nowHM();
+    const notes = [...(doc.notes || []), { t, text, kind }];
     S.store.saveDay(dateISO, { notes }, true);
     doc.notes = notes;
     renderToday();
@@ -843,6 +848,16 @@ function wireToday(dateISO, doc, state) {
       S.store.saveDay(dateISO, { notes }, true);
       doc.notes = notes;
       renderToday();
+    });
+  });
+  document.querySelectorAll(".notetime-edit").forEach((input) => {
+    input.addEventListener("change", () => {
+      const i = Number(input.dataset.i);
+      const notes = [...(doc.notes || [])];
+      if (!notes[i] || !input.value) return;
+      notes[i] = { ...notes[i], t: input.value };
+      S.store.saveDay(dateISO, { notes }, true);
+      doc.notes = notes;
     });
   });
 
@@ -865,7 +880,7 @@ function wireToday(dateISO, doc, state) {
     note.textContent = "Thinking…";
     note.className = "savenote thinking";
     try {
-      const draft = await draftEveningAI(dateISO, doc, state);
+      const draft = await draftEveningAI(dateISO, doc, state, weekDoc);
       $("#e_synth").value = draft.synthesis || "";
       $("#anchormet").value = draft.successAnchorMet || "yes";
       $("#r_grat").value = draft.reflections?.gratitude || "";
@@ -920,7 +935,7 @@ function wireToday(dateISO, doc, state) {
     // "Plan tomorrow" — resolve checked picker ids against everything that could
     // have supplied them (today's own tasks, plus the week board), then append
     // whatever was typed free-text, one task per line.
-    const tomorrowPool = [...top3Results, ...additionalResults, ...(state.currentWeek?.tasks || [])];
+    const tomorrowPool = [...top3Results, ...additionalResults, ...(weekDoc.tasks || [])];
     const checkedTomorrowIds = new Set([...document.querySelectorAll(".addlpick:checked")].map((el) => el.value));
     const tomorrowFromPicker = tomorrowPool
       .filter((t) => checkedTomorrowIds.has(t.id))

@@ -164,9 +164,9 @@ function triggerDownload(filename, mimeType, content) {
   URL.revokeObjectURL(url);
 }
 
-// Full backup: every journal file + state/current.json, as one JSON file — the
-// same shape lifeos-rebuild/reference/seed-data.json used, so a future restore
-// (or sync_from_app.py-style import) has a stable format to target.
+// Full backup: every journal file + every week file + state/current.json, as one
+// JSON file — the same shape lifeos-rebuild/reference/seed-data.json used, so a
+// future restore (or sync_from_app.py-style import) has a stable format to target.
 export async function downloadFullBackup(store) {
   const entries = await store.gh.listTree();
   const journalEntries = entries.filter(
@@ -176,6 +176,14 @@ export async function downloadFullBackup(store) {
   for (const entry of journalEntries) {
     const doc = await store.gh.getBlob(entry.sha);
     if (doc?.date) journal[doc.date] = doc;
+  }
+  const weekEntries = entries.filter(
+    (e) => e.type === "blob" && e.path.startsWith("life-os/state/weeks/") && e.path.endsWith(".json")
+  );
+  const weeks = {};
+  for (const entry of weekEntries) {
+    const doc = await store.gh.getBlob(entry.sha);
+    if (doc?.weekOf) weeks[doc.weekOf] = doc;
   }
   const { json: state } = await store.gh.getFile("life-os/state/current.json");
 
@@ -187,6 +195,7 @@ export async function downloadFullBackup(store) {
     days: Object.keys(journal).length,
     state: state || {},
     journal,
+    weeks,
   };
   triggerDownload(
     `lifeos-backup-${new Date().toISOString().slice(0, 10)}.json`,
