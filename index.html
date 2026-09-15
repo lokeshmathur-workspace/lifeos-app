@@ -104,6 +104,10 @@ section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
 
 /* ── task rows ──────────────────────────────────────────── */
 .tasks{display:flex;flex-direction:column;gap:2px}
+.taskrow{display:flex;gap:6px;align-items:stretch}
+.taskrow .task{flex:1;width:auto}
+.taskrow .rm{flex:none;border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 6px}
+.taskrow .rm:hover{color:var(--stop)}
 .task{
   display:flex;gap:12px;align-items:flex-start;padding:11px 12px;border-radius:8px;
   background:var(--surface);border:1px solid var(--line);cursor:pointer;text-align:left;

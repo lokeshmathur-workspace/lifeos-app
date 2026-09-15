@@ -415,10 +415,13 @@ function coreStepsRail(doc, which, defs) {
 
 function taskRow(t, group, i) {
   return `
-    <button class="task" data-group="${group}" data-i="${i}" data-s="${t.status || "not_started"}">
-      <span class="box"></span>
-      <span class="body"><span class="t">${esc(t.task)}</span><span class="meta">${esc(PILLARS[t.pillar] || t.pillar)}</span></span>
-    </button>`;
+    <div class="taskrow">
+      <button class="task" data-group="${group}" data-i="${i}" data-s="${t.status || "not_started"}">
+        <span class="box"></span>
+        <span class="body"><span class="t">${esc(t.task)}</span><span class="meta">${esc(PILLARS[t.pillar] || t.pillar)}</span></span>
+      </button>
+      <button class="rm" data-group="${group}" data-i="${i}" title="Remove">×</button>
+    </div>`;
 }
 
 function dayInProgress(dateISO, doc) {
@@ -437,13 +440,13 @@ function dayInProgress(dateISO, doc) {
     </section>
     <section class="blk">
       <h2>Top 3</h2>
-      <div class="tasks">${top3.map((t, i) => taskRow(t, "morning-top3", i)).join("")}</div>
+      <div class="tasks" data-taskgroup="morning-top3">${top3.map((t, i) => taskRow(t, "morning-top3", i)).join("")}</div>
     </section>
     ${
       additionalTasks.length
         ? `<section class="blk">
       <h2>Also today <span class="count">if there's time</span></h2>
-      <div class="tasks">${additionalTasks.map((t, i) => taskRow(t, "morning-additional", i)).join("")}</div>
+      <div class="tasks" data-taskgroup="morning-additional">${additionalTasks.map((t, i) => taskRow(t, "morning-additional", i)).join("")}</div>
     </section>`
         : ""
     }
@@ -499,13 +502,13 @@ function eveningForm(dateISO, doc, monthDoc, weekDoc) {
     </section>
     <section class="blk">
       <h2>Top 3 — final status</h2>
-      <div class="tasks">${top3.map((t, i) => taskRow(t, "evening-top3", i)).join("")}</div>
+      <div class="tasks" data-taskgroup="evening-top3">${top3.map((t, i) => taskRow(t, "evening-top3", i)).join("")}</div>
     </section>
     ${
       additionalTasks.length
         ? `<section class="blk">
       <h2>Also today — final status</h2>
-      <div class="tasks">${additionalTasks.map((t, i) => taskRow(t, "evening-additional", i)).join("")}</div>
+      <div class="tasks" data-taskgroup="evening-additional">${additionalTasks.map((t, i) => taskRow(t, "evening-additional", i)).join("")}</div>
     </section>`
         : ""
     }
@@ -729,7 +732,7 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
 
     // "If there's time" — checked board tasks become this day's additionalTasks,
     // each a fresh copy (own id/status) so ticking it off today doesn't touch
-    // the week board's own record of that task.
+    // the week board's own record of that task's completion status.
     const checkedIds = new Set([...document.querySelectorAll(".addlpick:checked")].map((el) => el.value));
     const weekTasks = weekDoc.tasks || [];
     const additionalTasks = [];
@@ -737,6 +740,22 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
       if (!checkedIds.has(wt.id)) continue;
       const id = nextTaskId(dateISO, [...existing, top3, additionalTasks]);
       additionalTasks.push({ id, task: wt.task, pillar: wt.pillar, status: "not_started" });
+    }
+
+    // Claim: a board task picked here is now planned for today, so tag it with
+    // today's day key. That's the same field the picker's own "Unplanned" group
+    // filters on (!assignedDay), so a claimed task stops resurfacing there on
+    // future days instead of floating as a candidate forever.
+    const dk = dayKeyOf(dateISO);
+    let boardChanged = false;
+    const claimedWeekTasks = weekTasks.map((wt) => {
+      if (!checkedIds.has(wt.id) || wt.assignedDay === dk) return wt;
+      boardChanged = true;
+      return { ...wt, assignedDay: dk };
+    });
+    if (boardChanged) {
+      weekDoc.tasks = claimedWeekTasks;
+      S.store.saveWeek(mondayOf(dateISO), { tasks: claimedWeekTasks }, true, `life-os: today ${dateISO}`);
     }
 
     const morning = writeMorningQuote(
@@ -778,26 +797,62 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
       renderToday();
     });
   });
-  // These cycle status in place (not renderToday()) — a full re-render mid-edit
-  // would wipe whatever's currently being typed into Synthesis/Reflections below.
-  document.querySelectorAll(".task[data-group='evening-top3']").forEach((btn) => {
+  // Delete — morning context is safe to fully re-render on click, same as the
+  // status-cycle handlers just above.
+  document.querySelectorAll(".rm[data-group='morning-top3']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const i = Number(btn.dataset.i);
-      const top3 = [...(doc.morning?.top3 || doc.evening?.top3Results || [])];
-      top3[i] = { ...top3[i], status: CYCLE[top3[i].status || "not_started"] };
+      const top3 = (doc.morning.top3 || []).filter((_, idx) => idx !== i);
       doc.morning.top3 = top3;
-      btn.dataset.s = top3[i].status;
+      S.store.saveDay(dateISO, { morning: { top3 } }, true);
+      renderToday();
     });
   });
-  document.querySelectorAll(".task[data-group='evening-additional']").forEach((btn) => {
+  document.querySelectorAll(".rm[data-group='morning-additional']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const i = Number(btn.dataset.i);
-      const additionalTasks = [...(doc.morning?.additionalTasks || doc.evening?.additionalResults || [])];
-      additionalTasks[i] = { ...additionalTasks[i], status: CYCLE[additionalTasks[i].status || "not_started"] };
+      const additionalTasks = (doc.morning.additionalTasks || []).filter((_, idx) => idx !== i);
       doc.morning.additionalTasks = additionalTasks;
-      btn.dataset.s = additionalTasks[i].status;
+      S.store.saveDay(dateISO, { morning: { additionalTasks } }, true);
+      renderToday();
     });
   });
+
+  // Evening-context cycle + delete both update doc.morning in place and avoid a
+  // full renderToday() — that would wipe whatever's currently being typed into
+  // Synthesis/Reflections below. Delete regenerates just its own .tasks
+  // container (found via data-taskgroup) and re-wires it, rather than the
+  // whole form.
+  function wireEveningTaskGroup(group) {
+    const isTop3 = group.endsWith("top3");
+    const readArr = () => (isTop3 ? doc.morning?.top3 || doc.evening?.top3Results || [] : doc.morning?.additionalTasks || doc.evening?.additionalResults || []);
+    const writeArr = (arr) => {
+      if (isTop3) doc.morning.top3 = arr;
+      else doc.morning.additionalTasks = arr;
+    };
+    document.querySelectorAll(`.task[data-group='${group}']`).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.dataset.i);
+        const arr = [...readArr()];
+        arr[i] = { ...arr[i], status: CYCLE[arr[i].status || "not_started"] };
+        writeArr(arr);
+        btn.dataset.s = arr[i].status;
+      });
+    });
+    document.querySelectorAll(`.rm[data-group='${group}']`).forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.dataset.i);
+        const arr = readArr().filter((_, idx) => idx !== i);
+        writeArr(arr);
+        const container = document.querySelector(`.tasks[data-taskgroup='${group}']`);
+        if (!container) return;
+        container.innerHTML = arr.map((t, idx) => taskRow(t, group, idx)).join("");
+        wireEveningTaskGroup(group);
+      });
+    });
+  }
+  wireEveningTaskGroup("evening-top3");
+  wireEveningTaskGroup("evening-additional");
 
   document.querySelectorAll(".step:not(.eve-vit-step)").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -943,6 +998,28 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
       .map((t) => ({ task: t.task, pillar: t.pillar }));
     const tomorrowFreeText = parseTaskLines($("#tomorrownew")?.value || "").map((task) => ({ task, pillar: "careerWork" }));
     const tomorrowDraftTasks = [...tomorrowFromPicker, ...tomorrowFreeText];
+
+    // Claim: a board task picked here for tomorrow gets tagged to that day, same
+    // reasoning as the morning plan's "If there's time" claim — but only when
+    // tomorrow is still in this same week's file. If today is Sunday, tomorrow
+    // is a new week's file; claiming across that boundary would really be a
+    // carry-forward, which Week's own picker already handles as an opt-in pull,
+    // so it's left alone here rather than silently reaching into another file.
+    const tomorrowISO = addDays(dateISO, 1);
+    if (mondayOf(tomorrowISO) === mondayOf(dateISO)) {
+      const tomorrowDk = dayKeyOf(tomorrowISO);
+      const weekTasks = weekDoc.tasks || [];
+      let boardChanged = false;
+      const claimedWeekTasks = weekTasks.map((wt) => {
+        if (!checkedTomorrowIds.has(wt.id) || wt.assignedDay === tomorrowDk) return wt;
+        boardChanged = true;
+        return { ...wt, assignedDay: tomorrowDk };
+      });
+      if (boardChanged) {
+        weekDoc.tasks = claimedWeekTasks;
+        S.store.saveWeek(mondayOf(dateISO), { tasks: claimedWeekTasks }, true, `life-os: evening ${dateISO}`);
+      }
+    }
 
     const evening = {
       completedAt: nowHM(),
