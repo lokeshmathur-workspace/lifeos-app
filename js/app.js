@@ -255,13 +255,19 @@ async function renderToday() {
 
   if (S.planning) {
     html.push(await planningForm(dateISO, doc, monthDoc, weekDoc));
-  } else if (!doc.morning) {
-    html.push(planPrompt(dateISO));
   } else if (S.eveningEditing) {
+    // Checked before the "nothing planned" gate below: "Skip to evening review"
+    // sets eveningEditing without ever creating a morning block, and must still
+    // win here — otherwise it silently bounces back to "Nothing planned yet".
     html.push(eveningForm(dateISO, doc, monthDoc, weekDoc));
+  } else if (!doc.morning && !doc.evening?.completedAt) {
+    html.push(planPrompt(dateISO));
   } else if (!doc.evening?.completedAt) {
     html.push(dayInProgress(dateISO, doc));
   } else {
+    // Reachable with no doc.morning at all (an evening-only day, via "Skip to
+    // evening review") — daySummary already renders fine without it, just
+    // omitting the "This morning" section.
     html.push(daySummary(dateISO, doc));
   }
 
@@ -827,6 +833,9 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
     const isTop3 = group.endsWith("top3");
     const readArr = () => (isTop3 ? doc.morning?.top3 || doc.evening?.top3Results || [] : doc.morning?.additionalTasks || doc.evening?.additionalResults || []);
     const writeArr = (arr) => {
+      // doc.morning can be absent here (evening review skipped straight past a
+      // day with no morning plan), so don't assume it exists.
+      doc.morning = doc.morning || {};
       if (isTop3) doc.morning.top3 = arr;
       else doc.morning.additionalTasks = arr;
     };
