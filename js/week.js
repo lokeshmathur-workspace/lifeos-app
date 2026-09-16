@@ -96,6 +96,14 @@ export async function renderWeekView(store, S, renderApp) {
     ? (prevWeekDoc.tasks || []).filter((t) => t.status !== "done" && !usedTexts.has(t.task.trim().toLowerCase()))
     : [];
 
+  // Pull-ins you've explicitly said aren't relevant this week — dismissing one
+  // never touches its source (the month intention, or last week's task), it
+  // just stops that suggestion resurfacing on this week's board. Keyed by
+  // normalized text for intentions (no stable id in that schema, same dedup
+  // key already used above) and by task id for carry-forward candidates.
+  const dismissedIntentions = new Set((weekDoc.dismissedIntentions || []).map((s) => s.trim().toLowerCase()));
+  const dismissedCarryForward = new Set(weekDoc.dismissedCarryForward || []);
+
   main.innerHTML = `
     <div class="datehead" style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:12px">
@@ -156,7 +164,7 @@ export async function renderWeekView(store, S, renderApp) {
     <section class="blk">
       <h2>By category</h2>
       ${Object.entries(PILLARS)
-        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable))
+        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward))
         .join("")}
     </section>
 
@@ -188,16 +196,21 @@ export async function renderWeekView(store, S, renderApp) {
   wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete);
 }
 
-function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable) {
+function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward) {
   const inPillar = tasks.filter((t) => t.pillar === key);
   const usedTexts = new Set(inPillar.map((t) => t.task.trim().toLowerCase()));
   // Pull-ins are an editing affordance — a past (read-only) week must never show
   // an actionable "+ Add as task" button, since its handlers aren't wired (see
   // wireWeek's early `if (!editable) return`) and it shouldn't be editable anyway.
   const monthPullins = editable
-    ? intentions.filter((it) => it.pillar === key && !usedTexts.has(it.intention.trim().toLowerCase()))
+    ? intentions.filter(
+        (it) =>
+          it.pillar === key &&
+          !usedTexts.has(it.intention.trim().toLowerCase()) &&
+          !dismissedIntentions.has(it.intention.trim().toLowerCase())
+      )
     : [];
-  const carryPullins = editable ? prevIncomplete.filter((t) => t.pillar === key) : [];
+  const carryPullins = editable ? prevIncomplete.filter((t) => t.pillar === key && !dismissedCarryForward.has(t.id)) : [];
 
   if (!editable && !inPillar.length && !monthPullins.length && !carryPullins.length) return "";
 
@@ -226,7 +239,11 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
         ${monthPullins
           .map(
             (it) => `
-        <div class="item"><span>${esc(it.intention)}</span><button class="pull-month" data-pillar="${key}" data-text="${esc(it.intention)}">+ Add as task</button></div>`
+        <div class="item">
+          <span>${esc(it.intention)}</span>
+          <button class="pull-month" data-pillar="${key}" data-text="${esc(it.intention)}">+ Add as task</button>
+          <button class="dismiss-month" data-text="${esc(it.intention)}" title="Not relevant this week">×</button>
+        </div>`
           )
           .join("")}
       </div>`
@@ -239,7 +256,11 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
         ${carryPullins
           .map(
             (t) => `
-        <div class="item"><span>${esc(t.task)}</span><button class="pull-carry" data-pillar="${key}" data-id="${esc(t.id)}">+ Add as task</button></div>`
+        <div class="item">
+          <span>${esc(t.task)}</span>
+          <button class="pull-carry" data-pillar="${key}" data-id="${esc(t.id)}">+ Add as task</button>
+          <button class="dismiss-carry" data-id="${esc(t.id)}" title="Not relevant this week">×</button>
+        </div>`
           )
           .join("")}
       </div>`
@@ -377,6 +398,26 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
       weekDoc.tasks = tasks;
       const ok = await saveTasks(tasks);
       if (ok) flash("Carried forward from last week.");
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll(".dismiss-month").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const dismissedIntentions = [...(weekDoc.dismissedIntentions || []), btn.dataset.text];
+      weekDoc.dismissedIntentions = dismissedIntentions;
+      const ok = await store.saveWeek(weekOf, { dismissedIntentions }, true, `life-os: weekly ${weekOf}`);
+      if (ok) flash("Dismissed for this week.");
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll(".dismiss-carry").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const dismissedCarryForward = [...(weekDoc.dismissedCarryForward || []), btn.dataset.id];
+      weekDoc.dismissedCarryForward = dismissedCarryForward;
+      const ok = await store.saveWeek(weekOf, { dismissedCarryForward }, true, `life-os: weekly ${weekOf}`);
+      if (ok) flash("Dismissed for this week.");
       renderApp();
     });
   });
