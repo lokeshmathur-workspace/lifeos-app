@@ -376,6 +376,7 @@ async function planningForm(dateISO, doc, monthDoc, weekDoc) {
         <div class="t3row">
           <input type="text" data-i="${i}" class="t3task" value="${esc(t.task)}" placeholder="Task ${i + 1}">
           <select data-i="${i}" class="t3pillar">${pillarOpts(t.pillar)}</select>
+          <button type="button" class="rm" title="Remove">×</button>
         </div>`
         )
         .join("")}
@@ -682,6 +683,15 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
   $("#cancelplan")?.addEventListener("click", () => {
     S.planning = false;
     renderToday();
+  });
+
+  // Remove a Top 3 row while planning/editing — purely a DOM removal, nothing
+  // to save yet (that happens on #saveplan, which just reads whatever .t3task
+  // rows remain). Handles re-editing a day whose top3 somehow grew past 3.
+  document.querySelectorAll(".t3row .rm").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      btn.closest(".t3row").remove();
+    });
   });
 
   let shuffled = null;
