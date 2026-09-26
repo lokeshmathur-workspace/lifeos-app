@@ -49,10 +49,12 @@ function defaultMeta(id, fields) {
   };
 }
 
+export function isPendingCapture(c) {
+  return c.status === CAPTURE_STATUS.PENDING_TRANSCRIPTION || c.status === CAPTURE_STATUS.PENDING_SUMMARY || !!c.needsInsights;
+}
+
 function indexRowFrom(meta) {
-  const pending = (meta.captures || []).filter((c) =>
-    [CAPTURE_STATUS.PENDING_TRANSCRIPTION, CAPTURE_STATUS.PENDING_SUMMARY].includes(c.status)
-  ).length;
+  const pending = (meta.captures || []).filter(isPendingCapture).length;
   const openActions = (meta.captures || []).reduce(
     (n, c) => n + (c.actionIds || []).length,
     0
@@ -170,13 +172,30 @@ export class LearningStore {
     return json;
   }
 
-  async getCapture(sourceId, capId) {
+  // force=true is needed once the routine may have filled a capture in: the
+  // cache can still hold the pending copy this session wrote at creation.
+  async getCapture(sourceId, capId, force = false) {
     const key = `${sourceId}/${capId}`;
-    if (this.captures.has(key)) return this.captures.get(key).doc;
+    if (!force && this.captures.has(key)) return this.captures.get(key).doc;
     const { json, sha } = await this.gh.getFile(capturePath(sourceId, capId));
     if (!json) return null;
     this.captures.set(key, { doc: json, sha });
     return json;
+  }
+
+  // Every capture across all sources that still needs the routine, as
+  // "LB002/C005" keys — what Process now hands the routine to work on.
+  async pendingCaptureKeys() {
+    const idx = await this.getIndex(true);
+    const keys = [];
+    for (const row of idx.sources || []) {
+      if (!(row.pendingCount > 0)) continue;
+      const meta = await this.getSource(row.id, true);
+      for (const c of (meta && meta.captures) || []) {
+        if (isPendingCapture(c)) keys.push(`${row.id}/${c.id}`);
+      }
+    }
+    return keys;
   }
 
   // Creates a new source: reserves the next LB id, writes meta.json, then
@@ -230,7 +249,9 @@ export class LearningStore {
     if (failed.length) {
       return { ok: false, error: `Couldn't process ${failed.length} of ${files.length} photo(s) — nothing was uploaded. Try again.` };
     }
-    const stamp = nowStamp();
+    // Minute-resolution stamp + random tag: two uploads in the same minute
+    // (page 51 then page 52) used to collide on the same filename.
+    const stamp = `${nowStamp()}-${Math.random().toString(36).slice(2, 6)}`;
     const uploaded = [];
     for (let i = 0; i < prepped.length; i++) {
       const filename = `${stamp}-${i + 1}.jpg`;
@@ -239,15 +260,7 @@ export class LearningStore {
         await this.gh.putBinaryFile(path, prepped[i].blob, null, `learning: upload photo ${filename}`);
         uploaded.push(path);
       } catch (e) {
-        // Roll back whatever uploaded so far so a half-batch never lingers.
-        for (const p of uploaded) {
-          try {
-            const { sha } = await this.gh.getFile(p);
-            if (sha) await this.gh.deleteFile(p, sha, `learning: revert partial upload`);
-          } catch {
-            /* best-effort rollback */
-          }
-        }
+        await this._deleteQuietly(uploaded, "learning: revert partial upload");
         return { ok: false, error: "Upload failed partway through — nothing was saved. Check your connection and try again." };
       }
     }
@@ -259,8 +272,23 @@ export class LearningStore {
       photos: uploaded,
     });
     if (captureId) return { ok: true, captureId };
+    await this._deleteQuietly(uploaded, "learning: revert upload (note not saved)");
     const reason = this._lastFileError ? ` (${this._lastFileError})` : "";
-    return { ok: false, error: `Photos uploaded, but couldn't save the note${reason}. Try reopening the book.` };
+    return { ok: false, error: `Couldn't save the note${reason} — nothing was kept. Try again.` };
+  }
+
+  // Best-effort delete of files (photos, a rolled-back capture) by path,
+  // looking each sha up fresh. Failures are swallowed: this only ever runs
+  // as cleanup after something else already failed.
+  async _deleteQuietly(paths, message) {
+    for (const p of paths) {
+      try {
+        const sha = await this.gh.getSha(p);
+        if (sha) await this.gh.deleteFile(p, sha, message);
+      } catch {
+        /* best-effort */
+      }
+    }
   }
 
   // Creates a pending_summary capture for a link (+ optional pasted text).
@@ -307,7 +335,10 @@ export class LearningStore {
 
     let capId, capOk;
     for (let attempt = 0; attempt < 2; attempt++) {
-      capId = nextCaptureId((meta.captures || []).map((c) => c.id));
+      // lastCaptureId keeps a deleted capture's id from ever being reissued
+      // (ids are permanent) — a reused id could let an in-flight routine run
+      // write the old photo's transcript over the new capture.
+      capId = nextCaptureId([...(meta.captures || []).map((c) => c.id), meta.lastCaptureId].filter(Boolean));
       const captureDoc = { id: capId, ...captureFields };
       const key = `${sourceId}/${capId}`;
       this.captures.set(key, { doc: captureDoc, sha: null });
@@ -339,6 +370,8 @@ export class LearningStore {
       sourceId,
       (freshMeta) => {
         const nm = { ...freshMeta, captures: [...(freshMeta.captures || []), lightRow], updatedAt: new Date().toISOString() };
+        const idNum = (id) => parseInt(String(id || "").slice(1), 10) || 0;
+        if (idNum(capId) > idNum(freshMeta.lastCaptureId)) nm.lastCaptureId = capId;
         if (captureFields.type === "page" && (captureFields.pages || []).length) {
           const lastPage = captureFields.pages.filter((p) => p.page).slice(-1)[0]?.page;
           if (lastPage) nm.lastPage = lastPage;
@@ -347,12 +380,16 @@ export class LearningStore {
       },
       `learning: ${sourceId} meta update`
     );
-    // The capture file itself is already safely written at this point even
-    // if the meta.json update below fails — reporting failure here (rather
-    // than the old behavior of returning capId regardless) means the
-    // caller's error surfaces instead of silently leaving that capture
-    // invisible in the UI forever.
-    if (!newMeta) return null;
+    // The routine only finds captures through meta.json, so a capture file
+    // that never made it into the projection would sit invisible forever —
+    // roll it back and report failure instead.
+    if (!newMeta) {
+      const lastErr = this._lastFileError;
+      this.captures.delete(`${sourceId}/${capId}`);
+      await this._deleteQuietly([capturePath(sourceId, capId)], `learning: revert ${sourceId} capture ${capId}`);
+      this._lastFileError = lastErr;
+      return null;
+    }
 
     await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
     return capId;
@@ -442,14 +479,7 @@ export class LearningStore {
     const { sha } = await this.gh.getFile(capturePath(sourceId, captureId));
     if (sha) await this.gh.deleteFile(capturePath(sourceId, captureId), sha, `learning: delete ${sourceId}/${captureId}`);
 
-    for (const p of (full && full.photos) || []) {
-      try {
-        const { sha: psha } = await this.gh.getFile(p);
-        if (psha) await this.gh.deleteFile(p, psha, `learning: delete orphaned photo`);
-      } catch {
-        /* best-effort */
-      }
-    }
+    await this._deleteQuietly((full && full.photos) || [], "learning: delete orphaned photo");
 
     const newMeta = await this._writeMeta(
       sourceId,

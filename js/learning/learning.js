@@ -10,6 +10,7 @@
 // own green accent — see index.html's tokens), and toasts go through the
 // shared flash() instead of a separate toast element.
 import { fireRoutine, RoutineError } from "./routine.js";
+import { isPendingCapture } from "./store.js";
 import { PILLARS, SOURCE_TYPES, CAPTURE_STATUS, QUEUE_ACTION_STATUS, BRIEF_TOPICS } from "./constants.js";
 import { fmtRelative, todayISO, prettyDate } from "../dateutil.js";
 import { flash } from "../flash.js";
@@ -23,6 +24,48 @@ const esc = (s) =>
 // since nothing here should assume otherwise.
 let S, learningStore, renderApp;
 let pollTimer = null;
+
+// A processing run in flight: { firedAt, keys: ["LB002/C005", ...], sessionUrl }.
+// Kept in localStorage (not just memory) so leaving the page, switching tabs
+// or reloading can't lose it — losing it is what used to re-offer Process
+// now mid-run and let a second, overlapping run start.
+const RUN_KEY = "learning.processing";
+const RUN_TTL_MS = 15 * 60 * 1000;
+const POLL_MS = 5000;
+
+function loadRun() {
+  try {
+    const run = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
+    return run && Date.now() - Date.parse(run.firedAt) < RUN_TTL_MS ? run : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRun(run) {
+  try {
+    localStorage.setItem(RUN_KEY, JSON.stringify(run));
+  } catch {
+    /* private mode etc. — the in-memory poll still covers this page's life */
+  }
+}
+
+function clearRun() {
+  try {
+    localStorage.removeItem(RUN_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function runExpired() {
+  try {
+    const run = JSON.parse(localStorage.getItem(RUN_KEY) || "null");
+    return !!run && Date.now() - Date.parse(run.firedAt) >= RUN_TTL_MS;
+  } catch {
+    return false;
+  }
+}
 
 function defaultLearningState() {
   return {
@@ -38,7 +81,6 @@ function defaultLearningState() {
     fullCaptures: {},
     actionUI: {},
     briefForm: null,
-    polling: false,
     delArm: null,
     meta: null,
   };
@@ -62,9 +104,11 @@ export async function renderLearningView(store, _S, _renderApp) {
     S.learning = defaultLearningState();
     render();
     await loadHome();
+    ensurePolling();
     return;
   }
   render();
+  ensurePolling();
 }
 
 async function loadHome() {
@@ -141,13 +185,22 @@ function vHome() {
   <button class="btn ghost" data-act="settings" style="flex:0 1 auto">Settings</button></div>
   <div class="stats"><div class="stat"><div class="k">Captures</div><div class="v">${captures}</div></div>
   <button class="stat" data-act="actions" style="cursor:pointer;text-align:left"><div class="k">Actions pending</div><div class="v">${openActions}</div>${actionsBreakdown ? `<span style="display:block;margin-top:3px;font-size:11px;color:var(--muted);font-weight:600">${esc(actionsBreakdown)}</span>` : ""}</button></div>
-  ${pendingTotal ? `<p class="hint" style="margin-top:14px">${pendingTotal} item${pendingTotal > 1 ? "s" : ""} waiting for processing — tap <b>Process now</b> from any of them, or from a source's page.</p>` : ""}
+  ${homeProcessHint(pendingTotal)}
   <h2>Books you're reading <span class="count">${books.length || ""}</span></h2>
   ${books.length ? books.map(bookCard).join("") : `<div class="empty">Start a book to capture pages, highlights and notes as you read.</div>`}
   <h2>Videos <span class="count">${vids.length || ""}</span></h2>${rows(vids) || `<div class="empty">Add a YouTube link and paste the transcript or your notes to capture learnings.</div>`}
   <h2>Articles and web <span class="count">${arts.length || ""}</span></h2>${rows(arts) || `<div class="empty">Add an article link and paste the text to get a summary.</div>`}
   ${done.length ? `<details style="margin-top:22px"><summary>Finished (${done.length})</summary><div style="margin-top:10px">${rows(done)}</div></details>` : ""}
   <div class="btnrow" style="margin-top:24px"><button class="btn pri" data-act="new" data-type="book">New book</button><button class="btn" data-act="new" data-type="video">Add link</button></div>`;
+}
+
+function homeProcessHint(pendingTotal) {
+  const run = loadRun();
+  if (run) {
+    return `<p class="hint" style="margin-top:14px"><span class="live" style="margin-right:8px"></span><b>Processing ${run.keys.length} item${run.keys.length > 1 ? "s" : ""}</b> — usually 2–3 minutes. Everything updates on its own.</p>`;
+  }
+  if (!pendingTotal) return "";
+  return `<p class="hint" style="margin-top:14px">${pendingTotal} item${pendingTotal > 1 ? "s" : ""} waiting for processing — open the book and tap <b>Process now</b> (one tap processes everything waiting).</p>`;
 }
 
 /* ---------- New source (FR-2) ---------- */
@@ -201,7 +254,6 @@ async function createSource() {
 /* ---------- Source detail (FR-3) ---------- */
 async function openSource(id) {
   const l = L();
-  stopPolling();
   l.curId = id;
   l.view = "source";
   l.meta = null;
@@ -224,13 +276,20 @@ async function openSource(id) {
   // suggestedActions) — fetch each ready capture's full file so capCard()
   // can actually show its content.
   const ready = (l.meta?.captures || []).filter((c) => c.status === CAPTURE_STATUS.READY);
+  await loadFullCaptures(id, ready);
+  if (l.view === "source" && l.curId === id) render();
+}
+
+// Always a fresh read: the in-memory copy may be the pending version this
+// session wrote at upload time, from before the routine filled it in.
+async function loadFullCaptures(sourceId, rows) {
+  const l = L();
   await Promise.all(
-    ready.map(async (c) => {
-      const full = await learningStore.getCapture(id, c.id);
-      if (full) l.fullCaptures[c.id] = full;
+    rows.map(async (c) => {
+      const full = await learningStore.getCapture(sourceId, c.id, true);
+      if (full && l.curId === sourceId) l.fullCaptures[c.id] = full;
     })
   );
-  if (l.view === "source" && l.curId === id) render();
 }
 
 // Resolves a queue actionId to its human-readable text/pillar, for showing
@@ -320,14 +379,34 @@ function actionsHTML(full, capId) {
 function capCard(c) {
   const l = L();
   const isBookSrc = l.sources.find((x) => x.id === l.curId)?.type === "book";
-  const label = c.type === "page" ? (c.pages || []).map((p) => (p.page ? "p. " + p.page : isBookSrc ? "page" : "screenshot")).join(", ") : c.type === "link" ? "Summary" : "Thought" + (c.pageRef ? " · p. " + c.pageRef : "");
+  // meta.json's light rows don't carry page numbers — take them from the full capture once loaded.
+  const pageLabel = (cap) => ((cap && cap.pages) || []).map((p) => (p.page ? "p. " + p.page : isBookSrc ? "page" : "screenshot")).join(", ");
+  const label = c.type === "page" ? pageLabel(c.pages ? c : l.fullCaptures[c.id]) || (isBookSrc ? "Page" : "Screenshot") : c.type === "link" ? "Summary" : "Thought" + (c.pageRef ? " · p. " + c.pageRef : "");
+  const dupOf = c.duplicateOf || l.fullCaptures[c.id]?.duplicateOf;
   const armed = l.delArm === `cap:${c.id}`;
   const delBtn = `<button class="btn ghost danger" data-act="delcap" data-cid="${c.id}" style="min-height:30px">${armed ? "Confirm" : "Delete"}</button>`;
   const pending = [CAPTURE_STATUS.PENDING_TRANSCRIPTION, CAPTURE_STATUS.PENDING_SUMMARY].includes(c.status);
   if (pending) {
+    const run = loadRun();
+    const inRun = !!run && run.keys.includes(`${l.curId}/${c.id}`);
+    const what = c.type === "link" ? "Summarizing" : "Transcribing";
+    const pill = inRun ? `<span class="pill proc"><span class="live"></span>Processing</span>` : `<span class="pill">Pending</span>`;
+    const text = inRun
+      ? `${what} now — this updates on its own when it's done.`
+      : run
+        ? "Saved. Will be picked up by the next run, once the current one finishes."
+        : "Saved to your library. Tap <b>Process now</b> above to transcribe/summarize it.";
     return `<div class="card" style="border-style:dashed">
-      <div class="row"><div class="kicker">${esc(label)}</div><div style="display:flex;gap:6px;align-items:center"><span class="pill">Pending</span>${delBtn}</div></div>
-      <p class="sub" style="margin-top:8px">Saved to your library. Tap <b>Process now</b> below to transcribe/summarize it.</p></div>`;
+      <div class="row"><div class="kicker">${esc(label)} · ${fmtRelative(c.createdAt)}</div><div style="display:flex;gap:6px;align-items:center">${pill}${delBtn}</div></div>
+      <p class="sub" style="margin-top:8px">${text}</p></div>`;
+  }
+  if (dupOf) {
+    const origLabel = pageLabel(l.fullCaptures[dupOf]) || "an earlier note";
+    const dArmed = l.delArm === `cap:${c.id}`;
+    return `<div class="card" style="border-style:dashed">
+      <div class="row"><div class="kicker">${esc(label)} · ${fmtRelative(c.createdAt)}</div><span class="pill">Duplicate</span></div>
+      <p class="sub" style="margin-top:8px">Same page as ${esc(origLabel)}, which is already in your notes.</p>
+      <div class="btnrow" style="margin-top:8px"><button class="btn ${dArmed ? "danger" : ""}" data-act="delcap" data-cid="${c.id}" style="flex:0 1 auto">${dArmed ? "Tap again to remove" : "Remove duplicate"}</button></div></div>`;
   }
   if (c.status === CAPTURE_STATUS.NEEDS_RETAKE) {
     return `<div class="card"><div class="row"><div class="kicker">${esc(label)}</div><div style="display:flex;gap:6px;align-items:center"><span class="pill no">Couldn't read this</span>${delBtn}</div></div>
@@ -387,7 +466,10 @@ function briefBlock(meta) {
     return `<div class="block block-brief"><div class="block-label">Learning Brief</div><p class="sub" style="margin:0">✓ Saved to your library.</p></div>`;
   }
   if (!meta.draftBrief) {
-    return `<div class="btnrow"><button class="btn" data-act="createbrief" data-id="${meta.id}" ${l.busy === "brief" ? "disabled" : ""}>${l.busy === "brief" ? "Drafting…" : "Create learning brief"}</button></div>`;
+    // Blocked mid-run: a brief draft edits this same meta.json, so a
+    // concurrent run's PR would collide with the processing run's PR.
+    const running = !!loadRun();
+    return `<div class="btnrow"><button class="btn" data-act="createbrief" data-id="${meta.id}" ${l.busy === "brief" || running ? "disabled" : ""}>${l.busy === "brief" ? "Drafting…" : running ? "Create learning brief (after processing)" : "Create learning brief"}</button></div>`;
   }
   if (!l.briefForm) l.briefForm = initBriefForm(meta.draftBrief, meta);
   const f = l.briefForm;
@@ -442,7 +524,16 @@ function vSource() {
   if (!s) return `<button class="btn ghost back" data-act="home">‹ Library</button><p class="empty">This item was removed.</p>`;
   if (!meta) return `<button class="btn ghost back" data-act="home">‹ Library</button><div class="busy"><span class="dot"></span>Loading…</div>`;
   const isBook = s.type === "book";
-  const hasPending = (meta.captures || []).some((c) => [CAPTURE_STATUS.PENDING_TRANSCRIPTION, CAPTURE_STATUS.PENDING_SUMMARY].includes(c.status)) || (meta.captures || []).some((c) => c.needsInsights);
+  const pendingHere = (meta.captures || []).filter(isPendingCapture);
+  const run = loadRun();
+  let processBlock = "";
+  if (run) {
+    const waitingNext = pendingHere.filter((c) => !run.keys.includes(`${s.id}/${c.id}`)).length;
+    processBlock = `<div class="hint" style="margin-top:0"><span class="live" style="margin-right:8px"></span><b>Processing ${run.keys.length} item${run.keys.length > 1 ? "s" : ""}</b> — usually 2–3 minutes. You can leave this page; it updates on its own.${waitingNext ? ` ${waitingNext} item${waitingNext > 1 ? "s" : ""} added since will be picked up next — Process now comes back when this run finishes.` : ""}</div>
+      <div class="btnrow"><button class="btn" data-act="checknow" style="flex:0 1 auto">Check now</button>${run.sessionUrl ? `<a class="btn ghost" href="${esc(run.sessionUrl)}" target="_blank" rel="noopener" style="flex:0 1 auto;text-decoration:none">View run</a>` : ""}</div>`;
+  } else if (pendingHere.length) {
+    processBlock = `<div class="btnrow"><button class="btn" data-act="processnow" ${l.busy === "process" ? "disabled" : ""}>${l.busy === "process" ? "Starting…" : "Process now"}</button></div>`;
+  }
   return `<button class="btn ghost back" data-act="home">‹ Library</button>
   <div class="kicker">${SOURCE_TYPES[s.type]}${meta.status === "finished" ? " · finished" : ""}</div><h1 class="serif">${esc(meta.title)}</h1>
   <div class="sub">${esc(meta.author || "")}${meta.url ? ` · <a href="${esc(meta.url)}" target="_blank" rel="noopener">Open link</a>` : ""}</div>
@@ -450,12 +541,7 @@ function vSource() {
     <button class="btn pri" data-act="cap" data-mode="page" data-id="${s.id}">${isBook ? "Add page" : "Add screenshot"}</button>
     <button class="btn" data-act="cap" data-mode="thought" data-id="${s.id}">Add thought</button>
   </div>
-  ${hasPending
-    ? l.polling
-      ? `<div class="hint" style="margin-top:0">Processing — usually a minute or two. You can leave this page and come back; it'll update on its own when it's done.</div>
-      <div class="btnrow"><button class="btn" data-act="checknow" data-id="${s.id}">Check now</button></div>`
-      : `<div class="btnrow"><button class="btn" data-act="processnow" data-id="${s.id}" ${l.busy === "process" ? "disabled" : ""}>${l.busy === "process" ? "Starting…" : "Process now"}</button></div>`
-    : ""}
+  ${processBlock}
   <div class="btnrow">${meta.status === "finished" ? `<button class="btn" data-act="reopen" data-id="${s.id}">Mark reading</button>` : `<button class="btn" data-act="finish" data-id="${s.id}">${isBook ? "Finished book" : "Mark done"}</button>`}</div>
   ${(meta.captures || []).length ? briefBlock(meta) : ""}
   <h2>Notes <span class="count">${(meta.captures || []).length || ""}</span></h2>
@@ -534,75 +620,96 @@ async function dismissAction(actionId) {
   render();
 }
 
-// Auto-checks the open source for the routine to finish, so there's no need
-// to guess whether to keep refreshing or navigate away and back — it polls
-// in place and updates itself. Runs at most every 10s for ~5 minutes; a
-// manual "Check now" button (pollTick) is always available too, and stays
-// available after the timeout for a slower-than-usual run.
-function stopPolling(timedOut) {
+// One global poll while a run is in flight — not tied to which screen is
+// open, so leaving a source and coming back never loses track of it. Each
+// tick re-reads only the sources the run was given; the run is done once
+// none of its captures is still pending.
+function ensurePolling() {
+  if (runExpired()) {
+    clearRun();
+    flash("The last processing run didn't finish — you can tap Process now to try again.", true);
+    render();
+  }
+  if (pollTimer || !loadRun()) return;
+  pollTimer = setInterval(runTick, POLL_MS);
+}
+
+function stopPolling() {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
-  L().polling = false;
-  if (timedOut) flash("Still processing — taking longer than usual. Try Process now again in a bit, or check back later.", true);
 }
 
-async function pollTick(sourceId) {
-  const l = L();
-  // curId (not view) is the "still working within this source" signal —
-  // briefly switching to the Add page/thought sub-view keeps curId the
-  // same, so a tick here should still refresh quietly rather than stop.
-  if (l.curId !== sourceId) {
+let ticking = false;
+async function runTick(manual) {
+  if (ticking) return;
+  const run = loadRun();
+  if (!run) {
     stopPolling();
+    if (runExpired()) ensurePolling();
     return;
   }
-  const meta = await learningStore.getSource(sourceId, true);
-  if (!meta) return;
-  const isPending = (c) => [CAPTURE_STATUS.PENDING_TRANSCRIPTION, CAPTURE_STATUS.PENDING_SUMMARY].includes(c.status) || c.needsInsights;
-  const prevPendingIds = (l.meta?.captures || []).filter(isPending).map((c) => c.id);
-  l.meta = meta;
-  const stillPending = (meta.captures || []).some(isPending);
-  const newlyDone = (meta.captures || []).filter((c) => prevPendingIds.includes(c.id) && !isPending(c));
-  for (const c of newlyDone) {
-    if (c.status === CAPTURE_STATUS.READY) {
-      const full = await learningStore.getCapture(sourceId, c.id);
-      if (full) l.fullCaptures[c.id] = full;
+  ticking = true;
+  try {
+    const l = L();
+    const bySource = {};
+    for (const k of run.keys) {
+      const [sid, cid] = k.split("/");
+      (bySource[sid] = bySource[sid] || []).push(cid);
     }
+    let stillPending = 0;
+    let changed = false;
+    for (const [sid, cids] of Object.entries(bySource)) {
+      const meta = await learningStore.getSource(sid, true);
+      const rows = (meta && meta.captures) || [];
+      stillPending += rows.filter((c) => cids.includes(c.id) && isPendingCapture(c)).length;
+      if (meta && l.curId === sid) {
+        const wasPending = new Set((l.meta?.captures || []).filter(isPendingCapture).map((c) => c.id));
+        const nowDone = rows.filter((c) => wasPending.has(c.id) && !isPendingCapture(c));
+        if (nowDone.length) {
+          changed = true;
+          l.meta = meta;
+          await loadFullCaptures(sid, nowDone.filter((c) => c.status === CAPTURE_STATUS.READY));
+        }
+      }
+    }
+    if (!stillPending) {
+      changed = true;
+      clearRun();
+      stopPolling();
+      flash("Processing finished.");
+      const idx = await learningStore.getIndex(true);
+      l.sources = idx.sources;
+      l.index = idx;
+    } else if (manual) {
+      flash("Still working on it — this updates on its own.");
+    }
+    // Only redraw screens that show processing state, and only on a real
+    // change — a redraw every tick would steal focus mid-typing.
+    if (changed && S.view === "learning" && (l.view === "home" || l.view === "source")) render();
+  } catch {
+    /* a failed read just means we try again next tick */
+  } finally {
+    ticking = false;
   }
-  if (!stillPending) {
-    stopPolling();
-    if (newlyDone.length) flash("Processing finished.");
-  }
-  render();
 }
 
-function startPolling(sourceId) {
-  stopPolling();
-  L().polling = true;
-  let attempts = 0;
-  pollTimer = setInterval(async () => {
-    attempts++;
-    if (attempts > 30) {
-      stopPolling(true);
-      render();
-      return;
-    }
-    await pollTick(sourceId);
-  }, 10000);
-  render();
-}
-
-async function processNow(sourceId) {
+async function processNow() {
   const l = L();
+  if (loadRun()) return;
   l.busy = "process";
   render();
   try {
-    await fireRoutine();
-    flash("Processing started — usually a minute or two.");
-    l.busy = "";
-    startPolling(sourceId);
-    return;
+    const keys = await learningStore.pendingCaptureKeys();
+    if (!keys.length) {
+      flash("Nothing waiting to process.");
+    } else {
+      const { sessionUrl } = await fireRoutine(`process ${keys.join(" ")}`);
+      saveRun({ firedAt: new Date().toISOString(), keys, sessionUrl: sessionUrl || "" });
+      flash("Processing started — usually 2–3 minutes. You can leave this page.");
+      ensurePolling();
+    }
   } catch (e) {
     flash(e instanceof RoutineError ? e.message : "Couldn't start processing.", true);
   }
@@ -612,6 +719,7 @@ async function processNow(sourceId) {
 
 async function startBriefDraft(sourceId) {
   const l = L();
+  if (loadRun()) return;
   l.busy = "brief";
   render();
   try {
@@ -840,7 +948,6 @@ document.addEventListener("click", async (e) => {
       render();
       break;
     case "home":
-      stopPolling();
       l.view = "home";
       l.form = null;
       render();
@@ -876,10 +983,10 @@ document.addEventListener("click", async (e) => {
       await saveThought();
       break;
     case "processnow":
-      await processNow(b.dataset.id);
+      await processNow();
       break;
     case "checknow":
-      await pollTick(b.dataset.id);
+      await runTick(true);
       break;
     case "createbrief":
       await startBriefDraft(b.dataset.id);

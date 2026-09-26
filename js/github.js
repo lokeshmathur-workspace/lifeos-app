@@ -42,6 +42,10 @@ export class GitHubStore {
     try {
       res = await fetch(`${API}/repos/${this.repo}/${path}`, {
         ...opts,
+        // GitHub sends `Cache-Control: private, max-age=60` on reads, so without
+        // this the browser can hand back the pre-save version of a file (and its
+        // stale sha) for up to a minute after a write.
+        cache: "no-store",
         headers: {
           Authorization: `Bearer ${this.token}`,
           Accept: "application/vnd.github+json",
@@ -79,6 +83,15 @@ export class GitHubStore {
     const body = await res.json();
     const text = base64ToUtf8(body.content);
     return { json: JSON.parse(text), sha: body.sha };
+  }
+
+  // Just the blob sha (null on 404) — for binary files like photos, where
+  // getFile()'s JSON.parse would throw before the sha could be read.
+  async getSha(path) {
+    const res = await this._request(`contents/${encodeURIComponent(path)}?ref=${this.branch}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new GitHubStoreError(`Couldn't read ${path} (${res.status}).`, "unknown", res.status);
+    return (await res.json()).sha;
   }
 
   // Full recursive file listing for the branch — used to find every journal file
