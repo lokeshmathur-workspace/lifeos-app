@@ -10,39 +10,42 @@
 
 <style>
 /* ── tokens ─────────────────────────────────────────────── */
-/* Warm "optimistic and inviting" refresh (Phase H) — shared base with the
-   Learning tab, which keeps its own green accent as the section indicator
-   (Life OS's own indicator is this warm coral). Variable names are kept
-   identical to the previous palette so every existing rule below (and any
-   generated var(--x) in week.js/month.js) needs no changes, only values. */
+/* "Citrus Sunrise" — Lokesh's pick of 3 colorful drafts previewed live
+   (Phase H). Learning keeps its own green accent as the section indicator;
+   Life OS's is this warm orange. Variable names are unchanged from the
+   previous palette so nothing else below (or in week.js/month.js) needs
+   editing, only values. Dark mode's --surface/--line are pulled further
+   from --ground than a straight rescale would give, specifically because
+   the first draft's dark cards were flagged as blending into the
+   background — inputs/cards need a visible step up, not just a hue swap. */
 :root{
-  --ground:#FAF5EC; --surface:#FFFFFF; --raised:#F3EAD9; --sunk:#EFE4CE;
-  --ink:#2B2318; --ink-2:#5C4E3B; --muted:#8C7D66;
-  --line:#E8DAC0; --line-2:#D9C7A3;
-  --accent:#E1653F; --accent-soft:#FBE3D6; --on-accent:#FFFFFF;
-  --d1:#C6502E; --good:#3C8F5C; --stop:#C1453A;
-  --good-soft:#DEF0E3; --stop-soft:#F9E1DE;
-  --shadow:0 1px 2px rgba(43,35,24,.08), 0 1px 8px rgba(43,35,24,.05);
+  --ground:#FFF8ED; --surface:#FFFFFF; --raised:#FCF1DE; --sunk:#FBEDD2;
+  --ink:#2E2013; --ink-2:#6B5A3D; --muted:#A5906D;
+  --line:#F1DFB8; --line-2:#E4C88C;
+  --accent:#FF6B35; --accent-soft:#FFE3D4; --on-accent:#FFFFFF;
+  --d1:#E8551F; --good:#2BB673; --stop:#E63946;
+  --good-soft:#DCF3E6; --stop-soft:#FBDEE0;
+  --shadow:0 1px 2px rgba(46,32,19,.08), 0 1px 8px rgba(46,32,19,.05);
   --r:10px;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --ground:#1A140D; --surface:#241C12; --raised:#2D2317; --sunk:#15100A;
-    --ink:#F4ECDD; --ink-2:#CBBCA0; --muted:#93856E;
-    --line:#3B2E1D; --line-2:#4C3B25;
-    --accent:#F0895F; --accent-soft:#3C2318; --on-accent:#1A140D;
-    --d1:#E0783F; --good:#54BF8A; --stop:#E17E72;
-    --good-soft:#193B27; --stop-soft:#3D1F1A;
+    --ground:#1F1409; --surface:#332212; --raised:#3D2A16; --sunk:#190F07;
+    --ink:#FBEEDA; --ink-2:#D9C2A0; --muted:#9C8A6C;
+    --line:#4A3A22; --line-2:#5E4A2A;
+    --accent:#FF7F52; --accent-soft:#3D2415; --on-accent:#1F1409;
+    --d1:#F0793D; --good:#4FC98B; --stop:#F1786B;
+    --good-soft:#1C3B2A; --stop-soft:#3E1E19;
     --shadow:0 1px 2px rgba(0,0,0,.4);
   }
 }
 :root[data-theme="dark"]{
-  --ground:#1A140D; --surface:#241C12; --raised:#2D2317; --sunk:#15100A;
-  --ink:#F4ECDD; --ink-2:#CBBCA0; --muted:#93856E;
-  --line:#3B2E1D; --line-2:#4C3B25;
-  --accent:#F0895F; --accent-soft:#3C2318; --on-accent:#1A140D;
-  --d1:#E0783F; --good:#54BF8A; --stop:#E17E72;
-  --good-soft:#193B27; --stop-soft:#3D1F1A;
+  --ground:#1F1409; --surface:#332212; --raised:#3D2A16; --sunk:#190F07;
+  --ink:#FBEEDA; --ink-2:#D9C2A0; --muted:#9C8A6C;
+  --line:#4A3A22; --line-2:#5E4A2A;
+  --accent:#FF7F52; --accent-soft:#3D2415; --on-accent:#1F1409;
+  --d1:#F0793D; --good:#4FC98B; --stop:#F1786B;
+  --good-soft:#1C3B2A; --stop-soft:#3E1E19;
   --shadow:0 1px 2px rgba(0,0,0,.4);
 }
 
