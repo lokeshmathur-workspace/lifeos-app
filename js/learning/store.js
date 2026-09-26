@@ -83,6 +83,7 @@ export class LearningStore {
     this.library = null; // { doc, sha }
     this.saveTimers = new Map();
     this.onFlash = onFlash || (() => {});
+    this._lastFileError = null; // last real error _writeFile hit, for callers that want more than a boolean
   }
 
   // force=true bypasses the in-memory cache — used by entry points where
@@ -218,13 +219,16 @@ export class LearningStore {
         return { ok: false, error: "Upload failed partway through — nothing was saved. Check your connection and try again." };
       }
     }
+    this._lastFileError = null;
     const captureId = await this._addCapture(sourceId, {
       type: "page",
       status: CAPTURE_STATUS.PENDING_TRANSCRIPTION,
       createdAt: new Date().toISOString(),
       photos: uploaded,
     });
-    return captureId ? { ok: true, captureId } : { ok: false, error: "Photos uploaded, but couldn't save the note. Try reopening the book." };
+    if (captureId) return { ok: true, captureId };
+    const reason = this._lastFileError ? ` (${this._lastFileError})` : "";
+    return { ok: false, error: `Photos uploaded, but couldn't save the note${reason}. Try reopening the book.` };
   }
 
   // Creates a pending_summary capture for a link (+ optional pasted text).
@@ -258,21 +262,35 @@ export class LearningStore {
   // Shared by all three capture-creation paths above. Writes the capture
   // file first (authoritative), then meta.json's light projection, then
   // index.json's counts — see the write-order note at the top of this file.
+  // Retries once against a freshly-read source if the capture-file write
+  // fails — meta.json's captures list is only a projection and can be stale
+  // relative to what's actually on disk (e.g. a prior session's own
+  // meta.json update step failed silently), which would make nextCaptureId
+  // recompute an id that already exists and collide on write. A fresh read
+  // recomputes from the real current state, so the retry can't collide
+  // twice for that reason. Mirrors _writeIndex's own retry-once pattern.
   async _addCapture(sourceId, captureFields) {
-    const meta = await this.getSource(sourceId);
+    let meta = await this.getSource(sourceId);
     if (!meta) return null;
-    const capId = nextCaptureId((meta.captures || []).map((c) => c.id));
-    const captureDoc = { id: capId, ...captureFields };
-    const key = `${sourceId}/${capId}`;
-    this.captures.set(key, { doc: captureDoc, sha: null });
-    const capOk = await this._writeFile(
-      capturePath(sourceId, capId),
-      captureDoc,
-      () => this.captures.get(key),
-      (n) => this.captures.set(key, n),
-      `learning: ${sourceId} capture ${capId}`,
-      true
-    );
+
+    let capId, capOk;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      capId = nextCaptureId((meta.captures || []).map((c) => c.id));
+      const captureDoc = { id: capId, ...captureFields };
+      const key = `${sourceId}/${capId}`;
+      this.captures.set(key, { doc: captureDoc, sha: null });
+      capOk = await this._writeFile(
+        capturePath(sourceId, capId),
+        captureDoc,
+        () => this.captures.get(key),
+        (n) => this.captures.set(key, n),
+        `learning: ${sourceId} capture ${capId}`,
+        true
+      );
+      if (capOk || attempt === 1) break;
+      meta = await this.getSource(sourceId, true);
+      if (!meta) return null;
+    }
     if (!capOk) return null;
 
     const lightRow = {
@@ -619,7 +637,8 @@ export class LearningStore {
         setCache({ ...cache, sha });
         return true;
       } catch (e) {
-        this.onFlash(e instanceof GitHubStoreError ? e.message : "Couldn't save.", true);
+        this._lastFileError = e instanceof GitHubStoreError ? e.message : e?.message || "Couldn't save.";
+        this.onFlash(this._lastFileError, true);
         return false;
       }
     };
