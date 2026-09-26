@@ -6,20 +6,60 @@
 const MAX_EDGE = 1600;
 const JPEG_QUALITY = 0.8;
 
-// file: a File from <input type=file>. Returns a Blob (JPEG), always
-// upright and no larger than MAX_EDGE on its longest side.
-export async function prepPhoto(file) {
+// Decodes via createImageBitmap, which bakes in EXIF orientation itself.
+async function decodeViaBitmap(file) {
   const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
   const scale = Math.min(1, MAX_EDGE / Math.max(bitmap.width, bitmap.height));
   const w = Math.round(bitmap.width * scale);
   const h = Math.round(bitmap.height * scale);
-
   const canvas = document.createElement("canvas");
   canvas.width = w;
   canvas.height = h;
-  const ctx = canvas.getContext("2d");
-  ctx.drawImage(bitmap, 0, 0, w, h);
+  canvas.getContext("2d").drawImage(bitmap, 0, 0, w, h);
   bitmap.close();
+  return canvas;
+}
+
+// Fallback for formats createImageBitmap chokes on in some browsers (e.g.
+// Safari has a history of failing to decode HEIC here even though it
+// displays fine in an <img> via the OS-level decoder). Browsers auto-apply
+// EXIF orientation when drawing an <img> to canvas, so this stays upright
+// without extra logic.
+async function decodeViaImg(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error("Couldn't decode that photo."));
+      el.src = url;
+    });
+    const scale = Math.min(1, MAX_EDGE / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    return canvas;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// file: a File from <input type=file>. Returns a Blob (JPEG), always
+// upright and no larger than MAX_EDGE on its longest side.
+export async function prepPhoto(file) {
+  let canvas;
+  try {
+    canvas = await decodeViaBitmap(file);
+  } catch (e1) {
+    try {
+      canvas = await decodeViaImg(file);
+    } catch (e2) {
+      throw new Error(`Couldn't process that photo (${e1.name || e1.message}).`);
+    }
+  }
 
   return new Promise((resolve, reject) => {
     canvas.toBlob(

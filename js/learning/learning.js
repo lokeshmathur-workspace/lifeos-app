@@ -693,7 +693,8 @@ function vCapture() {
     <p class="sub" style="margin:10px 0 16px">${isBook ? "Take a photo of the page, or pick up to 4 pages from your photos. Up to 4 pages upload together and process as one note." : "Take a screenshot or photo, or pick up to 4 images from your photos. They upload together and process as one note."}</p>
     ${l.busy === "upload"
       ? `<div class="busy"><span class="dot"></span>Uploading…</div>`
-      : `<label class="btn pri filebtn" style="width:100%;margin:0">${isBook ? "Take or choose photos" : "Take or choose screenshots"}<input type="file" accept="image/*" multiple data-act="photos" aria-label="Take or choose photos"></label>`}
+      : `<label class="btn pri filebtn" style="width:100%;margin:0">Take a photo<input type="file" accept="image/*" capture="environment" data-act="photos" aria-label="Take a photo"></label>
+    <label class="btn filebtn" style="width:100%;margin:10px 0 0">Choose from library<input type="file" accept="image/*" multiple data-act="photos" aria-label="Choose from library"></label>`}
     ${d.err ? `<p class="err">${esc(d.err)}</p>` : ""}`;
   }
   if (d.mode !== "thought") {
