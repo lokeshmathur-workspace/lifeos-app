@@ -134,4 +134,50 @@ export class GitHubStore {
     const body = await res.json();
     return { sha: body.content.sha };
   }
+
+  // Uploads a raw binary file (a downscaled JPEG) — same endpoint as
+  // putFile, just base64 of the actual bytes with no JSON/compact() step.
+  // Added for the Learning tab's page-photo/screenshot capture (Phase H).
+  async putBinaryFile(path, file, sha, message) {
+    const buf = await file.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let bin = "";
+    const CHUNK = 0x8000;
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    const content = btoa(bin);
+    const res = await this._request(`contents/${encodeURIComponent(path)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message,
+        content,
+        branch: this.branch,
+        ...(sha ? { sha } : {}),
+      }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new GitHubStoreError(`Couldn't upload ${path}. (${body.message || res.status})`, "unknown", res.status);
+    }
+    const body = await res.json();
+    return { sha: body.content.sha };
+  }
+
+  // Deletes a file outright (used by the Learning tab once a photo has been
+  // transcribed and its blob reference saved on the capture record, and for
+  // source/capture delete). sha is required by the Contents API delete
+  // endpoint.
+  async deleteFile(path, sha, message) {
+    const res = await this._request(`contents/${encodeURIComponent(path)}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message, sha, branch: this.branch }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new GitHubStoreError(`Couldn't delete ${path}. (${body.message || res.status})`, "unknown", res.status);
+    }
+  }
 }

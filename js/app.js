@@ -11,6 +11,9 @@ import { renderWeekView, copyWeekForOneNote } from "./week.js";
 import { renderMonthView, copyMonthForOneNote } from "./month.js";
 import { flash } from "./flash.js";
 import { openBulkImport, parseTaskLines } from "./bulkimport.js";
+import { renderLearningView } from "./learning/learning.js";
+import { LearningStore } from "./learning/store.js";
+import { loadRoutineConfig, saveRoutineConfig, clearRoutineConfig } from "./learning/routine.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -36,6 +39,11 @@ export async function boot() {
   const cfg = loadConfig();
   if (!cfg) return renderSetup();
   S.store = new Store(cfg, flash);
+  // Phase H merge: one shared GitHub token for the whole app now — the
+  // Learning tab used to hold its own separate one, but both apps only
+  // ever needed Contents read/write on this same private repo, so there's
+  // nothing a second token bought once they share one page anyway.
+  S.learningStore = new LearningStore(cfg, flash);
 
   const pinHash = loadPinHash();
   if (pinHash && !S.unlocked) return renderPinGate(pinHash);
@@ -100,7 +108,10 @@ function renderApp() {
   if (S.view === "today") return renderToday();
   if (S.view === "week") return renderWeekView(S.store, S, renderApp);
   if (S.view === "month") return renderMonthView(S.store, S, renderApp);
+  if (S.view === "learning") return renderLearningView(S.learningStore, S, renderApp);
 }
+
+window.addEventListener("lifeos:open-settings", openSettings);
 
 window.addEventListener("lifeos:goto-day", (e) => {
   S.day = e.detail;
@@ -166,6 +177,7 @@ document.addEventListener("DOMContentLoaded", () => {
 function openSettings() {
   const cfg = loadConfig();
   const ai = loadAiConfig();
+  const rc = loadRoutineConfig();
   const mask = (t) => (t ? t.slice(0, 7) + "…" + t.slice(-4) : "");
   const pinSet = !!loadPinHash();
   const back = document.createElement("div");
@@ -173,7 +185,7 @@ function openSettings() {
   back.innerHTML = `
     <div class="modal">
       <h2 style="margin-top:0">Settings</h2>
-      <p class="savenote">Connected to <span class="mono">${esc(cfg?.repo || "")}</span> as <span class="mono">${esc(mask(cfg?.token))}</span>. Stored only in this browser.</p>
+      <p class="savenote">Connected to <span class="mono">${esc(cfg?.repo || "")}</span> as <span class="mono">${esc(mask(cfg?.token))}</span>. Stored only in this browser. Covers both Life OS and Learning — one token for both since the merge.</p>
       <div class="btnrow"><button class="btn" id="forgettoken">Forget token &amp; sign out</button></div>
       <div class="btnrow" style="margin-top:18px">
         ${pinSet ? `<button class="btn" id="clearpin">Remove PIN</button>` : `<button class="btn" id="setpin">Set a PIN</button>`}
@@ -187,6 +199,14 @@ function openSettings() {
       <div class="btnrow" style="margin-top:0">
         <button class="btn sm" id="saveai">Save</button>
         ${ai?.url ? `<button class="btn sm" id="clearai">Remove</button>` : ""}
+      </div>
+      <h2 style="margin-top:22px">Learning processing</h2>
+      <p class="savenote" style="margin-bottom:10px">The routine that transcribes photos, summarizes links, and drafts briefs for the Learning tab — a separate credential from the GitHub token above, scoped by Anthropic to firing that one routine only. <a href="https://claude.ai/code/routines" target="_blank" rel="noopener">Manage your routine</a>.</p>
+      <label class="fld"><span>Routine API URL</span><input type="text" id="rurl" value="${esc(rc?.url || "")}" placeholder="https://api.anthropic.com/v1/claude_code/routines/.../fire" spellcheck="false"></label>
+      <label class="fld"><span>Routine token</span><input type="password" id="rtoken" value="${esc(rc?.token || "")}" placeholder="sk-ant-oat01-..." autocomplete="off" spellcheck="false"></label>
+      <div class="btnrow" style="margin-top:0">
+        <button class="btn sm" id="saveroutine">Save</button>
+        ${rc?.url ? `<button class="btn sm" id="clearroutine">Remove</button>` : ""}
       </div>
       <div class="btnrow" style="margin-top:18px"><button class="btn pri" id="closesettings">Close</button></div>
     </div>`;
@@ -237,6 +257,17 @@ function openSettings() {
   });
   $("#clearai", back)?.addEventListener("click", () => {
     clearAiConfig();
+    back.remove();
+  });
+  $("#saveroutine", back).addEventListener("click", () => {
+    const url = $("#rurl", back).value.trim();
+    const token = $("#rtoken", back).value.trim();
+    if (!url || !token) return;
+    saveRoutineConfig({ url, token });
+    back.remove();
+  });
+  $("#clearroutine", back)?.addEventListener("click", () => {
+    clearRoutineConfig();
     back.remove();
   });
 }

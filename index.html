@@ -25,6 +25,7 @@
   --accent:#FF6B35; --accent-soft:#FFE3D4; --on-accent:#FFFFFF;
   --d1:#E8551F; --good:#2BB673; --stop:#E63946;
   --good-soft:#DCF3E6; --stop-soft:#FBDEE0;
+  --mark:#FFD666; --mark-ink:#3A2400;
   --shadow:0 1px 2px rgba(46,32,19,.08), 0 1px 8px rgba(46,32,19,.05);
   --r:10px;
 }
@@ -35,6 +36,7 @@
     --line:#4A3A22; --line-2:#5E4A2A;
     --accent:#FF7F52; --accent-soft:#3D2415; --on-accent:#1F1409;
     --d1:#F0793D; --good:#4FC98B; --stop:#F1786B;
+    --mark:#B8860B; --mark-ink:#2A1D06;
     --good-soft:#1C3B2A; --stop-soft:#3E1E19;
     --shadow:0 1px 2px rgba(0,0,0,.4);
   }
@@ -45,6 +47,7 @@
   --line:#4A3A22; --line-2:#5E4A2A;
   --accent:#FF7F52; --accent-soft:#3D2415; --on-accent:#1F1409;
   --d1:#F0793D; --good:#4FC98B; --stop:#F1786B;
+  --mark:#B8860B; --mark-ink:#2A1D06;
   --good-soft:#1C3B2A; --stop-soft:#3E1E19;
   --shadow:0 1px 2px rgba(0,0,0,.4);
 }
@@ -166,7 +169,7 @@ section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
 .composer{display:flex;gap:8px;align-items:flex-end}
 .composer textarea{flex:1}
 .composer input[type=time]{flex:none;width:100px}
-textarea,input[type=text],input[type=number],input[type=password],input[type=time],input[type=date],select{
+textarea,input[type=text],input[type=number],input[type=password],input[type=time],input[type=date],input[type=url],select{
   font:inherit;width:100%;background:var(--surface);color:var(--ink);
   border:1px solid var(--line);border-radius:8px;padding:9px 11px;resize:vertical;
 }
@@ -355,6 +358,114 @@ label.fld > span{
   .top,.seg,.btnrow,.composer,.nav-day{display:none!important}
   body{background:#fff;color:#000}
 }
+
+/* ── Learning tab (Phase H merge) ───────────────────────────
+   Shares every token/component above; its own accent is green (Learning's
+   established identity) instead of Life OS's orange, scoped to whatever
+   renders inside .learning so the rest of the app is untouched. A couple
+   of Learning's own class names collided with existing ones here (.seg,
+   .note) and were renamed on the way in (.typeseg, .lnote) rather than
+   resolved by CSS scoping tricks — simpler to read later. */
+.learning{
+  --accent:#1E5A43; --accent-soft:#DCEEE3; --on-accent:#FFFFFF; --d1:#174935;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .learning{
+    --accent:#4FAE86; --accent-soft:#173226; --on-accent:#0D1712; --d1:#3C9070;
+  }
+}
+:root[data-theme="dark"] .learning{
+  --accent:#4FAE86; --accent-soft:#173226; --on-accent:#0D1712; --d1:#3C9070;
+}
+
+.sub{color:var(--muted);font-size:14px}
+label:not(.fld){display:block;font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 6px}
+.kicker{font-size:13px;color:var(--muted);font-weight:600}
+.row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+button.stat{font:inherit;color:inherit;text-align:left;width:100%}
+.meta{font-size:13px;color:var(--muted);margin-top:2px}
+.count{color:var(--muted);font-size:13px;font-weight:500}
+/* Learning's h1/h2 have no wrapping .datehead/.blk the way Today/Week/Month's
+   do, so they'd otherwise fall back to the browser default — give them the
+   same treatment those already have, scoped to .learning so nothing else
+   changes. */
+.learning h1{font-family:"Literata",Georgia,serif;font-weight:500;font-size:clamp(26px,5vw,34px);line-height:1.15;margin:0;letter-spacing:-.01em}
+.learning h2{font-family:"Manrope",sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:24px 0 12px;padding-top:16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.learning h2 .count{color:var(--ink-2);letter-spacing:.02em;font-weight:500;text-transform:none;font-size:13px}
+.err{color:var(--stop);font-size:14px;margin-top:8px}
+.sticky{position:sticky;bottom:0;background:var(--ground);padding:12px 0 calc(8px + env(safe-area-inset-bottom,0px));margin-top:18px;border-top:1px solid var(--line)}
+.filebtn{position:relative;overflow:hidden}
+.filebtn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+.btn.ghost{background:transparent;border-color:transparent;color:var(--accent);padding-left:6px;padding-right:6px}
+.btn.danger{color:var(--stop)}
+.btn.back{margin:-6px 0 10px -6px}
+
+.busy{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:14px;padding:10px 0}
+.busy .dot{width:10px;height:10px;border-radius:50%;background:var(--accent);animation:pulse 1.2s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.25}}
+
+.top{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:18px}
+.list{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.li{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--line);cursor:pointer}
+.li:first-child{border-top:0}
+.li-title{font-size:15px;font-weight:600}
+.book{cursor:pointer}
+.book-title{font-family:"Literata",Georgia,serif;font-size:19px;font-weight:500;line-height:1.3}
+.bar{height:4px;background:var(--sunk);border-radius:2px;margin-top:10px;overflow:hidden}
+.bar i{display:block;height:4px;background:var(--accent)}
+
+.typeseg{display:flex;gap:6px;flex-wrap:wrap}
+.typeseg button{flex:1 1 0}
+.typeseg button[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+
+/* the book-page/screenshot reader — highlight color (--mark) is shared,
+   not scoped to .learning, since it's just a highlighter-yellow concept
+   that happens to only be used here right now */
+.reader{font-family:"Literata",Georgia,serif;font-size:18px;line-height:1.8;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+.reader p{margin:0 0 14px}
+.pgno{font-family:"Manrope",sans-serif;font-size:12px;font-weight:700;color:var(--muted);margin:6px 0 8px}
+.s{cursor:pointer;border-radius:3px;-webkit-box-decoration-break:clone;box-decoration-break:clone;padding:2px 1px;margin:0 1px}
+.s.hl{background:var(--mark);color:var(--mark-ink)}
+.hint{font-size:13px;color:var(--ink-2);background:var(--accent-soft);border-radius:9px;padding:10px 14px;margin:0 0 14px}
+.quote{font-family:"Literata",Georgia,serif;font-size:16px;line-height:1.6;margin:8px 0 0;padding:2px 0}
+.lnote{margin-top:10px;font-size:15px}
+.lnote b{font-size:12px;color:var(--muted);display:block;font-weight:700}
+ul.ins{margin:6px 0 0;padding-left:18px;font-size:15px}
+ul.ins li{margin:4px 0}
+
+.block{border-radius:12px;padding:12px 14px;margin-top:12px}
+.block-insights{background:var(--accent-soft)}
+.block-actions{background:var(--sunk)}
+.block-label{font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin:0 0 6px}
+.block .sub{margin:0 0 8px}
+.acts-list{display:flex;flex-direction:column;gap:0}
+.actrow{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line);font-size:15px}
+.actrow:first-child{border-top:0}
+.actrow input[type=checkbox]{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex:none}
+.actrow label{display:block;font:inherit;color:inherit;margin:0;cursor:pointer;flex:1 1 auto}
+.actrow small{display:block;color:var(--muted);font-size:12px}
+.rm{background:none;border:0;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;flex:none}
+.rm.danger{color:var(--stop);font-size:13px;font-weight:600}
+.confirmedrow{display:flex;gap:8px;align-items:center;padding:6px 0;font-size:15px}
+.confirmedrow:before{content:'✓';color:var(--accent);font-weight:700}
+.block-brief{background:var(--surface);border:1px solid var(--line)}
+.block-brief label:first-of-type{margin-top:0}
+.reprow{display:flex;gap:8px;align-items:flex-start;margin-top:8px}
+.reprow>div{flex:1 1 auto;display:flex;flex-direction:column;gap:6px}
+.reprow>input{flex:1 1 auto}
+.reprow .rm{flex:none;margin-top:6px}
+
+.chk{display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line);font-size:15px;cursor:pointer}
+.chk:first-child{border-top:0}
+.chk input{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex:none}
+.chk small{display:block;color:var(--muted);font-size:12px}
+
+/* Learning's own numeric badge ("3 actions") — a rounded pill shape, kept
+   distinct from the existing .pill above (a small uppercase status tag
+   already used by Week/Month, e.g. .pill.ok/.pill.no) rather than
+   overloading that class with a visually different meaning. */
+.badge{font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;background:var(--sunk);color:var(--ink-2);white-space:nowrap}
 </style>
 </head>
 <body>
@@ -371,6 +482,7 @@ label.fld > span{
       <button data-v="today" aria-current="true">Today</button>
       <button data-v="week">Week</button>
       <button data-v="month">Month</button>
+      <button data-v="learning">Learning</button>
     </nav>
   </header>
   <main id="main"><p class="empty">Loading…</p></main>

@@ -83,3 +83,31 @@ export const addMonths = (monthKey, n) => {
   const d = new Date(Date.UTC(y, m - 1 + n, 1));
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
 };
+
+// --- Added for the Learning tab (Phase H merge) — same TZ convention above
+// applies, so a capture timestamped just after midnight lands on the day
+// Lokesh experienced it as. ---
+
+// "2 days ago"-style relative label for a source/capture card, or a plain
+// short date for anything over a week old — takes either an ISO date
+// ("2026-09-09") or a full ISO timestamp.
+export const fmtRelative = (isoOrTimestamp) => {
+  if (!isoOrTimestamp) return "";
+  const d = isoOrTimestamp.length === 10 ? D(isoOrTimestamp) : new Date(isoOrTimestamp);
+  return new Intl.DateTimeFormat("en-US", { timeZone: TZ, month: "short", day: "numeric" }).format(d);
+};
+
+// YYYYMMDDHHMM — used in Learning's inbox/ photo filenames.
+export const nowStamp = () =>
+  new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  })
+    .format(new Date())
+    .replace(/[^\d]/g, "")
+    .slice(0, 12);

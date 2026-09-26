@@ -83,3 +83,67 @@ export function nextTaskId(dateISO, existingTaskArrays) {
   }
   return `T${ymd}-${maxN + 1}`;
 }
+
+// --- Learning tab ID generation, per learning/CLAUDE.md's Routine
+// Processing Instructions (Phase H merge — moved here from learning-app's
+// own compact.js, which had a byte-for-byte identical compact()/encNode()
+// above; only these ID helpers were app-specific, so it's this file that
+// now serves both). ---
+
+// Source id = "LB" + zero-padded sequential number, reserved at source
+// creation. Scans BOTH sources/index.json's rows and library.json's
+// existing briefs[] ids for the highest LB number in use, so a new one
+// never collides — these are two independent id sequences (library.json
+// predates the app's sources/index.json entirely) that must still share
+// one number line.
+const LB_RE = /^LB(\d{3})$/;
+
+export function nextSourceId(sourceRows, libraryBriefIds) {
+  let maxN = 0;
+  for (const row of sourceRows || []) {
+    const m = row && typeof row.id === "string" && row.id.match(LB_RE);
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  }
+  for (const id of libraryBriefIds || []) {
+    const m = typeof id === "string" && id.match(LB_RE);
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  }
+  return `LB${String(maxN + 1).padStart(3, "0")}`;
+}
+
+// Action id within a source, e.g. "LB015-A1" — N sequential within that
+// source, scanning its already-confirmed/queued action ids.
+export function nextActionId(sourceId, existingActionIds) {
+  const re = new RegExp(`^${sourceId}-A(\\d+)$`);
+  let maxN = 0;
+  for (const id of existingActionIds || []) {
+    const m = typeof id === "string" && id.match(re);
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  }
+  return `${sourceId}-A${maxN + 1}`;
+}
+
+// Queue item id, matching the existing convention already live in
+// learning/queue.json ("LQ20260623-01") — date + sequence within that date.
+export function nextQueueItemId(dateISO, existingQueueIds) {
+  const ymd = dateISO.replace(/-/g, "");
+  const re = new RegExp(`^LQ${ymd}-(\\d+)$`);
+  let maxN = 0;
+  for (const id of existingQueueIds || []) {
+    const m = typeof id === "string" && id.match(re);
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  }
+  return `LQ${ymd}-${String(maxN + 1).padStart(2, "0")}`;
+}
+
+// Capture id within a source, "C001", "C002", ... — N sequential within
+// that source's own capture list (not date-based, since a source can get
+// several captures in one sitting).
+export function nextCaptureId(existingCaptureIds) {
+  let maxN = 0;
+  for (const id of existingCaptureIds || []) {
+    const m = typeof id === "string" && id.match(/^C(\d{3})$/);
+    if (m) maxN = Math.max(maxN, parseInt(m[1], 10));
+  }
+  return `C${String(maxN + 1).padStart(3, "0")}`;
+}
