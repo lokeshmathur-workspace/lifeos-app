@@ -6,48 +6,53 @@
 <title>Life OS</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Literata:opsz,wght@7..72,400;7..72,500;7..72,600&family=Manrope:wght@400;500;600;700&display=swap">
 
 <style>
 /* ── tokens ─────────────────────────────────────────────── */
+/* Warm "optimistic and inviting" refresh (Phase H) — shared base with the
+   Learning tab, which keeps its own green accent as the section indicator
+   (Life OS's own indicator is this warm coral). Variable names are kept
+   identical to the previous palette so every existing rule below (and any
+   generated var(--x) in week.js/month.js) needs no changes, only values. */
 :root{
-  --ground:#F2F5F5; --surface:#FFFFFF; --raised:#EAEFF0; --sunk:#E3E9EA;
-  --ink:#0F1518; --ink-2:#3B4A50; --muted:#6B7C82;
-  --line:#D8E0E2; --line-2:#C2CDD0;
-  --accent:#A2660E; --accent-soft:#F7EEDC; --on-accent:#FFFFFF;
-  --d1:#A2660E; --good:#008B7E; --stop:#BA4238;
-  --good-soft:#DFF0EE; --stop-soft:#F8E4E2;
-  --shadow:0 1px 2px rgba(15,21,24,.06), 0 1px 8px rgba(15,21,24,.04);
+  --ground:#FAF5EC; --surface:#FFFFFF; --raised:#F3EAD9; --sunk:#EFE4CE;
+  --ink:#2B2318; --ink-2:#5C4E3B; --muted:#8C7D66;
+  --line:#E8DAC0; --line-2:#D9C7A3;
+  --accent:#E1653F; --accent-soft:#FBE3D6; --on-accent:#FFFFFF;
+  --d1:#C6502E; --good:#3C8F5C; --stop:#C1453A;
+  --good-soft:#DEF0E3; --stop-soft:#F9E1DE;
+  --shadow:0 1px 2px rgba(43,35,24,.08), 0 1px 8px rgba(43,35,24,.05);
   --r:10px;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]){
-    --ground:#0F1518; --surface:#161F23; --raised:#1D282D; --sunk:#121A1D;
-    --ink:#E9EFF0; --ink-2:#A9B8BD; --muted:#71838A;
-    --line:#243136; --line-2:#33454C;
-    --accent:#E9A13B; --accent-soft:#31240F; --on-accent:#0F1518;
-    --d1:#C6851F; --good:#2FA79D; --stop:#CE5A53;
-    --good-soft:#0E2B2A; --stop-soft:#2E1817;
+    --ground:#1A140D; --surface:#241C12; --raised:#2D2317; --sunk:#15100A;
+    --ink:#F4ECDD; --ink-2:#CBBCA0; --muted:#93856E;
+    --line:#3B2E1D; --line-2:#4C3B25;
+    --accent:#F0895F; --accent-soft:#3C2318; --on-accent:#1A140D;
+    --d1:#E0783F; --good:#54BF8A; --stop:#E17E72;
+    --good-soft:#193B27; --stop-soft:#3D1F1A;
     --shadow:0 1px 2px rgba(0,0,0,.4);
   }
 }
 :root[data-theme="dark"]{
-  --ground:#0F1518; --surface:#161F23; --raised:#1D282D; --sunk:#121A1D;
-  --ink:#E9EFF0; --ink-2:#A9B8BD; --muted:#71838A;
-  --line:#243136; --line-2:#33454C;
-  --accent:#E9A13B; --accent-soft:#31240F; --on-accent:#0F1518;
-  --d1:#C6851F; --good:#2FA79D; --stop:#CE5A53;
-  --good-soft:#0E2B2A; --stop-soft:#2E1817;
+  --ground:#1A140D; --surface:#241C12; --raised:#2D2317; --sunk:#15100A;
+  --ink:#F4ECDD; --ink-2:#CBBCA0; --muted:#93856E;
+  --line:#3B2E1D; --line-2:#4C3B25;
+  --accent:#F0895F; --accent-soft:#3C2318; --on-accent:#1A140D;
+  --d1:#E0783F; --good:#54BF8A; --stop:#E17E72;
+  --good-soft:#193B27; --stop-soft:#3D1F1A;
   --shadow:0 1px 2px rgba(0,0,0,.4);
 }
 
 *{box-sizing:border-box}
 body{
   background:var(--ground); color:var(--ink); margin:0;
-  font-family:"Instrument Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-family:"Manrope",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased;
 }
-.serif{font-family:"Instrument Serif",Georgia,serif; font-weight:400}
+.serif{font-family:"Literata",Georgia,serif; font-weight:400}
 .mono{font-family:"IBM Plex Mono",ui-monospace,monospace}
 
 /* ── shell ──────────────────────────────────────────────── */
@@ -55,7 +60,7 @@ body{
 .wrap.wide{max-width:1000px}
 
 header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:22px}
-.brand{font-family:"IBM Plex Mono",monospace;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.brand{font-family:"Manrope",sans-serif;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .spring{flex:1}
 
 .seg{display:flex;background:var(--sunk);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
@@ -78,16 +83,16 @@ header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom
 /* ── date head ──────────────────────────────────────────── */
 .datehead{display:flex;align-items:flex-end;gap:14px;margin-bottom:26px;flex-wrap:wrap}
 .datehead h1{
-  font-family:"Instrument Serif",Georgia,serif;font-weight:400;
+  font-family:"Literata",Georgia,serif;font-weight:400;
   font-size:clamp(30px,6vw,42px);line-height:1;margin:0;letter-spacing:-.01em;
 }
-.datehead .sub{font-family:"IBM Plex Mono",monospace;font-size:11.5px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;padding-bottom:4px}
+.datehead .sub{font-family:"Manrope",sans-serif;font-size:11.5px;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;padding-bottom:4px}
 .nav-day{display:flex;gap:6px;align-items:center;padding-bottom:2px}
 
 /* ── sections ───────────────────────────────────────────── */
 section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
 .blk > h2{
-  font-family:"IBM Plex Mono",monospace;font-size:10.5px;font-weight:600;
+  font-family:"Manrope",sans-serif;font-size:10.5px;font-weight:600;
   letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
   margin:0 0 14px;display:flex;align-items:center;gap:10px;
 }
@@ -98,9 +103,9 @@ section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
 
 /* affirmation */
 .affirm{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:0 var(--r) var(--r) 0;padding:18px 22px}
-.affirm p{margin:0;font-family:"Instrument Serif",Georgia,serif;font-size:20px;line-height:1.45;color:var(--ink)}
+.affirm p{margin:0;font-family:"Literata",Georgia,serif;font-size:20px;line-height:1.45;color:var(--ink)}
 .anchor{display:flex;gap:10px;align-items:baseline;margin-top:14px;font-size:14.5px;color:var(--ink-2)}
-.anchor b{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap;font-weight:600}
+.anchor b{font-family:"Manrope",sans-serif;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);white-space:nowrap;font-weight:600}
 
 /* ── task rows ──────────────────────────────────────────── */
 .tasks{display:flex;flex-direction:column;gap:2px}
@@ -126,7 +131,7 @@ section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
 .task .body{flex:1;min-width:0}
 .task .t{display:block;word-break:break-word}
 .task[data-s="done"] .t{color:var(--ink-2)}
-.task .meta{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-top:3px;display:block}
+.task .meta{font-family:"Manrope",sans-serif;font-size:10px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-top:3px;display:block}
 
 /* ── six-rail: the app's motif ──────────────────────────── */
 .rail{display:grid;grid-template-columns:repeat(6,1fr);gap:6px}
@@ -148,7 +153,7 @@ section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
 .notes{display:flex;flex-direction:column;gap:1px;margin-bottom:12px}
 .note{display:flex;gap:12px;padding:9px 2px;border-bottom:1px solid var(--line)}
 .note:last-child{border-bottom:0}
-.note .notetime-edit{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);flex:none;width:74px;padding:2px 4px;border:1px solid transparent;background:none;border-radius:5px}
+.note .notetime-edit{font-family:"Manrope",sans-serif;font-size:11px;color:var(--muted);flex:none;width:74px;padding:2px 4px;border:1px solid transparent;background:none;border-radius:5px}
 .note .notetime-edit:hover,.note .notetime-edit:focus{border-color:var(--line);background:var(--surface);color:var(--ink)}
 .note .txt{flex:1;white-space:pre-wrap;word-break:break-word;font-size:14.5px}
 .note.insight .txt{border-left:2px solid var(--accent);padding-left:10px}
@@ -166,7 +171,7 @@ textarea::placeholder,input::placeholder{color:var(--muted)}
 textarea:focus,input:focus,select:focus{border-color:var(--accent)}
 label.fld{display:block;margin-bottom:14px}
 label.fld > span{
-  display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;font-weight:600;
+  display:block;font-family:"Manrope",sans-serif;font-size:10px;font-weight:600;
   letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;
 }
 
@@ -185,51 +190,51 @@ label.fld > span{
 /* ── stats ──────────────────────────────────────────────── */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px}
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px 16px}
-.stat .k{font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
-.stat .v{font-family:"Instrument Serif",Georgia,serif;font-size:31px;line-height:1.1;margin-top:5px;font-variant-numeric:tabular-nums}
+.stat .k{font-family:"Manrope",sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+.stat .v{font-family:"Literata",Georgia,serif;font-size:31px;line-height:1.1;margin-top:5px;font-variant-numeric:tabular-nums}
 .stat .v small{font-size:15px;color:var(--muted)}
 
 /* hph rows */
 .hphlist{display:flex;flex-direction:column;gap:9px}
 .hphrow{display:grid;grid-template-columns:96px 1fr 34px;gap:12px;align-items:center}
 .hphrow .nm{font-size:13px;color:var(--ink-2)}
-.hphrow .num{font-family:"IBM Plex Mono",monospace;font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
+.hphrow .num{font-family:"Manrope",sans-serif;font-size:12.5px;text-align:right;font-variant-numeric:tabular-nums;color:var(--ink)}
 .hphrow input[type=range]{width:100%;accent-color:var(--accent)}
 
 /* ── week view: progress + category plan ───────────────────── */
-.tag{font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:5px;line-height:1.6;background:var(--raised);color:var(--muted)}
+.tag{font-family:"Manrope",sans-serif;font-size:9px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;padding:2px 7px;border-radius:5px;line-height:1.6;background:var(--raised);color:var(--muted)}
 .tag.new{background:var(--accent-soft);color:var(--accent)}
 .tag.moved{background:var(--sunk);color:var(--ink-2)}
 
 .progressband{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px 20px;box-shadow:var(--shadow)}
 .progressband .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
-.progressband .num{font-family:"Instrument Serif",Georgia,serif;font-size:26px}
-.progressband .lbl{font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.progressband .num{font-family:"Literata",Georgia,serif;font-size:26px}
+.progressband .lbl{font-family:"Manrope",sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
 .progressband .track{height:8px;background:var(--sunk);border-radius:5px;overflow:hidden;display:flex}
 .progressband .track .seg{height:100%}
 .progressband .keyfocus{margin:12px 0 0;font-size:14px;color:var(--ink-2);padding-top:12px;border-top:1px solid var(--line)}
-.progressband .keyfocus b{color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:4px}
+.progressband .keyfocus b{color:var(--muted);font-family:"Manrope",sans-serif;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:4px}
 .progressband .keyfocus textarea{margin-top:2px}
 
 .pillargroup{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);margin-bottom:10px;overflow:hidden}
 .pillarhead{display:flex;align-items:center;gap:10px;padding:11px 14px;background:var(--raised);border-bottom:1px solid var(--line)}
 .pillarhead .nm{font-weight:600;font-size:13.5px;flex:1}
-.pillarhead .prog{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--muted)}
+.pillarhead .prog{font-family:"Manrope",sans-serif;font-size:10.5px;color:var(--muted)}
 .ptask2{display:flex;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid var(--line)}
 .ptask2:last-of-type{border-bottom:0}
 .ptask2 .box{width:15px;height:15px;border-radius:4px;border:1.5px solid var(--line-2);flex:none;cursor:pointer}
 .ptask2.done .box{border-color:var(--good);background:var(--good)}
 .ptask2 .tk{flex:1;font-size:13.5px}
 .ptask2.done .tk{color:var(--muted);text-decoration:line-through}
-.ptask2 .daychip{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:5px;padding:2px 6px;flex:none}
-.ptask2 .cf{font-family:"IBM Plex Mono",monospace;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--stop);background:var(--stop-soft);border-radius:5px;padding:2px 6px;flex:none}
+.ptask2 .daychip{font-family:"Manrope",sans-serif;font-size:9.5px;color:var(--muted);border:1px solid var(--line-2);border-radius:5px;padding:2px 6px;flex:none}
+.ptask2 .cf{font-family:"Manrope",sans-serif;font-size:9px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--stop);background:var(--stop-soft);border-radius:5px;padding:2px 6px;flex:none}
 .ptask2 .rm{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;flex:none}
 .addrow{display:flex;gap:8px;padding:9px 14px;align-items:center}
 .addrow input{flex:1;background:var(--sunk);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:13px;color:var(--ink)}
 .addrow select{background:var(--sunk);border:1px solid var(--line);border-radius:7px;padding:7px 9px;font:inherit;font-size:12px;color:var(--ink-2);flex:none;width:92px}
 .addrow button{flex:none;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);border-radius:7px;padding:7px 12px;font:inherit;font-size:13px;cursor:pointer}
 .frommonth{background:var(--accent-soft);border-top:1px solid var(--line);padding:8px 14px}
-.frommonth .lbl{font-family:"IBM Plex Mono",monospace;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;display:block}
+.frommonth .lbl{font-family:"Manrope",sans-serif;font-size:9px;letter-spacing:.07em;text-transform:uppercase;color:var(--accent);margin-bottom:6px;display:block}
 .frommonth .item{display:flex;gap:8px;align-items:center;padding:4px 0;font-size:12.5px;color:var(--ink-2)}
 .frommonth .item span{flex:1}
 .frommonth .item button{flex:none;border:1px solid var(--accent);background:none;color:var(--accent);border-radius:6px;padding:3px 9px;font:inherit;font-size:11.5px;cursor:pointer}
@@ -239,7 +244,7 @@ label.fld > span{
 /* ── month view: plan + progress, intentions by category ───── */
 .progressband .fields{margin:12px 0 0;padding-top:12px;border-top:1px solid var(--line);display:flex;flex-direction:column;gap:10px}
 .progressband .fields label{display:block}
-.progressband .fields label b{color:var(--muted);font-family:"IBM Plex Mono",monospace;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:4px}
+.progressband .fields label b{color:var(--muted);font-family:"Manrope",sans-serif;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:4px}
 .progressband .rowfields{display:grid;grid-template-columns:1fr 200px;gap:10px}
 @media(max-width:520px){.progressband .rowfields{grid-template-columns:1fr}}
 
@@ -249,15 +254,15 @@ label.fld > span{
 .introw .txt{flex:1;font-size:13.5px;background:var(--surface);border:1px solid transparent;border-radius:6px;padding:2px 4px}
 .introw .txt:focus{border-color:var(--line);outline:none}
 .introw.done .txt{color:var(--muted)}
-.introw select.status{font-family:"IBM Plex Mono",monospace;font-size:10px;text-transform:uppercase;border:1px solid var(--line-2);border-radius:6px;padding:3px 6px;background:var(--surface);color:var(--ink-2);flex:none;width:112px}
+.introw select.status{font-family:"Manrope",sans-serif;font-size:10px;text-transform:uppercase;border:1px solid var(--line-2);border-radius:6px;padding:3px 6px;background:var(--surface);color:var(--ink-2);flex:none;width:112px}
 .introw .rm{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;flex:none}
 .introw .proggy{display:flex;align-items:center;gap:8px}
 .introw .proggy input[type=range]{flex:1;accent-color:var(--accent)}
-.introw .proggy .pct{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--muted);width:34px;text-align:right}
+.introw .proggy .pct{font-family:"Manrope",sans-serif;font-size:10.5px;color:var(--muted);width:34px;text-align:right}
 
 .kdrow{display:flex;gap:10px;align-items:center;padding:9px 0;border-top:1px solid var(--line)}
 .kdrow:first-of-type{border-top:0}
-.kdrow .date{font-family:"IBM Plex Mono",monospace;font-size:11.5px;color:var(--muted);flex:none;width:60px}
+.kdrow .date{font-family:"Manrope",sans-serif;font-size:11.5px;color:var(--muted);flex:none;width:60px}
 .kdrow .ev{flex:1;font-size:13.5px;background:var(--surface);border:1px solid transparent;border-radius:6px;padding:2px 4px}
 .kdrow .ev:focus{border-color:var(--line);outline:none}
 .kdrow .rm{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;flex:none}
@@ -272,17 +277,17 @@ label.fld > span{
 .monthcard{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);padding:14px 16px;margin-bottom:8px}
 .monthcard .row1{display:flex;justify-content:space-between;gap:10px;margin-bottom:6px}
 .monthcard .txt{font-size:13.5px;flex:1}
-.monthcard .pl{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--muted);text-transform:uppercase;flex:none}
-.monthcard .pct{font-family:"IBM Plex Mono",monospace;font-size:10.5px;color:var(--muted);margin-top:4px;display:block}
+.monthcard .pl{font-family:"Manrope",sans-serif;font-size:9.5px;color:var(--muted);text-transform:uppercase;flex:none}
+.monthcard .pct{font-family:"Manrope",sans-serif;font-size:10.5px;color:var(--muted);margin-top:4px;display:block}
 
 /* month view's pillar-health bars */
 .pbars{display:flex;flex-direction:column;gap:9px}
 .pbar{display:grid;grid-template-columns:110px 1fr 40px;gap:10px;align-items:center;font-size:13px;color:var(--ink-2)}
-.pbar .n{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted);text-align:right}
+.pbar .n{font-family:"Manrope",sans-serif;font-size:11px;color:var(--muted);text-align:right}
 
 /* month view's calendar */
 .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
-.cal .dow{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--muted);text-align:center;padding:4px 0}
+.cal .dow{font-family:"Manrope",sans-serif;font-size:10px;color:var(--muted);text-align:center;padding:4px 0}
 .cal .day{aspect-ratio:1;border-radius:7px;background:var(--sunk);display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--ink-2)}
 .cal .day.blank{background:none}
 .cal .day.has{cursor:pointer;color:var(--ink);font-weight:500}
@@ -291,13 +296,13 @@ label.fld > span{
 /* week view's redesigned hph-by-day chart */
 .hphchart{position:relative;height:110px;display:flex;align-items:flex-end;gap:8px;padding-top:14px}
 .hphchart .threshold{position:absolute;left:0;right:0;border-top:1px dashed var(--line-2)}
-.hphchart .threshold span{position:absolute;right:0;top:-16px;font-family:"IBM Plex Mono",monospace;font-size:9px;color:var(--muted);background:var(--ground);padding:0 4px}
+.hphchart .threshold span{position:absolute;right:0;top:-16px;font-family:"Manrope",sans-serif;font-size:9px;color:var(--muted);background:var(--ground);padding:0 4px}
 .hbar{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;height:100%;justify-content:flex-end;position:relative}
-.hbar .val{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.hbar .val{font-family:"Manrope",sans-serif;font-size:10px;color:var(--ink-2);font-variant-numeric:tabular-nums}
 .hbar .col{width:100%;border-radius:3px 3px 0 0}
 .hbar .col.filled{background:var(--d1)}
 .hbar .col.empty{background:var(--sunk)}
-.hbar .dow{font-family:"IBM Plex Mono",monospace;font-size:10px;color:var(--muted)}
+.hbar .dow{font-family:"Manrope",sans-serif;font-size:10px;color:var(--muted)}
 /* month view's weekly-HPH chart has a variable, often small, number of bars —
    without this a lone closed week stretches into one solid block instead of
    reading as a bar chart. Week's own day-by-day chart always has exactly 7
@@ -308,16 +313,16 @@ label.fld > span{
 
 /* week view's split business/vitality core-step tables */
 .coretable{width:100%;border-collapse:collapse;font-size:10px}
-.coretable th{padding:3px;color:var(--muted);font-weight:500;font-family:"IBM Plex Mono",monospace}
-.coretable td{padding:2px;text-align:center;color:var(--muted);font-family:"IBM Plex Mono",monospace}
+.coretable th{padding:3px;color:var(--muted);font-weight:500;font-family:"Manrope",sans-serif}
+.coretable td{padding:2px;text-align:center;color:var(--muted);font-family:"Manrope",sans-serif}
 .coretable td.dow{text-align:left;padding-right:6px}
 
 /* misc */
 .empty{color:var(--muted);font-size:14px;padding:14px 0}
-.pill{display:inline-block;font-family:"IBM Plex Mono",monospace;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:var(--raised);color:var(--ink-2)}
+.pill{display:inline-block;font-family:"Manrope",sans-serif;font-size:10px;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:5px;background:var(--raised);color:var(--ink-2)}
 .pill.ok{background:var(--good-soft);color:var(--good)}
 .pill.no{background:var(--stop-soft);color:var(--stop)}
-.savenote{font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--muted)}
+.savenote{font-family:"Manrope",sans-serif;font-size:11px;color:var(--muted)}
 .savenote.warn{color:var(--stop);font-weight:600;background:var(--stop-soft);padding:6px 10px;border-radius:6px;display:inline-block}
 .thinking{color:var(--muted);font-style:italic}
 .t3row{display:flex;gap:8px;align-items:center;margin-bottom:8px}
@@ -330,13 +335,13 @@ label.fld > span{
 /* task picker — "if there's time" / "plan tomorrow" */
 .picker{display:flex;flex-direction:column;gap:12px}
 .pickgroup{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--raised)}
-.pickgroup h4{margin:0 0 6px;font-family:"IBM Plex Mono",monospace;font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;gap:6px;align-items:baseline}
+.pickgroup h4{margin:0 0 6px;font-family:"Manrope",sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;gap:6px;align-items:baseline}
 .pickgroup h4 span{font-weight:400;text-transform:none;letter-spacing:0}
 .pickrow{display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
 .pickrow:first-of-type{border-top:0}
 .pickrow input[type=checkbox]{width:16px;height:16px;flex:none;accent-color:var(--accent)}
 .pickrow .tk{font-size:13.5px;flex:1}
-.pickrow .pl{font-family:"IBM Plex Mono",monospace;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+.pickrow .pl{font-family:"Manrope",sans-serif;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .banner{background:var(--accent-soft);border:1px solid var(--accent);color:var(--ink);padding:11px 14px;border-radius:9px;font-size:13.5px;margin-bottom:18px}
 .banner.err{background:var(--stop-soft);border-color:var(--stop)}
 /* modal */
