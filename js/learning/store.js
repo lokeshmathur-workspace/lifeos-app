@@ -129,6 +129,38 @@ export class LearningStore {
     }
   }
 
+  // Writes meta.json via a compute function rather than a precomputed doc,
+  // retrying once against a freshly-read meta on a write failure —
+  // meta.json is nearly as write-contended as index.json (every
+  // source-level action touches it: add/delete a capture, confirm actions,
+  // finish a book, discard a brief draft), so it gets the same
+  // retry-once-from-a-fresh-read treatment _writeIndex already has. This is
+  // what closed the real bug where a capture upload landing right after an
+  // unrelated meta.json write (e.g. a delete) lost the race, silently
+  // leaving its capture file orphaned — invisible in the UI even though it
+  // was safely on disk. Returns the new meta doc on success, or null if the
+  // source doesn't exist or both the original attempt and the retry fail.
+  async _writeMeta(sourceId, computeMeta, message) {
+    let meta = await this.getSource(sourceId);
+    if (!meta) return null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const newMeta = computeMeta(meta);
+      this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
+      const ok = await this._writeFile(
+        metaPath(sourceId),
+        newMeta,
+        () => this.sources.get(sourceId),
+        (n) => this.sources.set(sourceId, n),
+        message,
+        true
+      );
+      if (ok) return newMeta;
+      if (attempt === 1) return null;
+      meta = await this.getSource(sourceId, true);
+      if (!meta) return null;
+    }
+  }
+
   async getSource(id, force = false) {
     const key = id;
     if (!force && this.sources.has(key)) return this.sources.get(key).doc;
@@ -173,17 +205,17 @@ export class LearningStore {
   // reading" buttons). Only touches status/finishedAt — never the captures
   // or brief fields.
   async setSourceStatus(sourceId, status) {
-    const meta = await this.getSource(sourceId);
-    if (!meta) return null;
-    const newMeta = {
-      ...meta,
-      status,
-      finishedAt: status === SOURCE_STATUS.FINISHED ? new Date().toISOString() : "",
-      updatedAt: new Date().toISOString(),
-    };
-    this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
-    const ok = await this._writeFile(metaPath(sourceId), newMeta, () => this.sources.get(sourceId), (n) => this.sources.set(sourceId, n), `learning: ${sourceId} ${status}`, true);
-    if (!ok) return null;
+    const newMeta = await this._writeMeta(
+      sourceId,
+      (meta) => ({
+        ...meta,
+        status,
+        finishedAt: status === SOURCE_STATUS.FINISHED ? new Date().toISOString() : "",
+        updatedAt: new Date().toISOString(),
+      }),
+      `learning: ${sourceId} ${status}`
+    );
+    if (!newMeta) return null;
     await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
     return newMeta;
   }
@@ -303,20 +335,24 @@ export class LearningStore {
       ...(captureFields.needsInsights ? { needsInsights: true } : {}),
       actionIds: captureFields.actionIds || [],
     };
-    const newMeta = { ...meta, captures: [...(meta.captures || []), lightRow], updatedAt: new Date().toISOString() };
-    if (captureFields.type === "page" && (captureFields.pages || []).length) {
-      const lastPage = captureFields.pages.filter((p) => p.page).slice(-1)[0]?.page;
-      if (lastPage) newMeta.lastPage = lastPage;
-    }
-    this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
-    await this._writeFile(
-      metaPath(sourceId),
-      newMeta,
-      () => this.sources.get(sourceId),
-      (n) => this.sources.set(sourceId, n),
-      `learning: ${sourceId} meta update`,
-      true
+    const newMeta = await this._writeMeta(
+      sourceId,
+      (freshMeta) => {
+        const nm = { ...freshMeta, captures: [...(freshMeta.captures || []), lightRow], updatedAt: new Date().toISOString() };
+        if (captureFields.type === "page" && (captureFields.pages || []).length) {
+          const lastPage = captureFields.pages.filter((p) => p.page).slice(-1)[0]?.page;
+          if (lastPage) nm.lastPage = lastPage;
+        }
+        return nm;
+      },
+      `learning: ${sourceId} meta update`
     );
+    // The capture file itself is already safely written at this point even
+    // if the meta.json update below fails — reporting failure here (rather
+    // than the old behavior of returning capId regardless) means the
+    // caller's error surfaces instead of silently leaving that capture
+    // invisible in the UI forever.
+    if (!newMeta) return null;
 
     await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
     return capId;
@@ -345,9 +381,8 @@ export class LearningStore {
         });
       }
     }
-    const newMeta = { ...meta, captures: rows };
-    this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
-    await this._writeFile(metaPath(sourceId), newMeta, () => this.sources.get(sourceId), (n) => this.sources.set(sourceId, n), `learning: rebuild ${sourceId} projection`, true);
+    const newMeta = await this._writeMeta(sourceId, (freshMeta) => ({ ...freshMeta, captures: rows }), `learning: rebuild ${sourceId} projection`);
+    if (!newMeta) return;
     await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
   }
 
@@ -416,11 +451,14 @@ export class LearningStore {
       }
     }
 
-    const newMeta = { ...meta, captures: (meta.captures || []).filter((c) => c.id !== captureId), updatedAt: new Date().toISOString() };
-    this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
-    await this._writeFile(metaPath(sourceId), newMeta, () => this.sources.get(sourceId), (n) => this.sources.set(sourceId, n), `learning: ${sourceId} remove ${captureId}`, true);
-    const indexOk = await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
+    const newMeta = await this._writeMeta(
+      sourceId,
+      (freshMeta) => ({ ...freshMeta, captures: (freshMeta.captures || []).filter((c) => c.id !== captureId), updatedAt: new Date().toISOString() }),
+      `learning: ${sourceId} remove ${captureId}`
+    );
     this.captures.delete(`${sourceId}/${captureId}`);
+    if (!newMeta) return false;
+    const indexOk = await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
 
     const actionIds = (row && row.actionIds) || (full && full.confirmedActions) || [];
     if (actionIds.length) {
@@ -506,9 +544,7 @@ export class LearningStore {
       };
       q.items = [...q.items, item];
       if (!sourceMeta.queueItemId) {
-        const newMeta = { ...sourceMeta, queueItemId: id };
-        this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
-        await this._writeFile(metaPath(sourceId), newMeta, () => this.sources.get(sourceId), (n) => this.sources.set(sourceId, n), `learning: ${sourceId} queueItemId`, true);
+        await this._writeMeta(sourceId, (freshMeta) => ({ ...freshMeta, queueItemId: id }), `learning: ${sourceId} queueItemId`);
       }
     }
     const existingIds = item.actionItems.map((a) => a.actionId);
@@ -570,19 +606,18 @@ export class LearningStore {
       await this._writeFile(capturePath(sourceId, captureId), doc, () => this.captures.get(key), (n) => this.captures.set(key, n), `learning: ${sourceId}/${captureId} confirm actions`, true);
     }
 
-    const meta = await this.getSource(sourceId);
-    if (meta) {
-      const newMeta = {
-        ...meta,
-        captures: (meta.captures || []).map((c) =>
+    const newMeta = await this._writeMeta(
+      sourceId,
+      (freshMeta) => ({
+        ...freshMeta,
+        captures: (freshMeta.captures || []).map((c) =>
           c.id === captureId ? { ...c, actionIds: [...(c.actionIds || []), ...newIds] } : c
         ),
         updatedAt: new Date().toISOString(),
-      };
-      this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
-      await this._writeFile(metaPath(sourceId), newMeta, () => this.sources.get(sourceId), (n) => this.sources.set(sourceId, n), `learning: ${sourceId} confirm actions`, true);
-      await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
-    }
+      }),
+      `learning: ${sourceId} confirm actions`
+    );
+    if (newMeta) await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
     return newIds;
   }
 
@@ -600,16 +635,19 @@ export class LearningStore {
   // Clears a routine-drafted brief without saving it, so Lokesh can fire
   // "Create learning brief" again for a fresh draft.
   async discardDraftBrief(sourceId) {
-    const meta = await this.getSource(sourceId);
-    if (!meta) return false;
-    const newMeta = { ...meta };
-    delete newMeta.draftBrief;
-    this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
-    return this._writeFile(metaPath(sourceId), newMeta, () => this.sources.get(sourceId), (n) => this.sources.set(sourceId, n), `learning: ${sourceId} discard draft brief`, true);
+    const newMeta = await this._writeMeta(
+      sourceId,
+      (meta) => {
+        const nm = { ...meta };
+        delete nm.draftBrief;
+        return nm;
+      },
+      `learning: ${sourceId} discard draft brief`
+    );
+    return !!newMeta;
   }
 
   async confirmBrief(sourceId, briefFields) {
-    const meta = await this.getSource(sourceId);
     const lib = await this.getLibrary();
     const doc = {
       ...lib,
@@ -619,10 +657,16 @@ export class LearningStore {
     };
     const ok = await this._writeFile(LIBRARY_PATH, doc, () => this.library, (n) => (this.library = n), `learning: brief ${sourceId} — ${briefFields.title}`, true);
     if (!ok) return false;
-    const newMeta = { ...meta, briefId: sourceId, status: SOURCE_STATUS.FINISHED, finishedAt: meta.finishedAt || new Date().toISOString(), draftBrief: undefined };
-    delete newMeta.draftBrief;
-    this.sources.set(sourceId, { doc: newMeta, sha: this.sources.get(sourceId)?.sha });
-    await this._writeFile(metaPath(sourceId), newMeta, () => this.sources.get(sourceId), (n) => this.sources.set(sourceId, n), `learning: ${sourceId} finished`, true);
+    const newMeta = await this._writeMeta(
+      sourceId,
+      (meta) => {
+        const nm = { ...meta, briefId: sourceId, status: SOURCE_STATUS.FINISHED, finishedAt: meta.finishedAt || new Date().toISOString() };
+        delete nm.draftBrief;
+        return nm;
+      },
+      `learning: ${sourceId} finished`
+    );
+    if (!newMeta) return false;
     await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
     return true;
   }
