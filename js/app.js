@@ -437,7 +437,8 @@ function catRowHtml(t, weekDay) {
       <input type="checkbox" class="pick" value="${esc(t.id)}" ${S.picked.has(t.id) ? "checked" : ""}>
       <span class="tk">${esc(t.task)}</span>
       ${tag ? `<span class="due">${esc(tag)}</span>` : ""}
-      <button type="button" class="drop" data-drop="${esc(t.id)}" title="Remove from your list">×</button>
+      <button type="button" class="markdone" data-done="${esc(t.id)}" title="Already done" aria-label="Mark done">✓</button>
+      <button type="button" class="drop" data-drop="${esc(t.id)}" title="Delete — no longer needed" aria-label="Delete">×</button>
     </label>`;
 }
 
@@ -741,7 +742,7 @@ async function refreshPickerCounts() {
   const master = await S.store.getTasks();
   pin.innerHTML = todayPinHtml(master);
   document.querySelectorAll(".cat").forEach((cat) => {
-    const rows = cat.querySelectorAll(".catrow");
+    const rows = cat.querySelectorAll(".catrow:not(.isdone)");
     const n = [...rows].filter((r) => S.picked.has(r.dataset.id)).length;
     cat.querySelector(".cnt").textContent = `${n ? n + " picked · " : ""}${rows.length} open`;
   });
@@ -759,6 +760,44 @@ function wirePicker(weekDoc) {
     if (S.view !== "today" || !e.target.classList.contains("pick")) return;
     e.target.checked ? S.picked.add(e.target.value) : S.picked.delete(e.target.value);
     refreshCounts();
+  });
+  // ✓ on a picker row: the task is already done — mark it so in the master list.
+  // Undo stays on the row for a few seconds before it leaves the list.
+  root.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".catrow .markdone, .catrow .undodone");
+    if (S.view !== "today" || !btn) return;
+    e.preventDefault();
+    const row = btn.closest(".catrow");
+    const id = row.dataset.id;
+    const err = row.closest(".cat").querySelector(".caterr");
+    const undo = btn.classList.contains("undodone");
+    btn.disabled = true;
+    const ok = await setTaskStatus(S.store, [id], undo ? "not_started" : "done", undo ? "life-os: task reopened" : "life-os: task done").catch(() => null);
+    btn.disabled = false;
+    if (!ok) return showCatError(err, undo ? "Couldn't undo" : "Couldn't mark it done");
+    err.hidden = true;
+    clearTimeout(Number(row.dataset.doneTimer || 0));
+    if (undo) {
+      row.classList.remove("isdone");
+      row.querySelector(".donenote")?.remove();
+      row.querySelector(".pick").disabled = false;
+    } else {
+      S.picked.delete(id);
+      const pick = row.querySelector(".pick");
+      pick.checked = false;
+      pick.disabled = true;
+      row.classList.add("isdone");
+      row.insertAdjacentHTML("beforeend", `<span class="donenote">Done · <button type="button" class="undodone">Undo</button></span>`);
+      row.dataset.doneTimer = String(
+        setTimeout(() => {
+          if (row.isConnected && row.classList.contains("isdone")) {
+            row.remove();
+            refreshPickerCounts();
+          }
+        }, 5000)
+      );
+    }
+    refreshPickerCounts();
   });
   root.addEventListener("click", async (e) => {
     const drop = e.target.closest(".catrow .drop");
