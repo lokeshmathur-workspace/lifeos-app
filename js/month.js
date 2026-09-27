@@ -9,6 +9,8 @@ import { todayISO, monthName, daysInMonth, D, mondayOf, monthKeyOf, addMonths } 
 import { hphAvg, evening } from "./derive.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
+import { perHabitAvg, loadMonthWeeks, monthGlanceHtml, monthReviewHtml, wireMonthReview } from "./reviews.js";
+import { isOpen } from "./tasks.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -37,15 +39,6 @@ export function pillarHealth(dates, daysMap) {
     health[p] = total ? Math.round((100 * done) / total) : null;
   }
   return health;
-}
-
-function perHabitAvg(dates, daysMap) {
-  const out = {};
-  for (const [k] of HPH) {
-    const vals = dates.map((d) => daysMap.get(d)).filter(Boolean).map((doc) => evening(doc).hph?.[k]).filter((v) => typeof v === "number");
-    out[k] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
-  }
-  return out;
 }
 
 // Genuinely lowest-scoring habit last month, or null if there's no prior data —
@@ -104,6 +97,17 @@ export async function renderMonthView(store, S, renderApp) {
 
   const curWeekOf = mondayOf(todayISO());
 
+  // Weeks at a glance + the review that starts from them (not for future months).
+  const started = monthKey <= realKey;
+  const weeks = started ? await loadMonthWeeks(store, year, monthNum) : [];
+  const reviewCtx = { store, S, renderApp, monthKey, monthDoc, weeks, dates, daysMap, editing: !!S.monthReviewEditing };
+  const rollup = (first) => (started ? monthGlanceHtml(weeks, first) + monthReviewHtml(reviewCtx) : "");
+
+  // Open tasks from the master list, offered as intentions per category.
+  const master = editable ? await store.getTasks() : { tasks: [] };
+  const intentTexts = new Set(intentions.map((it) => it.intention.trim().toLowerCase()));
+  const openList = master.tasks.filter((t) => isOpen(t) && !intentTexts.has(t.task.trim().toLowerCase()));
+
   main.innerHTML = `
     <div class="datehead" style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:12px">
@@ -117,7 +121,9 @@ export async function renderMonthView(store, S, renderApp) {
       ${monthKey !== realKey ? `<button class="btn sm" id="jumpthismonth">This month</button>` : ""}
     </div>
 
-    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+    ${isPast ? rollup(true) : ""}
+
+    <section class="blk" ${isPast ? "" : 'style="border-top:0;padding-top:0;margin-top:0"'}>
       <h2>This month's plan</h2>
       <div class="progressband">
         <div class="top">
@@ -156,10 +162,12 @@ export async function renderMonthView(store, S, renderApp) {
       }
     </section>
 
+    ${isPast ? "" : rollup(false)}
+
     <section class="blk">
       <h2>Intentions by category</h2>
       ${Object.entries(PILLARS)
-        .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable))
+        .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable, openList))
         .join("")}
     </section>
 
@@ -202,10 +210,12 @@ export async function renderMonthView(store, S, renderApp) {
       ${calendarGrid(year, monthNum, daysMap)}
     </section>`;
 
+  wireMonthReview(reviewCtx);
   wireMonth(store, S, renderApp, monthKey, monthDoc, editable);
 }
 
-function intentionGroupHtml(key, label, intentions, editable) {
+function intentionGroupHtml(key, label, intentions, editable, openList) {
+  const fromList = editable ? openList.filter((t) => t.pillar === key) : [];
   const rows = intentions
     .map((it, i) => ({ it, i }))
     .filter(({ it }) => it.pillar === key);
@@ -244,6 +254,22 @@ function intentionGroupHtml(key, label, intentions, editable) {
         </div>`
           )
           .join("") || (editable ? "" : `<p class="empty" style="padding:10px 14px;font-size:12.5px">No intentions.</p>`)
+      }
+      ${
+        fromList.length
+          ? `<details class="frommonth">
+        <summary class="lbl" style="cursor:pointer">From your task list (${fromList.length})</summary>
+        ${fromList
+          .map(
+            (t) => `
+        <div class="item">
+          <span>${esc(t.task)}</span>
+          <button class="pull-intent" data-pillar="${key}" data-text="${esc(t.task)}">+ Add as intention</button>
+        </div>`
+          )
+          .join("")}
+      </details>`
+          : ""
       }
       ${
         editable
@@ -327,14 +353,17 @@ function calendarGrid(year, month, daysMap) {
 function wireMonth(store, S, renderApp, monthKey, monthDoc, editable) {
   $("#prevmonth")?.addEventListener("click", () => {
     S.month = addMonths(monthKey, -1);
+    S.monthReviewEditing = false;
     renderApp();
   });
   $("#nextmonth")?.addEventListener("click", () => {
     S.month = addMonths(monthKey, 1);
+    S.monthReviewEditing = false;
     renderApp();
   });
   $("#jumpthismonth")?.addEventListener("click", () => {
     S.month = monthKeyOf(todayISO());
+    S.monthReviewEditing = false;
     renderApp();
   });
 
@@ -430,6 +459,15 @@ function wireMonth(store, S, renderApp, monthKey, monthDoc, editable) {
       const text = input.value.trim();
       if (!text) return;
       const intentions = [...(monthDoc.intentions || []), { intention: text, pillar, status: "not_started", progress: 0 }];
+      monthDoc.intentions = intentions;
+      saveIntentions(intentions);
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll(".pull-intent").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const intentions = [...(monthDoc.intentions || []), { intention: btn.dataset.text, pillar: btn.dataset.pillar, status: "not_started", progress: 0 }];
       monthDoc.intentions = intentions;
       saveIntentions(intentions);
       renderApp();

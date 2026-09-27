@@ -343,7 +343,8 @@ label.fld > span{
 .pickgroup{border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;background:var(--raised)}
 .pickgroup h4{margin:0 0 6px;font-family:"Manrope",sans-serif;font-size:9.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);display:flex;gap:6px;align-items:baseline}
 .pickgroup h4 span{font-weight:400;text-transform:none;letter-spacing:0}
-.pickrow{display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
+.pickrow,.picker label.pickrow{display:flex;gap:9px;align-items:center;padding:6px 0;border-top:1px solid var(--line);cursor:pointer}
+.picker label.pickrow{font-size:inherit;font-weight:400;color:var(--ink);margin:0}
 .pickrow:first-of-type{border-top:0}
 .pickrow input[type=checkbox]{width:16px;height:16px;flex:none;accent-color:var(--accent)}
 .pickrow .tk{font-size:13.5px;flex:1}
@@ -380,6 +381,18 @@ label.fld > span{
 .answers dd{margin:0}
 .prefill{background:var(--good-soft);border-radius:9px;padding:10px 12px;font-size:14px;margin-bottom:10px}
 .prefill b{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--good);margin-bottom:3px}
+.glance{padding:4px 0}
+.glrow{display:grid;grid-template-columns:auto auto 1fr;gap:4px 12px;align-items:baseline;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--line);padding:10px 16px;font:inherit;color:var(--ink);cursor:pointer}
+.glrow:first-child{border-top:0}
+.glrow:disabled{cursor:default;opacity:.55}
+.glrow:not(:disabled):hover{background:var(--raised)}
+.glrow b{font-size:13.5px;min-width:34px}
+.glmeta{font-size:12px;color:var(--muted);white-space:nowrap}
+.glhl{font-size:13px;color:var(--ink-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+@media (max-width:560px){.glrow{grid-template-columns:auto 1fr}.glhl{grid-column:1/-1;white-space:normal}}
+.rv{display:flex;flex-direction:column;gap:12px}
+.rvrow b{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
+.rvrow p{margin:0;font-size:14px;line-height:1.5}
 .pickrow .pl{font-family:"Manrope",sans-serif;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
 .banner{background:var(--accent-soft);border:1px solid var(--accent);color:var(--ink);padding:11px 14px;border-radius:9px;font-size:13.5px;margin-bottom:18px}
 .banner.err{background:var(--stop-soft);border-color:var(--stop)}

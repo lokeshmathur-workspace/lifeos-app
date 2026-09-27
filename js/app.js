@@ -130,6 +130,13 @@ window.addEventListener("lifeos:goto-day", (e) => {
   renderApp();
 });
 
+window.addEventListener("lifeos:goto-week", (e) => {
+  S.week = e.detail;
+  S.view = "week";
+  S.weekReviewEditing = false;
+  renderApp();
+});
+
 document.addEventListener("DOMContentLoaded", () => {
   $("#seg").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-v]");

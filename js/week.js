@@ -18,6 +18,7 @@ import { addTasks, setTaskStatus, isOpen } from "./tasks.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
 import { pillarHealth, monthDates } from "./month.js";
+import { weekGlanceHtml, weekReviewHtml, wireWeekReview } from "./reviews.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -115,6 +116,11 @@ export async function renderWeekView(store, S, renderApp) {
   const dismissedIntentions = new Set((weekDoc.dismissedIntentions || []).map((s) => s.trim().toLowerCase()));
   const dismissedCarryForward = new Set(weekDoc.dismissedCarryForward || []);
 
+  // What the week's journals already say, then the review that starts from it.
+  const started = weekOf <= todayISO();
+  const reviewCtx = { store, S, renderApp, weekOf, weekDoc, dates, daysMap, boardTasks: tasks, stats, editing: !!S.weekReviewEditing };
+  const rollup = (first) => (started ? weekGlanceHtml(dates, daysMap, tasks, first) + weekReviewHtml(reviewCtx) : "");
+
   main.innerHTML = `
     <div class="datehead" style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
       <div style="display:flex;align-items:center;gap:12px">
@@ -128,7 +134,9 @@ export async function renderWeekView(store, S, renderApp) {
       ${weekOf !== curMonday ? `<button class="btn sm" id="jumpthisweek">This week</button>` : ""}
     </div>
 
-    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+    ${isPast ? rollup(true) : ""}
+
+    <section class="blk" ${isPast ? "" : 'style="border-top:0;padding-top:0;margin-top:0"'}>
       <h2>This week's plan</h2>
       <div class="progressband">
         <div class="top">
@@ -151,6 +159,8 @@ export async function renderWeekView(store, S, renderApp) {
         </div>
       </div>
     </section>
+
+    ${isPast ? "" : rollup(false)}
 
     <section class="blk">
       <h2>Progress toward this month</h2>
@@ -204,6 +214,7 @@ export async function renderWeekView(store, S, renderApp) {
       ${coreTableHtml(dates, daysMap, "vitalityCoreSteps", VIT)}
     </section>`;
 
+  wireWeekReview(reviewCtx);
   wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById);
 }
 
@@ -343,14 +354,17 @@ function coreTableHtml(dates, daysMap, which, defs) {
 function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById) {
   $("#prevweek")?.addEventListener("click", () => {
     S.week = addDays(weekOf, -7);
+    S.weekReviewEditing = false;
     renderApp();
   });
   $("#nextweek")?.addEventListener("click", () => {
     S.week = addDays(weekOf, 7);
+    S.weekReviewEditing = false;
     renderApp();
   });
   $("#jumpthisweek")?.addEventListener("click", () => {
     S.week = mondayOf(todayISO());
+    S.weekReviewEditing = false;
     renderApp();
   });
 
