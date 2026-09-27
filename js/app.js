@@ -10,7 +10,7 @@ import { renderWeekView, copyWeekForOneNote } from "./week.js";
 import { renderMonthView, copyMonthForOneNote } from "./month.js";
 import { flash } from "./flash.js";
 import { openBulkImport, parseTaskLines } from "./bulkimport.js";
-import { taskKey, isOpen, addTasks, setTaskStatus, removeTask } from "./tasks.js";
+import { taskKey, isOpen, addTasks, setTaskStatus, removeTask, shortDue } from "./tasks.js";
 import { openOutlookSync } from "./outlook.js";
 import { renderLearningView } from "./learning/learning.js";
 import { LearningStore } from "./learning/store.js";
@@ -456,11 +456,6 @@ function categoryListHtml(key, label, tasks, weekDay, openByDefault) {
         <p class="caterr" hidden></p>
       </div>
     </details>`;
-}
-
-function shortDue(iso) {
-  const [, mo, d] = iso.split("-").map(Number);
-  return `${mo}/${d}`;
 }
 
 function coreStepsRail(doc, which, defs) {

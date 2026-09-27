@@ -14,7 +14,7 @@
 import { PILLARS, BIZ, VIT } from "./constants.js";
 import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, D, monthKeyOf } from "./dateutil.js";
 import { hphAvg, evening } from "./derive.js";
-import { addTasks, setTaskStatus, isOpen } from "./tasks.js";
+import { addTasks, setTaskStatus, removeTask, isOpen, shortDue } from "./tasks.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
 import { pillarHealth, monthDates } from "./month.js";
@@ -195,9 +195,11 @@ export async function renderWeekView(store, S, renderApp) {
     <section class="blk">
       <h2>By category</h2>
       ${Object.entries(PILLARS)
-        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, openList))
+        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward))
         .join("")}
     </section>
+
+    ${editable ? taskListHtml(openList) : ""}
 
     <section class="blk">
       <h2>Stats</h2>
@@ -228,7 +230,7 @@ export async function renderWeekView(store, S, renderApp) {
   wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById);
 }
 
-function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, openList) {
+function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward) {
   const inPillar = tasks.filter((t) => t.pillar === key);
   const usedTexts = new Set(inPillar.map((t) => t.task.trim().toLowerCase()));
   // Pull-ins are an editing affordance — a past (read-only) week must never show
@@ -243,7 +245,6 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
       )
     : [];
   const carryPullins = editable ? prevIncomplete.filter((t) => t.pillar === key && !dismissedCarryForward.has(t.id)) : [];
-  const listPullins = openList.filter((t) => t.pillar === key);
 
   if (!editable && !inPillar.length && !monthPullins.length && !carryPullins.length) return "";
 
@@ -300,22 +301,6 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
           : ""
       }
       ${
-        listPullins.length
-          ? `<details class="frommonth">
-        <summary class="lbl" style="cursor:pointer">From your task list (${listPullins.length})</summary>
-        ${listPullins
-          .map(
-            (t) => `
-        <div class="item">
-          <span>${esc(t.task)}</span>
-          <button class="pull-open" data-id="${esc(t.id)}">+ Add to week</button>
-        </div>`
-          )
-          .join("")}
-      </details>`
-          : ""
-      }
-      ${
         editable
           ? `<div class="addrow" data-pillar="${key}">
         <input type="text" class="newtaskinput" placeholder="Add a ${esc(label)} task…">
@@ -325,6 +310,48 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
           : ""
       }
     </div>`;
+}
+
+// Every open task in the master list that isn't on this week's board — the place
+// to see the whole list (Outlook imports included) and pull from it.
+function taskListHtml(openList) {
+  const today = todayISO();
+  const order = (t) => (t.due ? `0${t.due}` : `1${t.created || ""}`);
+  const groups = Object.entries(PILLARS)
+    .map(([key, label]) => {
+      const rows = openList.filter((t) => t.pillar === key).sort((a, b) => (order(a) < order(b) ? -1 : 1));
+      if (!rows.length) return "";
+      return `
+      <div class="tlgroup" data-pillar="${key}">
+        <div class="tlhead"><span class="pdot" data-p="${key}"></span><span class="nm">${esc(label)}</span><span class="tlcount">${rows.length}</span></div>
+        ${rows
+          .map(
+            (t) => `
+        <div class="tlrow" data-id="${esc(t.id)}" data-text="${esc(t.task.toLowerCase())}">
+          <span class="tk">${esc(t.task)}${t.due ? ` <span class="tag ${t.due < today ? "late" : ""}">${t.due < today ? "overdue " : "due "}${esc(shortDue(t.due))}</span>` : ""}${t.source === "outlook" ? ` <span class="tag">Outlook</span>` : ""}</span>
+          <span class="tlact">
+            <select class="tlday" aria-label="Day"><option value="">No day</option>${DAYKEYS.map((dk) => `<option value="${dk}">${dk}</option>`).join("")}</select>
+            <button class="tladd" title="Add to this week">+ Week</button>
+            <button class="tldone" title="Already done" aria-label="Mark done">✓</button>
+            <button class="tldrop" title="Delete — no longer needed" aria-label="Delete">×</button>
+          </span>
+        </div>`
+          )
+          .join("")}
+      </div>`;
+    })
+    .join("");
+  return `
+    <section class="blk" id="tasklist">
+      <h2>Your task list <span class="count" id="tltotal">${openList.length} open</span></h2>
+      ${
+        openList.length
+          ? `<input type="search" id="tlsearch" class="tlsearch" placeholder="Search your tasks…" autocomplete="off">
+             <div class="tasklist">${groups}</div>
+             <p class="caterr" id="tlerr" hidden></p>`
+          : `<p class="empty">Everything open is already on this week's board.</p>`
+      }
+    </section>`;
 }
 
 function hphChartHtml(byDate) {
@@ -467,15 +494,93 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
     });
   });
 
-  document.querySelectorAll(".pull-open").forEach((btn) => {
+  // Your task list: + Week / ✓ / × — done and delete update in place; adding
+  // to the week redraws the board but keeps your place on the page.
+  const tlErr = (msg) => {
+    const el = $("#tlerr");
+    if (!el) return;
+    el.textContent = msg;
+    el.hidden = false;
+  };
+  const dropRow = (row) => {
+    const group = row.closest(".tlgroup");
+    row.remove();
+    const left = group.querySelectorAll(".tlrow").length;
+    if (!left) group.remove();
+    else group.querySelector(".tlcount").textContent = String(left);
+    const total = document.querySelectorAll("#tasklist .tlrow").length;
+    const tot = $("#tltotal");
+    if (tot) tot.textContent = `${total} open`;
+  };
+  $("#tlsearch")?.addEventListener("input", (e) => {
+    const q = e.target.value.trim().toLowerCase();
+    document.querySelectorAll("#tasklist .tlgroup").forEach((g) => {
+      let shown = 0;
+      g.querySelectorAll(".tlrow").forEach((r) => {
+        const hit = !q || r.dataset.text.includes(q);
+        r.hidden = !hit;
+        if (hit) shown++;
+      });
+      g.hidden = !shown;
+    });
+  });
+  document.querySelectorAll("#tasklist .tladd").forEach((btn) => {
     btn.addEventListener("click", async () => {
-      const t = mById.get(btn.dataset.id);
+      const row = btn.closest(".tlrow");
+      const t = mById.get(row.dataset.id);
       if (!t) return;
-      const tasks = [...(weekDoc.tasks || []), { id: t.id, task: t.task, pillar: t.pillar, assignedDay: "", status: t.status, source: "manual" }];
+      btn.disabled = true;
+      const day = row.querySelector(".tlday").value;
+      const tasks = [...(weekDoc.tasks || []), { id: t.id, task: t.task, pillar: t.pillar, assignedDay: day, status: t.status, source: t.source === "outlook" ? "outlook" : "manual" }];
       weekDoc.tasks = tasks;
       const ok = await saveTasks(tasks);
-      if (ok) flash("Added to this week.");
-      renderApp();
+      if (!ok) {
+        btn.disabled = false;
+        return tlErr("Couldn't add it — try again.");
+      }
+      flash(day ? `Added to this week (${day}).` : "Added to this week.");
+      // Keep the task list where it was on screen, even though the board above grew.
+      const before = $("#tasklist")?.getBoundingClientRect().top;
+      await renderApp();
+      const after = $("#tasklist")?.getBoundingClientRect().top;
+      if (before != null && after != null) window.scrollBy(0, after - before);
+    });
+  });
+  document.querySelectorAll("#tasklist .tldone").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const row = btn.closest(".tlrow");
+      btn.disabled = true;
+      const ok = await setTaskStatus(store, [row.dataset.id], "done", "life-os: task done").catch(() => null);
+      if (!ok) {
+        btn.disabled = false;
+        return tlErr("Couldn't mark it done — try again.");
+      }
+      dropRow(row);
+      flash("Marked done.");
+    });
+  });
+  document.querySelectorAll("#tasklist .tldrop").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      if (btn.dataset.armed !== "1") {
+        btn.dataset.armed = "1";
+        btn.textContent = "Delete?";
+        setTimeout(() => {
+          if (btn.isConnected) {
+            btn.dataset.armed = "";
+            btn.textContent = "×";
+          }
+        }, 3000);
+        return;
+      }
+      const row = btn.closest(".tlrow");
+      btn.disabled = true;
+      const ok = await removeTask(store, row.dataset.id).catch(() => null);
+      if (!ok) {
+        btn.disabled = false;
+        return tlErr("Couldn't delete it — try again.");
+      }
+      dropRow(row);
+      flash("Deleted from your list.");
     });
   });
 

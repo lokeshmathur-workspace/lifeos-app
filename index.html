@@ -374,6 +374,25 @@ label.fld > span{
 .catrow .due{font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap}
 .catrow .drop{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 4px;line-height:1;opacity:.55}
 .catrow .drop:hover{opacity:1;color:var(--stop)}
+.tlsearch{display:block;width:100%;box-sizing:border-box;margin-bottom:12px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
+.tasklist{display:flex;flex-direction:column;gap:12px}
+.tlgroup{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 12px}
+.tlhead{display:flex;align-items:center;gap:8px;padding:6px 0 8px;font-weight:700;font-size:14px}
+.tlhead .nm{flex:1}
+.tlcount{font-size:12px;font-weight:600;color:var(--muted)}
+.tlrow[hidden],.tlgroup[hidden]{display:none}
+.tlrow{display:flex;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--line)}
+.tlrow .tk{flex:1;font-size:14px;line-height:1.35;min-width:0}
+.tlrow .tag{display:inline-block;font-size:10.5px;font-weight:600;color:var(--muted);background:var(--raised);border-radius:5px;padding:1px 6px;margin-left:4px;white-space:nowrap}
+.tlrow .tag.late{color:var(--stop)}
+.tlact{display:flex;gap:6px;align-items:center;flex:none}
+.tlact select{width:auto;flex:none;font:inherit;font-size:12px;padding:3px 4px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--ink)}
+.tlact button{white-space:nowrap;flex:none;font:inherit;font-size:12px;border-radius:6px;padding:4px 8px;cursor:pointer;background:none}
+.tlact .tladd{border:1px solid var(--accent);color:var(--accent)}
+.tlact .tldone{border:1px solid color-mix(in srgb,var(--good) 45%,transparent);color:var(--good)}
+.tlact .tldrop{border:0;color:var(--muted);font-size:15px;padding:2px 4px}
+.tlact .tldrop[data-armed="1"]{color:var(--stop);font-size:12px}
+@media (max-width:560px){.tlrow{flex-wrap:wrap}.tlact{width:100%;justify-content:flex-end}}
 .catrow .markdone{border:1px solid color-mix(in srgb,var(--good) 45%,transparent);background:none;color:var(--good);cursor:pointer;font-size:13px;line-height:1;padding:3px 7px;border-radius:6px;flex:none}
 .catrow .markdone:hover{background:var(--good-soft)}
 .catrow.isdone .tk{text-decoration:line-through;color:var(--muted)}

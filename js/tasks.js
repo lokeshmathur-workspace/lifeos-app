@@ -11,6 +11,12 @@ import { todayISO } from "./dateutil.js";
 
 export const isOpen = (t) => t.status !== "done";
 
+// "2026-09-30" → "9/30"
+export function shortDue(iso) {
+  const [, mo, d] = iso.split("-").map(Number);
+  return `${mo}/${d}`;
+}
+
 // Lowercase, punctuation and emoji stripped, whitespace collapsed — the key an
 // Outlook subject and a Life OS task are matched on.
 export function taskKey(text) {
