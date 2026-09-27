@@ -2,8 +2,9 @@
 // copied out of OneNote, pasted in one go rather than typed line by line.
 import { PILLARS } from "./constants.js";
 import { DAYKEYS, todayISO, nowHM, dayOfWeekName, mondayOf } from "./dateutil.js";
-import { nextTaskId } from "./compact.js";
 import { flash } from "./flash.js";
+import { addTasks } from "./tasks.js";
+import { openOutlookSync } from "./outlook.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -43,10 +44,11 @@ export function openBulkImport(store) {
       <div class="seg" style="display:inline-flex;margin-bottom:16px">
         <button data-mode="tasks" aria-current="true">Tasks</button>
         <button data-mode="journal">Journal entries</button>
+        <button data-mode="outlook">Outlook tasks</button>
       </div>
 
       <div id="mode-tasks">
-        <p class="savenote" style="margin-bottom:10px">One task per line. List markers ("-", "*", "1.") are stripped automatically. Added to this week's task board.</p>
+        <p class="savenote" style="margin-bottom:10px">One task per line. List markers ("-", "*", "1.") are stripped automatically. Added to your task list (and to this week's board if you pick a day).</p>
         <textarea id="bulktext-tasks" rows="10" placeholder="Call the bank about the transfer&#10;Book Navya's dentist appointment&#10;Draft Q3 slide outline"></textarea>
         <div class="t3row" style="margin-top:10px">
           <select id="bulkpillar">${Object.entries(PILLARS).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select>
@@ -71,6 +73,11 @@ export function openBulkImport(store) {
   let mode = "tasks";
   back.querySelectorAll(".seg button").forEach((b) => {
     b.addEventListener("click", () => {
+      if (b.dataset.mode === "outlook") {
+        back.remove();
+        openOutlookSync(store);
+        return;
+      }
       mode = b.dataset.mode;
       back.querySelectorAll(".seg button").forEach((x) => x.setAttribute("aria-current", String(x === b)));
       $("#mode-tasks", back).hidden = mode !== "tasks";
@@ -102,22 +109,16 @@ export function openBulkImport(store) {
         }
         const pillar = $("#bulkpillar", back).value;
         const day = $("#bulkday", back).value;
-        const weekOf = mondayOf(todayISO());
-        const weekDoc = await store.getWeek(weekOf);
-        const existing = weekDoc.tasks || [];
-        const newTasks = [];
-        for (const task of lines) {
-          const id = nextTaskId(todayISO(), [existing, newTasks]);
-          newTasks.push({ id, task, pillar, assignedDay: day, status: "not_started", source: "manual" });
+        const created = await addTasks(store, lines.map((task) => ({ task, pillar })), `life-os: bulk import ${lines.length} task(s)`);
+        let ok = !!created;
+        if (ok && day) {
+          const weekOf = mondayOf(todayISO());
+          const weekDoc = await store.getWeek(weekOf);
+          const entries = created.map((t) => ({ id: t.id, task: t.task, pillar: t.pillar, assignedDay: day, status: "not_started", source: "manual" }));
+          ok = await store.saveWeek(weekOf, { tasks: [...(weekDoc.tasks || []), ...entries] }, true, `life-os: bulk import ${entries.length} task(s)`);
         }
-        const ok = await store.saveWeek(
-          weekOf,
-          { tasks: [...existing, ...newTasks] },
-          true,
-          `life-os: bulk import ${newTasks.length} task(s)`
-        );
         if (ok) {
-          flash(`Imported ${newTasks.length} task${newTasks.length === 1 ? "" : "s"}.`);
+          flash(`Imported ${created.length} task${created.length === 1 ? "" : "s"}.`);
           back.remove();
         } else {
           note.textContent = "Couldn't save — see the error banner behind this dialog.";

@@ -14,7 +14,7 @@
 import { PILLARS, BIZ, VIT } from "./constants.js";
 import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, D, monthKeyOf } from "./dateutil.js";
 import { hphAvg, evening } from "./derive.js";
-import { nextTaskId } from "./compact.js";
+import { addTasks, setTaskStatus, isOpen } from "./tasks.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
 import { pillarHealth, monthDates } from "./month.js";
@@ -83,7 +83,18 @@ export async function renderWeekView(store, S, renderApp) {
   const monthDoc = await store.getMonth(monthKeyOf(todayISO()));
   const intentions = monthDoc.intentions || [];
 
-  const tasks = weekDoc.tasks || [];
+  // Week entries share their master-list id; the master list decides wording
+  // and status (a task ticked off in the journal shows done here too).
+  const master = await store.getTasks();
+  const mById = new Map(master.tasks.map((t) => [t.id, t]));
+  const tasks = (weekDoc.tasks || []).map((t) => {
+    const m = mById.get(t.id);
+    if (!m) return t;
+    const status = m.status === "done" ? "done" : t.status === "carried_forward" ? "carried_forward" : m.status;
+    return { ...t, task: m.task, pillar: m.pillar, status };
+  });
+  const inWeek = new Set(tasks.map((t) => t.id));
+  const openList = editable ? master.tasks.filter((t) => isOpen(t) && !inWeek.has(t.id)) : [];
   const done = tasks.filter((t) => t.status === "done").length;
   const inprog = tasks.filter((t) => t.status === "in_progress").length;
   const total = tasks.length;
@@ -164,7 +175,7 @@ export async function renderWeekView(store, S, renderApp) {
     <section class="blk">
       <h2>By category</h2>
       ${Object.entries(PILLARS)
-        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward))
+        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, openList))
         .join("")}
     </section>
 
@@ -173,7 +184,7 @@ export async function renderWeekView(store, S, renderApp) {
       <div class="stats">
         <div class="stat"><div class="k">Days journaled</div><div class="v">${stats.journaled}<small> / 7</small></div></div>
         <div class="stat"><div class="k">HPH avg</div><div class="v">${stats.hphAvg != null ? stats.hphAvg.toFixed(1) : "—"}</div></div>
-        <div class="stat"><div class="k">Top 3 completion</div><div class="v">${stats.top3Rate != null ? stats.top3Rate + "%" : "—"}</div></div>
+        <div class="stat"><div class="k">Task completion</div><div class="v">${stats.top3Rate != null ? stats.top3Rate + "%" : "—"}</div></div>
       </div>
     </section>
 
@@ -193,10 +204,10 @@ export async function renderWeekView(store, S, renderApp) {
       ${coreTableHtml(dates, daysMap, "vitalityCoreSteps", VIT)}
     </section>`;
 
-  wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete);
+  wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById);
 }
 
-function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward) {
+function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, openList) {
   const inPillar = tasks.filter((t) => t.pillar === key);
   const usedTexts = new Set(inPillar.map((t) => t.task.trim().toLowerCase()));
   // Pull-ins are an editing affordance — a past (read-only) week must never show
@@ -211,6 +222,7 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
       )
     : [];
   const carryPullins = editable ? prevIncomplete.filter((t) => t.pillar === key && !dismissedCarryForward.has(t.id)) : [];
+  const listPullins = openList.filter((t) => t.pillar === key);
 
   if (!editable && !inPillar.length && !monthPullins.length && !carryPullins.length) return "";
 
@@ -267,6 +279,22 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
           : ""
       }
       ${
+        listPullins.length
+          ? `<details class="frommonth">
+        <summary class="lbl" style="cursor:pointer">From your task list (${listPullins.length})</summary>
+        ${listPullins
+          .map(
+            (t) => `
+        <div class="item">
+          <span>${esc(t.task)}</span>
+          <button class="pull-open" data-id="${esc(t.id)}">+ Add to week</button>
+        </div>`
+          )
+          .join("")}
+      </details>`
+          : ""
+      }
+      ${
         editable
           ? `<div class="addrow" data-pillar="${key}">
         <input type="text" class="newtaskinput" placeholder="Add a ${esc(label)} task…">
@@ -312,7 +340,7 @@ function coreTableHtml(dates, daysMap, which, defs) {
     </table>`;
 }
 
-function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete) {
+function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById) {
   $("#prevweek")?.addEventListener("click", () => {
     S.week = addDays(weekOf, -7);
     renderApp();
@@ -341,10 +369,13 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
   document.querySelectorAll(".ptask2 .box[data-toggle]").forEach((box) => {
     box.addEventListener("click", () => {
       const id = box.closest(".ptask2").dataset.id;
-      const tasks = (weekDoc.tasks || []).map((t) => (t.id === id ? { ...t, status: t.status === "done" ? "not_started" : "done" } : t));
+      const cur = box.closest(".ptask2").classList.contains("done");
+      const status = cur ? "not_started" : "done";
+      const tasks = (weekDoc.tasks || []).map((t) => (t.id === id ? { ...t, status } : t));
       weekDoc.tasks = tasks;
       saveTasks(tasks);
-      renderApp();
+      if (mById.has(id)) setTaskStatus(store, [id], status, `life-os: weekly ${weekOf}`).then(() => renderApp());
+      else renderApp();
     });
   });
 
@@ -366,7 +397,9 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
       const text = input.value.trim();
       if (!text) return;
       const day = row.querySelector(".newtaskday").value;
-      const id = nextTaskId(todayISO(), [weekDoc.tasks || []]);
+      const created = await addTasks(store, [{ task: text, pillar }], `life-os: weekly ${weekOf}`);
+      if (!created) return;
+      const id = created[0].id;
       const tasks = [...(weekDoc.tasks || []), { id, task: text, pillar, assignedDay: day, status: "not_started", source: "manual" }];
       weekDoc.tasks = tasks;
       const ok = await saveTasks(tasks, `life-os: weekly ${weekOf}`);
@@ -379,7 +412,9 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
     btn.addEventListener("click", async () => {
       const pillar = btn.dataset.pillar;
       const text = btn.dataset.text;
-      const id = nextTaskId(todayISO(), [weekDoc.tasks || []]);
+      const created = await addTasks(store, [{ task: text, pillar }], `life-os: weekly ${weekOf}`);
+      if (!created) return;
+      const id = created[0].id;
       const tasks = [...(weekDoc.tasks || []), { id, task: text, pillar, assignedDay: "", status: "not_started", source: "manual" }];
       weekDoc.tasks = tasks;
       const ok = await saveTasks(tasks);
@@ -393,11 +428,29 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
       const pillar = btn.dataset.pillar;
       const source = prevIncomplete.find((t) => t.id === btn.dataset.id);
       if (!source) return;
-      const id = nextTaskId(todayISO(), [weekDoc.tasks || []]);
+      // Same master task if it's on the list; otherwise it becomes one now.
+      let id = source.id;
+      if (!mById.has(id)) {
+        const created = await addTasks(store, [{ task: source.task, pillar }], `life-os: weekly ${weekOf}`);
+        if (!created) return;
+        id = created[0].id;
+      }
       const tasks = [...(weekDoc.tasks || []), { id, task: source.task, pillar, assignedDay: "", status: "carried_forward", source: "manual" }];
       weekDoc.tasks = tasks;
       const ok = await saveTasks(tasks);
       if (ok) flash("Carried forward from last week.");
+      renderApp();
+    });
+  });
+
+  document.querySelectorAll(".pull-open").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const t = mById.get(btn.dataset.id);
+      if (!t) return;
+      const tasks = [...(weekDoc.tasks || []), { id: t.id, task: t.task, pillar: t.pillar, assignedDay: "", status: t.status, source: "manual" }];
+      weekDoc.tasks = tasks;
+      const ok = await saveTasks(tasks);
+      if (ok) flash("Added to this week.");
       renderApp();
     });
   });
@@ -438,7 +491,7 @@ export async function copyWeekForOneNote(store, weekOf) {
       blocks: [
         { type: "kv", label: "Days journaled", value: `${stats.journaled} / 7` },
         { type: "kv", label: "HPH avg", value: stats.hphAvg != null ? stats.hphAvg.toFixed(1) : "—" },
-        { type: "kv", label: "Top 3 completion", value: stats.top3Rate != null ? `${stats.top3Rate}%` : "—" },
+        { type: "kv", label: "Task completion", value: stats.top3Rate != null ? `${stats.top3Rate}%` : "—" },
       ],
     },
     { heading: "Key focus", blocks: [{ type: "para", text: weekDoc.keyFocus || "—" }] },

@@ -60,6 +60,9 @@ const journalPath = (dateISO) => `life-os/journal/${dateISO.slice(0, 4)}/${dateI
 const weekPath = (weekOf) => `life-os/state/weeks/${weekOf}.json`;
 const monthPath = (monthKey) => `life-os/state/months/${monthKey}.json`;
 const COMPUTED_PATH = "life-os/state/computed.json";
+const TASKS_PATH = "life-os/state/tasks.json";
+
+const emptyTasksDoc = () => ({ tasks: [], outlook: { lastImport: "", ignored: [] } });
 
 function defaultMonthDoc(monthKey) {
   const [year, monthNum] = monthKey.split("-").map(Number);
@@ -86,6 +89,40 @@ export class Store {
     this.saveTimers = new Map(); // path -> timeout id
     this.onFlash = onFlash || (() => {});
     this.recomputeTimer = null;
+    this.tasks = null; // { doc, sha } for the master task list
+  }
+
+  // The master task list (life-os/state/tasks.json) — every open task, whatever
+  // it came from (morning picker, week board, Outlook import). Day and week
+  // files reference these by id.
+  async getTasks(force = false) {
+    if (!force && this.tasks) return this.tasks.doc;
+    const { json, sha } = await this.gh.getFile(TASKS_PATH);
+    const doc = json || emptyTasksDoc();
+    if (!doc.outlook) doc.outlook = { lastImport: "", ignored: [] };
+    this.tasks = { doc, sha };
+    return doc;
+  }
+
+  // Applies fn(doc) -> newDoc and writes it. Both devices edit this one file, so
+  // on a sha conflict it re-reads and re-applies fn to the fresh copy once,
+  // rather than overwriting the other device's change. Returns the new doc, or
+  // null if the write failed (already reported via onFlash).
+  async updateTasks(fn, message) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const cur = await this.getTasks(attempt > 0);
+      const next = fn(structuredClone(cur));
+      try {
+        const { sha } = await this.gh.putFile(TASKS_PATH, next, this.tasks.sha, message || "life-os: tasks");
+        this.tasks = { doc: next, sha };
+        return next;
+      } catch (e) {
+        if (e instanceof GitHubStoreError && e.code === "conflict" && attempt === 0) continue;
+        this.onFlash(e instanceof GitHubStoreError ? e.message : "Couldn't save your task list.", true);
+        return null;
+      }
+    }
+    return null;
   }
 
   // Every saveDay() (any journal-file write) can change what recompute.py

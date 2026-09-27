@@ -1,5 +1,4 @@
 import { Store, loadConfig, saveConfig, clearConfig, loadPinHash, savePinHash, clearPin, sha256Hex } from "./store.js";
-import { nextTaskId } from "./compact.js";
 import { readQuote, readImproveTomorrow, writeReflections, writeMorningQuote } from "./migrate.js";
 import { PILLARS, BIZ, VIT, VIT_EVENING_CHECKIN, HPH, CYCLE } from "./constants.js";
 import { quoteForDate, randomQuote } from "./quotes.js";
@@ -11,6 +10,8 @@ import { renderWeekView, copyWeekForOneNote } from "./week.js";
 import { renderMonthView, copyMonthForOneNote } from "./month.js";
 import { flash } from "./flash.js";
 import { openBulkImport, parseTaskLines } from "./bulkimport.js";
+import { taskKey, isOpen, addTasks, setTaskStatus, removeTask } from "./tasks.js";
+import { openOutlookSync } from "./outlook.js";
 import { renderLearningView } from "./learning/learning.js";
 import { LearningStore } from "./learning/store.js";
 import { loadRoutineConfig, saveRoutineConfig, clearRoutineConfig } from "./learning/routine.js";
@@ -31,6 +32,7 @@ const S = {
   unlocked: false,
   planning: false,
   eveningEditing: false,
+  picked: new Set(), // morning picker's ticked master-task ids, kept across in-place redraws
 };
 
 /* ═══ boot / auth / pin ═══════════════════════════════════ */
@@ -112,6 +114,13 @@ function renderApp() {
 }
 
 window.addEventListener("lifeos:open-settings", openSettings);
+
+// After an Outlook import: redraw so new tasks show up — except mid-planning or
+// mid-review, where a redraw would wipe what's being typed.
+window.addEventListener("lifeos:tasks-changed", () => {
+  if (S.view === "learning" || S.planning || S.eveningEditing) return;
+  renderApp();
+});
 
 window.addEventListener("lifeos:goto-day", (e) => {
   S.day = e.detail;
@@ -357,37 +366,23 @@ function pickerGroup(title, hint, items, checkedIds) {
 async function planningForm(dateISO, doc, monthDoc, weekDoc) {
   const q = doc.morning?.quote ? readQuote(doc.morning) : quoteForDate(dateISO);
   const dk = dayKeyOf(dateISO);
+  const master = await S.store.getTasks();
+  const byId = new Map(master.tasks.map((t) => [t.id, t]));
 
-  // Prefill top3: re-editing an existing plan wins; otherwise prefer what was
-  // picked in yesterday's "Plan tomorrow" section; otherwise fall back to
-  // whatever the week board has assigned to today.
-  const existingTop3 = doc.morning?.top3 || [];
-  let prefillSource = existingTop3;
-  if (!prefillSource.length) {
+  // Pre-ticked: re-editing keeps today's picks; otherwise yesterday's "Plan
+  // tomorrow" picks, otherwise whatever the week board assigned to today.
+  let preIds = (doc.morning?.top3 || []).map((t) => t.id).filter((id) => byId.has(id));
+  if (!preIds.length) {
     const yesterday = await S.store.getDay(addDays(dateISO, -1));
-    const yesterdaysPlan = yesterday.evening?.tomorrowDraftTasks || [];
-    prefillSource = yesterdaysPlan.length
-      ? yesterdaysPlan
-      : (weekDoc.tasks || []).filter((t) => t.assignedDay === dk && t.status !== "done").slice(0, 3);
+    const draft = yesterday.evening?.tomorrowDraftTasks || [];
+    const byKey = new Map(master.tasks.map((t) => [taskKey(t.task), t.id]));
+    preIds = draft.map((t) => (t.id && byId.has(t.id) ? t.id : byKey.get(taskKey(t.task)))).filter(Boolean);
+    if (!preIds.length) preIds = (weekDoc.tasks || []).filter((t) => t.assignedDay === dk && byId.has(t.id)).map((t) => t.id);
   }
-  const prefill = [...prefillSource];
-  while (prefill.length < 3) prefill.push({ task: "", pillar: "careerWork" });
-
-  // "If there's time" — everything else on the week board, grouped, excluding
-  // whatever's already filled into Top 3 above.
-  const allWeekTasks = weekDoc.tasks || [];
-  const usedTexts = new Set(prefill.map((t) => t.task).filter(Boolean));
-  const carriedOver = allWeekTasks.filter((t) => t.status === "carried_forward" && !usedTexts.has(t.task));
-  const plannedToday = allWeekTasks.filter(
-    (t) => t.status !== "carried_forward" && t.assignedDay === dk && t.status !== "done" && !usedTexts.has(t.task)
-  );
-  const unplanned = allWeekTasks.filter(
-    (t) => t.status !== "carried_forward" && !t.assignedDay && t.status !== "done" && !usedTexts.has(t.task)
-  );
-  const additionalIds = new Set((doc.morning?.additionalTasks || []).map((t) => t.id));
-
-  const pillarOpts = (sel) =>
-    Object.entries(PILLARS).map(([k, l]) => `<option value="${k}" ${k === sel ? "selected" : ""}>${l}</option>`).join("");
+  S.picked = new Set(preIds.filter((id) => isOpen(byId.get(id)) || (doc.morning?.top3 || []).some((t) => t.id === id)));
+  const weekDay = new Map((weekDoc.tasks || []).filter((t) => t.assignedDay).map((t) => [t.id, t.assignedDay]));
+  const m = doc.morning || {};
+  const challenge = [m.potentialChallenge, m.challengePlan].filter(Boolean).join(" — ");
 
   return `
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
@@ -400,43 +395,59 @@ async function planningForm(dateISO, doc, monthDoc, weekDoc) {
       <p class="savenote" id="quotenote" style="margin-top:8px"></p>
     </section>
     <section class="blk">
-      <h2>Top 3</h2>
-      ${prefill
-        .map(
-          (t, i) => `
-        <div class="t3row">
-          <input type="text" data-i="${i}" class="t3task" value="${esc(t.task)}" placeholder="Task ${i + 1}">
-          <select data-i="${i}" class="t3pillar">${pillarOpts(t.pillar)}</select>
-          <button type="button" class="rm" title="Remove">×</button>
-        </div>`
-        )
+      <h2>Pick today's tasks</h2>
+      <div class="todaypin" id="todaypin">${todayPinHtml(master)}</div>
+      ${Object.entries(PILLARS)
+        .map(([k, label], i) => categoryListHtml(k, label, master.tasks.filter((t) => t.pillar === k && (isOpen(t) || S.picked.has(t.id))), weekDay, i < 2))
         .join("")}
     </section>
-    ${
-      plannedToday.length || unplanned.length || carriedOver.length
-        ? `<section class="blk">
-      <h2>If there's time</h2>
-      <div class="picker">
-        ${pickerGroup("Planned for today", "from the week board", plannedToday, additionalIds)}
-        ${pickerGroup("Unplanned", "on the board, no day set", unplanned, additionalIds)}
-        ${pickerGroup("Carried over", "incomplete from earlier", carriedOver, additionalIds)}
-      </div>
-      <p class="savenote" style="margin-top:8px">Checked items ride along today, outside the Top 3 — no pressure, just visible if there's room.</p>
-    </section>`
-        : ""
-    }
     <section class="blk">
       <h2>This morning</h2>
-      <label class="fld"><span>What are you excited about today?</span><textarea id="excited" rows="2">${esc(doc.morning?.excitedAbout || "")}</textarea></label>
-      <label class="fld"><span>Potential challenge</span><textarea id="challenge" rows="2">${esc(doc.morning?.potentialChallenge || "")}</textarea></label>
-      <label class="fld"><span>Plan for it</span><textarea id="challengeplan" rows="2">${esc(doc.morning?.challengePlan || "")}</textarea></label>
-      <label class="fld"><span>Today is a success if…</span><textarea id="anchor" rows="2">${esc(doc.morning?.successAnchor || "")}</textarea></label>
-      <label class="fld"><span>People to connect with (comma-separated)</span><input type="text" id="people" value="${esc((doc.morning?.peopleToConnect || []).join(", "))}"></label>
+      <label class="fld"><span>What are you excited about today?</span><textarea id="excited" rows="2">${esc(m.excitedAbout || "")}</textarea></label>
+      <label class="fld"><span>Today is a success if…</span><textarea id="anchor" rows="2">${esc(m.successAnchor || "")}</textarea></label>
+      <label class="fld"><span>Challenge &amp; plan</span><textarea id="challenge" rows="2" placeholder="What might get in the way — and what you'll do about it">${esc(challenge)}</textarea></label>
+      <label class="fld"><span>People to connect with (comma-separated)</span><input type="text" id="people" value="${esc((m.peopleToConnect || []).join(", "))}"></label>
     </section>
     <div class="btnrow">
-      <button class="btn pri" id="saveplan">Save plan</button>
+      <button class="btn pri" id="saveplan">${doc.morning ? "Save plan" : "Start my day"}</button>
       <button class="btn" id="cancelplan">Cancel</button>
     </div>`;
+}
+
+function todayPinHtml(master) {
+  const picked = master.tasks.filter((t) => S.picked.has(t.id));
+  return `<div class="k">Today · ${picked.length} picked</div>${
+    picked.map((t) => `<div class="it"><span class="pdot" data-p="${t.pillar}"></span>${esc(t.task)}</div>`).join("") ||
+    `<div class="it" style="color:var(--muted)">Tick tasks below, or add a new one in its category.</div>`
+  }`;
+}
+
+function catRowHtml(t, weekDay) {
+  const tag = t.due ? `due ${shortDue(t.due)}` : weekDay.get(t.id) ? `week: ${weekDay.get(t.id)}` : "";
+  return `
+    <label class="catrow" data-id="${esc(t.id)}">
+      <input type="checkbox" class="pick" value="${esc(t.id)}" ${S.picked.has(t.id) ? "checked" : ""}>
+      <span class="tk">${esc(t.task)}</span>
+      ${tag ? `<span class="due">${esc(tag)}</span>` : ""}
+      <button type="button" class="drop" data-drop="${esc(t.id)}" title="Remove from your list">×</button>
+    </label>`;
+}
+
+function categoryListHtml(key, label, tasks, weekDay, openByDefault) {
+  const pickedHere = tasks.filter((t) => S.picked.has(t.id)).length;
+  return `
+    <details class="cat" data-cat="${key}" ${openByDefault || pickedHere ? "open" : ""}>
+      <summary><span class="pdot" data-p="${key}"></span><span class="nm">${esc(label)}</span><span class="cnt">${pickedHere ? pickedHere + " picked · " : ""}${tasks.length} open</span></summary>
+      <div class="body">
+        <div class="rows">${tasks.map((t) => catRowHtml(t, weekDay)).join("")}</div>
+        <div class="catadd"><input type="text" class="newcat" data-pillar="${key}" placeholder="+ New ${esc(label)} task — press Enter"></div>
+      </div>
+    </details>`;
+}
+
+function shortDue(iso) {
+  const [, mo, d] = iso.split("-").map(Number);
+  return `${mo}/${d}`;
 }
 
 function coreStepsRail(doc, which, defs) {
@@ -462,6 +473,17 @@ function taskRow(t, group, i) {
     </div>`;
 }
 
+function answersHtml(m) {
+  const challenge = [m.potentialChallenge, m.challengePlan].filter(Boolean).join(" — ");
+  const rows = [
+    ["Excited about", m.excitedAbout],
+    ["Success if", m.successAnchor],
+    ["Challenge & plan", challenge],
+    ["Connect with", (m.peopleToConnect || []).join(", ")],
+  ].filter(([, v]) => v);
+  return rows.length ? `<dl class="answers">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : "";
+}
+
 function dayInProgress(dateISO, doc) {
   const q = readQuote(doc.morning) || {};
   const top3 = doc.morning?.top3 || [];
@@ -469,17 +491,33 @@ function dayInProgress(dateISO, doc) {
   const notes = doc.notes || [];
   return `
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
-      <div class="affirm">
-        <p class="serif">"${esc(q.text)}"</p>
-        ${q.author ? `<div class="anchor"><b>—</b><span>${esc(q.author)}</span></div>` : ""}
+      <div class="todaypin">
+        <div class="k">Today's plan</div>
+        <div class="tasks" data-taskgroup="morning-top3">${top3.map((t, i) => taskRow(t, "morning-top3", i)).join("") || `<p class="empty" style="padding:4px 0">No tasks picked.</p>`}</div>
+        ${answersHtml(doc.morning || {})}
       </div>
-      <div class="anchor"><b>Anchor</b><span>${esc(doc.morning?.successAnchor || "—")}</span></div>
-      <div class="btnrow" style="margin-top:10px"><button class="btn sm" id="editmorning">Edit morning</button></div>
+      <div class="btnrow" style="margin-top:0"><button class="btn sm" id="editmorning">Edit morning</button></div>
     </section>
     <section class="blk">
-      <h2>Top 3</h2>
-      <div class="tasks" data-taskgroup="morning-top3">${top3.map((t, i) => taskRow(t, "morning-top3", i)).join("")}</div>
+      <h2>How's the day going?</h2>
+      <div class="notes">${notes
+        .map(
+          (n, i) => `
+        <div class="note ${n.kind === "insight" ? "insight" : ""}">
+          <input type="time" class="notetime-edit" data-i="${i}" value="${esc(n.t)}">
+          <span class="txt">${esc(n.text)}</span>
+          <button class="del" data-i="${i}" title="Delete">×</button>
+        </div>`
+        )
+        .join("")}</div>
+      <textarea id="notetext" rows="5" placeholder="Thoughts, updates, anything worth remembering… (⌘/Ctrl+Enter to add)"></textarea>
+      <div class="composer" style="margin-top:8px;justify-content:flex-end">
+        <input type="time" id="notetime" value="${esc(nowHM())}" title="Time for this entry">
+        <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12.5px;color:var(--muted)"><input type="checkbox" id="noteinsight"> insight</label>
+        <button class="btn pri" id="addnote">Add note</button>
+      </div>
     </section>
+    ${q.text ? `<section class="blk"><div class="affirm"><p class="serif">"${esc(q.text)}"</p>${q.author ? `<div class="anchor"><b>—</b><span>${esc(q.author)}</span></div>` : ""}</div></section>` : ""}
     ${
       additionalTasks.length
         ? `<section class="blk">
@@ -496,50 +534,39 @@ function dayInProgress(dateISO, doc) {
       <h2>Vitality core steps <span class="count">${coreCount(doc, "vitalityCoreSteps") ?? 0}/6</span></h2>
       ${coreStepsRail(doc, "vitalityCoreSteps", VIT)}
     </section>
-    <section class="blk">
-      <h2>Journal</h2>
-      <div class="notes">${notes
-        .map(
-          (n, i) => `
-        <div class="note ${n.kind === "insight" ? "insight" : ""}">
-          <input type="time" class="notetime-edit" data-i="${i}" value="${esc(n.t)}">
-          <span class="txt">${esc(n.text)}</span>
-          <button class="del" data-i="${i}" title="Delete">×</button>
-        </div>`
-        )
-        .join("")}</div>
-      <div class="composer">
-        <input type="time" id="notetime" value="${esc(nowHM())}" title="Time for this entry">
-        <textarea id="notetext" rows="4" placeholder="Add a note… (⌘/Ctrl+Enter to add)"></textarea>
-        <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12.5px;color:var(--muted)"><input type="checkbox" id="noteinsight"> insight</label>
-        <button class="btn" id="addnote">Add</button>
-      </div>
-    </section>
-    <div class="btnrow"><button class="btn pri" id="startevening">Evening review</button></div>`;
+    <div class="btnrow"><button class="btn pri" id="startevening">Evening review →</button></div>`;
+}
+
+// The day's journal as one block of text for the evening review to start from.
+function journalDigest(doc) {
+  return (doc.notes || []).map((n) => n.text.trim()).filter(Boolean).join("\n");
 }
 
 function eveningForm(dateISO, doc, monthDoc, weekDoc) {
   const e = doc.evening || {};
+  const m = doc.morning || {};
   const top3 = doc.morning?.top3 || e.top3Results || [];
   const additionalTasks = doc.morning?.additionalTasks || e.additionalResults || [];
   const improve = readImproveTomorrow(e.reflections);
   const hph = e.hph || {};
   const vit = e.vitalityCoreSteps || {};
+  const digest = journalDigest(doc);
+  const synth = e.synthesis || digest;
+  const doneToday = top3.filter((t) => t.status === "done");
 
-  // "Plan tomorrow" candidates: today's own unfinished items (carry-over), plus
-  // whatever's on the week board with no day assigned yet.
+  // "Plan tomorrow": today's unfinished tasks to carry over; anything else
+  // gets picked from the full list in tomorrow's morning picker.
   const unfinishedToday = [...top3, ...additionalTasks].filter((t) => t.status !== "done");
-  const weekTasks = weekDoc.tasks || [];
-  const usedTexts = new Set(unfinishedToday.map((t) => t.task));
-  const unplanned = weekTasks.filter((t) => !t.assignedDay && t.status !== "done" && !usedTexts.has(t.task));
 
   return `
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
       <h2>Evening review</h2>
-      <p class="empty" style="padding:0 0 10px">Be honest — this only helps if it's accurate. No credit for what didn't happen.</p>
+      ${digest && !e.synthesis ? `<div class="prefill"><b>From your journal</b>Your notes are pre-filled below — edit them into how the day actually went.</div>` : ""}
+      ${m.successAnchor ? `<div class="prefill" style="background:var(--raised)"><b style="color:var(--ink-2)">Success check</b>"${esc(m.successAnchor)}"${doneToday.length ? ` — done: ${esc(doneToday.map((t) => t.task).join(" · "))}` : ""}</div>` : ""}
+      <p class="empty" style="padding:0 0 10px">Only fill in what the journal missed. Be honest — no credit for what didn't happen.</p>
     </section>
     <section class="blk">
-      <h2>Top 3 — final status</h2>
+      <h2>Today's tasks — final status</h2>
       <div class="tasks" data-taskgroup="evening-top3">${top3.map((t, i) => taskRow(t, "evening-top3", i)).join("")}</div>
     </section>
     ${
@@ -556,7 +583,7 @@ function eveningForm(dateISO, doc, monthDoc, weekDoc) {
     </section>
     <section class="blk">
       <h2>Synthesis</h2>
-      <label class="fld"><span>How the day actually went — planned vs. actual</span><textarea id="e_synth" rows="3">${esc(e.synthesis || "")}</textarea></label>
+      <label class="fld"><span>How the day actually went — planned vs. actual</span><textarea id="e_synth" rows="${synth ? 5 : 3}">${esc(synth)}</textarea></label>
     </section>
     <section class="blk">
       <h2>Anchor met?</h2>
@@ -599,10 +626,11 @@ function eveningForm(dateISO, doc, monthDoc, weekDoc) {
       <h2>Plan tomorrow</h2>
       <div class="picker">
         ${pickerGroup("Carry over?", "didn't finish today", unfinishedToday, new Set(unfinishedToday.map((t) => t.id)))}
-        ${pickerGroup("Unplanned on the board", "", unplanned, new Set())}
       </div>
-      ${!unfinishedToday.length && !unplanned.length ? `<p class="empty">Nothing pending to carry forward.</p>` : ""}
-      <label class="fld" style="margin-top:10px;margin-bottom:0"><span>Add something new for tomorrow (one per line)</span><textarea id="tomorrownew" rows="2" placeholder="Type a task…"></textarea></label>
+      ${!unfinishedToday.length ? `<p class="empty">Nothing left over from today.</p>` : ""}
+      <label class="fld" style="margin-top:10px;margin-bottom:6px"><span>Add something new for tomorrow (one per line)</span><textarea id="tomorrownew" rows="2" placeholder="Type a task…"></textarea></label>
+      <label class="fld" style="margin-bottom:0"><span>Category for new tasks</span><select id="tomorrowpillar">${Object.entries(PILLARS).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>
+      <p class="savenote" style="margin-top:8px">Tomorrow morning these come pre-ticked; everything else on your list is one tap away there.</p>
     </section>
     <div class="btnrow">
       <button class="btn pri" id="saveevening">Save evening review</button>
@@ -625,7 +653,7 @@ function daySummary(dateISO, doc) {
         ? `<section class="blk" style="border-top:0;padding-top:0;margin-top:0">
       <h2>This morning</h2>
       ${q ? `<div class="affirm"><p class="serif">"${esc(q.text)}"</p>${q.author ? `<div class="anchor"><b>—</b><span>${esc(q.author)}</span></div>` : ""}</div>` : ""}
-      ${m.successAnchor ? `<div class="anchor" style="margin-top:12px"><b>Anchor</b><span>${esc(m.successAnchor)}</span></div>` : ""}
+      ${m.successAnchor ? `<div class="anchor" style="margin-top:12px"><b>Success if</b><span>${esc(m.successAnchor)}</span></div>` : ""}
       ${m.excitedAbout ? `<p style="margin:10px 0 0"><b>Excited about:</b> ${esc(m.excitedAbout)}</p>` : ""}
       ${m.potentialChallenge ? `<p style="margin:6px 0 0"><b>Challenge:</b> ${esc(m.potentialChallenge)}${m.challengePlan ? ` — ${esc(m.challengePlan)}` : ""}</p>` : ""}
       ${(m.peopleToConnect || []).length ? `<p style="margin:6px 0 0"><b>People:</b> ${esc(m.peopleToConnect.join(", "))}</p>` : ""}
@@ -636,7 +664,7 @@ function daySummary(dateISO, doc) {
     ${
       top3.length
         ? `<section class="blk" ${q || m.successAnchor ? "" : `style="border-top:0;padding-top:0;margin-top:0"`}>
-      <h2>Top 3</h2>
+      <h2>Today's tasks</h2>
       <div class="tasks">${top3.map((t) => `<div class="task" data-s="${t.status || "not_started"}" style="cursor:default"><span class="box"></span><span class="body"><span class="t">${esc(t.task)}</span><span class="meta">${esc(PILLARS[t.pillar] || t.pillar)}</span></span></div>`).join("")}</div>
     </section>`
         : ""
@@ -675,6 +703,79 @@ function daySummary(dateISO, doc) {
 }
 
 /* ═══ wiring ═══════════════════════════════════════════════ */
+
+// Morning picker. Everything updates in place (never a full renderToday) so
+// answers typed into the morning questions below are never wiped.
+let pickerWeekDay = new Map();
+let pickerWired = false;
+
+async function refreshPickerCounts() {
+  const pin = $("#todaypin");
+  if (!pin) return;
+  const master = await S.store.getTasks();
+  pin.innerHTML = todayPinHtml(master);
+  document.querySelectorAll(".cat").forEach((cat) => {
+    const rows = cat.querySelectorAll(".catrow");
+    const n = [...rows].filter((r) => S.picked.has(r.dataset.id)).length;
+    cat.querySelector(".cnt").textContent = `${n ? n + " picked · " : ""}${rows.length} open`;
+  });
+}
+
+// Listeners go on #main once — #main outlives every re-render, so wiring it
+// per render would stack duplicate handlers.
+function wirePicker(weekDoc) {
+  pickerWeekDay = new Map((weekDoc.tasks || []).filter((t) => t.assignedDay).map((t) => [t.id, t.assignedDay]));
+  if (pickerWired) return;
+  pickerWired = true;
+  const refreshCounts = refreshPickerCounts;
+  const root = main();
+  root.addEventListener("change", (e) => {
+    if (S.view !== "today" || !e.target.classList.contains("pick")) return;
+    e.target.checked ? S.picked.add(e.target.value) : S.picked.delete(e.target.value);
+    refreshCounts();
+  });
+  root.addEventListener("click", async (e) => {
+    const drop = e.target.closest(".catrow .drop");
+    if (S.view !== "today" || !drop) return;
+    e.preventDefault();
+    const row = drop.closest(".catrow");
+    if (drop.dataset.armed !== "1") {
+      drop.dataset.armed = "1";
+      drop.textContent = "Remove?";
+      setTimeout(() => {
+        if (drop.isConnected) {
+          drop.dataset.armed = "";
+          drop.textContent = "×";
+        }
+      }, 3000);
+      return;
+    }
+    const id = drop.dataset.drop;
+    if (await removeTask(S.store, id)) {
+      S.picked.delete(id);
+      row.remove();
+      refreshCounts();
+      flash("Removed from your list.");
+    }
+  });
+  root.addEventListener("keydown", async (e) => {
+    const input = e.target.closest(".newcat");
+    if (S.view !== "today" || !input || e.key !== "Enter") return;
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text || input.disabled) return;
+    input.disabled = true;
+    const created = await addTasks(S.store, [{ task: text, pillar: input.dataset.pillar }], `life-os: new task`);
+    input.disabled = false;
+    if (!created) return;
+    const t = created[0];
+    S.picked.add(t.id);
+    input.closest(".cat").querySelector(".rows").insertAdjacentHTML("beforeend", catRowHtml(t, pickerWeekDay));
+    input.value = "";
+    input.focus();
+    refreshCounts();
+  });
+}
 
 function wireToday(dateISO, doc, monthDoc, weekDoc) {
   $("#prevday")?.addEventListener("click", () => {
@@ -716,14 +817,7 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
     renderToday();
   });
 
-  // Remove a Top 3 row while planning/editing — purely a DOM removal, nothing
-  // to save yet (that happens on #saveplan, which just reads whatever .t3task
-  // rows remain). Handles re-editing a day whose top3 somehow grew past 3.
-  document.querySelectorAll(".t3row .rm").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      btn.closest(".t3row").remove();
-    });
-  });
+  wirePicker(weekDoc);
 
   let shuffled = null;
   $("#shufflequote")?.addEventListener("click", () => {
@@ -756,65 +850,27 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
     }
   });
 
-  $("#saveplan")?.addEventListener("click", () => {
+  $("#saveplan")?.addEventListener("click", async () => {
     const quote = shuffled || quoteForDate(dateISO);
-    const top3Inputs = [...document.querySelectorAll(".t3task")];
-    const pillarInputs = [...document.querySelectorAll(".t3pillar")];
-    const existing = [weekDoc.tasks || [], doc.morning?.top3 || []];
-    const top3 = top3Inputs
-      .map((inp, i) => ({ task: inp.value.trim(), pillar: pillarInputs[i].value }))
-      .filter((t) => t.task)
-      .map((t) => ({
-        id: nextTaskId(dateISO, existing),
-        task: t.task,
-        pillar: t.pillar,
-        status: "not_started",
-      }));
-    // ensure unique ids even when several are generated in the same batch
-    const seen = new Set();
-    for (const t of top3) {
-      while (seen.has(t.id)) t.id = nextTaskId(dateISO, [...existing, top3]);
-      seen.add(t.id);
-    }
-
-    // "If there's time" — checked board tasks become this day's additionalTasks,
-    // each a fresh copy (own id/status) so ticking it off today doesn't touch
-    // the week board's own record of that task's completion status.
-    const checkedIds = new Set([...document.querySelectorAll(".addlpick:checked")].map((el) => el.value));
-    const weekTasks = weekDoc.tasks || [];
-    const additionalTasks = [];
-    for (const wt of weekTasks) {
-      if (!checkedIds.has(wt.id)) continue;
-      const id = nextTaskId(dateISO, [...existing, top3, additionalTasks]);
-      additionalTasks.push({ id, task: wt.task, pillar: wt.pillar, status: "not_started" });
-    }
-
-    // Claim: a board task picked here is now planned for today, so tag it with
-    // today's day key. That's the same field the picker's own "Unplanned" group
-    // filters on (!assignedDay), so a claimed task stops resurfacing there on
-    // future days instead of floating as a candidate forever.
-    const dk = dayKeyOf(dateISO);
-    let boardChanged = false;
-    const claimedWeekTasks = weekTasks.map((wt) => {
-      if (!checkedIds.has(wt.id) || wt.assignedDay === dk) return wt;
-      boardChanged = true;
-      return { ...wt, assignedDay: dk };
-    });
-    if (boardChanged) {
-      weekDoc.tasks = claimedWeekTasks;
-      S.store.saveWeek(mondayOf(dateISO), { tasks: claimedWeekTasks }, true, `life-os: today ${dateISO}`);
-    }
+    const master = await S.store.getTasks();
+    // Picked tasks keep their master id, so ticking one done here is the same
+    // task on the Week board and in the Outlook sync. Re-editing keeps any
+    // status already set today.
+    const prevStatus = new Map((doc.morning?.top3 || []).map((t) => [t.id, t.status]));
+    const top3 = master.tasks
+      .filter((t) => S.picked.has(t.id))
+      .map((t) => ({ id: t.id, task: t.task, pillar: t.pillar, status: prevStatus.get(t.id) || (t.status === "done" ? "done" : "not_started") }));
 
     const morning = writeMorningQuote(
       {
         completedAt: nowHM(),
         excitedAbout: $("#excited").value.trim(),
         potentialChallenge: $("#challenge").value.trim(),
-        challengePlan: $("#challengeplan").value.trim(),
+        challengePlan: "",
         successAnchor: $("#anchor").value.trim(),
         peopleToConnect: $("#people").value.split(",").map((s) => s.trim()).filter(Boolean),
         top3,
-        additionalTasks,
+        additionalTasks: doc.morning?.additionalTasks || [],
       },
       quote
     );
@@ -824,14 +880,19 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
     renderToday();
   });
 
+  // Journal: tap a task to mark it done (tap again to undo). Updated in place,
+  // not via renderToday, so a half-typed journal note isn't wiped; the master
+  // list gets the same status so the Week board and Outlook export agree.
   document.querySelectorAll(".task[data-group='morning-top3']").forEach((btn) => {
     btn.addEventListener("click", () => {
       const i = Number(btn.dataset.i);
       const top3 = [...(doc.morning.top3 || [])];
-      top3[i] = { ...top3[i], status: CYCLE[top3[i].status || "not_started"] };
+      const status = top3[i].status === "done" ? "not_started" : "done";
+      top3[i] = { ...top3[i], status };
       S.store.saveDay(dateISO, { morning: { top3 } }, true);
       doc.morning.top3 = top3;
-      renderToday();
+      btn.dataset.s = status;
+      setTaskStatus(S.store, [top3[i].id], status, `life-os: ${status === "done" ? "done" : "reopened"} ${top3[i].id}`);
     });
   });
   document.querySelectorAll(".task[data-group='morning-additional']").forEach((btn) => {
@@ -1018,7 +1079,8 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
     });
   });
 
-  $("#saveevening")?.addEventListener("click", () => {
+  $("#saveevening")?.addEventListener("click", async (ev) => {
+    ev.currentTarget.disabled = true;
     const top3Results = [...(doc.morning?.top3 || doc.evening?.top3Results || [])];
     const additionalResults = [...(doc.morning?.additionalTasks || doc.evening?.additionalResults || [])];
     const hph = {};
@@ -1038,16 +1100,27 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
       $("#r_improve").value.trim()
     );
 
-    // "Plan tomorrow" — resolve checked picker ids against everything that could
-    // have supplied them (today's own tasks, plus the week board), then append
-    // whatever was typed free-text, one task per line.
-    const tomorrowPool = [...top3Results, ...additionalResults, ...(weekDoc.tasks || [])];
+    // Final statuses go to the master list too: done here means done everywhere,
+    // and anything un-done here is reopened there.
+    const master = await S.store.getTasks();
+    const masterStatus = new Map(master.tasks.map((t) => [t.id, t.status]));
+    const nowDone = top3Results.filter((t) => t.status === "done" && masterStatus.has(t.id) && masterStatus.get(t.id) !== "done").map((t) => t.id);
+    const reopened = top3Results.filter((t) => t.status !== "done" && masterStatus.get(t.id) === "done").map((t) => t.id);
+    if (nowDone.length) await setTaskStatus(S.store, nowDone, "done", `life-os: evening ${dateISO}`);
+    if (reopened.length) await setTaskStatus(S.store, reopened, "not_started", `life-os: evening ${dateISO}`);
+
+    // "Plan tomorrow": carry-overs keep their master id; anything typed new is
+    // added to the master list first so tomorrow's picker can pre-tick it.
+    const tomorrowPool = [...top3Results, ...additionalResults];
     const checkedTomorrowIds = new Set([...document.querySelectorAll(".addlpick:checked")].map((el) => el.value));
     const tomorrowFromPicker = tomorrowPool
       .filter((t) => checkedTomorrowIds.has(t.id))
-      .map((t) => ({ task: t.task, pillar: t.pillar }));
-    const tomorrowFreeText = parseTaskLines($("#tomorrownew")?.value || "").map((task) => ({ task, pillar: "careerWork" }));
-    const tomorrowDraftTasks = [...tomorrowFromPicker, ...tomorrowFreeText];
+      .map((t) => ({ id: t.id, task: t.task, pillar: t.pillar }));
+    const newLines = parseTaskLines($("#tomorrownew")?.value || "");
+    const created = newLines.length
+      ? (await addTasks(S.store, newLines.map((task) => ({ task, pillar: $("#tomorrowpillar").value })), `life-os: evening ${dateISO}`)) || []
+      : [];
+    const tomorrowDraftTasks = [...tomorrowFromPicker, ...created.map((t) => ({ id: t.id, task: t.task, pillar: t.pillar }))];
 
     // Claim: a board task picked here for tomorrow gets tagged to that day, same
     // reasoning as the morning plan's "If there's time" claim — but only when
