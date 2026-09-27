@@ -44,7 +44,7 @@ export function openBulkImport(store) {
       <div class="seg" style="display:inline-flex;margin-bottom:16px">
         <button data-mode="tasks" aria-current="true">Tasks</button>
         <button data-mode="journal">Journal entries</button>
-        <button data-mode="outlook">Outlook tasks</button>
+        <button data-mode="outlook">Outlook tasks (import / export)</button>
       </div>
 
       <div id="mode-tasks">

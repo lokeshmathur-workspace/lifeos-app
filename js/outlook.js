@@ -302,11 +302,12 @@ export async function openOutlookSync(store) {
   function renderStart(err) {
     modal.innerHTML = `
       <h2 style="margin-top:0">Outlook tasks</h2>
-      <p class="savenote" style="margin-bottom:12px">Import your Outlook task export (.xlsx or .csv). Nothing changes until you review and tap Apply.</p>
-      <label class="btn pri" style="display:block;text-align:center">Choose Outlook export<input type="file" id="olfile" accept=".xlsx,.csv" hidden></label>
+      <p class="savenote" style="margin-bottom:12px">Bring tasks in from Outlook, or send your Life OS tasks back out.</p>
+      <label class="btn pri" style="display:block;text-align:center">Import from Outlook — pick your .xlsx or .csv file<input type="file" id="olfile" accept=".xlsx,.csv" hidden></label>
+      <p class="savenote" style="margin-top:6px">In Outlook, export your task list, then pick that file here. Nothing changes until you review and tap Apply.</p>
       ${err ? `<p class="savenote warn" style="margin-top:10px">${esc(err)}</p>` : ""}
       <div class="btnrow" style="margin-top:16px">
-        <button class="btn" id="olexport">Export for Outlook (.csv)</button>
+        <button class="btn" id="olexport">Export to Outlook (.csv)</button>
         <button class="btn" id="olclose">Close</button>
       </div>
       <p class="savenote" style="margin-top:8px" id="ollast"></p>`;
