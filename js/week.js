@@ -103,6 +103,9 @@ export async function renderWeekView(store, S, renderApp) {
   const inprogPct = total ? Math.round((100 * inprog) / total) : 0;
   const restPct = Math.max(0, 100 - donePct - inprogPct);
 
+  // An empty key focus starts from last week's "what would you change" answer.
+  const focusSuggestion = editable && !weekDoc.keyFocus ? prevWeekDoc?.review?.changeNext || "" : "";
+
   const usedTexts = new Set(tasks.map((t) => t.task.trim().toLowerCase()));
   const prevIncomplete = editable
     ? (prevWeekDoc.tasks || []).filter((t) => t.status !== "done" && !usedTexts.has(t.task.trim().toLowerCase()))
@@ -152,7 +155,14 @@ export async function renderWeekView(store, S, renderApp) {
           <b>Key focus</b>
           ${
             editable
-              ? `<textarea id="keyfocus" rows="2">${esc(weekDoc.keyFocus || "")}</textarea>
+              ? `<textarea id="keyfocus" rows="2" placeholder="The one thing this week is for">${esc(weekDoc.keyFocus || focusSuggestion)}</textarea>
+                 ${
+                   !weekDoc.keyFocus && focusSuggestion
+                     ? `<p class="fldnote" style="margin:4px 0 0">From last week's review — edit if you like, then Save.</p>`
+                     : weekDoc.keyFocus && weekDoc.keyFocus === prevWeekDoc?.review?.changeNext
+                       ? `<p class="fldnote" style="margin:4px 0 0">From last week's review.</p>`
+                       : ""
+                 }
                  <div class="btnrow" style="margin-top:8px"><button class="btn sm" id="savefocus">Save</button></div>`
               : esc(weekDoc.keyFocus || "—")
           }

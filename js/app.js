@@ -310,7 +310,7 @@ async function renderToday() {
   } else if (!doc.morning && !doc.evening?.completedAt) {
     html.push(planPrompt(dateISO));
   } else if (!doc.evening?.completedAt) {
-    html.push(dayInProgress(dateISO, doc));
+    html.push(dayInProgress(dateISO, doc, weekDoc));
   } else {
     // Reachable with no doc.morning at all (an evening-only day, via "Skip to
     // evening review") — daySummary already renders fine without it, just
@@ -403,6 +403,7 @@ async function planningForm(dateISO, doc, monthDoc, weekDoc) {
     </section>
     <section class="blk">
       <h2>Pick today's tasks</h2>
+      ${weekFocusHtml(weekDoc)}
       <div class="todaypin" id="todaypin">${todayPinHtml(master)}</div>
       ${Object.entries(PILLARS)
         .map(([k, label], i) => categoryListHtml(k, label, master.tasks.filter((t) => t.pillar === k && (isOpen(t) || S.picked.has(t.id))), weekDay, i < 2))
@@ -495,13 +496,20 @@ function answersHtml(m) {
   return rows.length ? `<dl class="answers">${rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>` : "";
 }
 
-function dayInProgress(dateISO, doc) {
+// The week's key focus, pinned above the day's plan so it's in view all day.
+function weekFocusHtml(weekDoc) {
+  const f = (weekDoc?.keyFocus || "").trim();
+  return f ? `<div class="weekfocus"><span class="k">This week</span>${esc(f)}</div>` : "";
+}
+
+function dayInProgress(dateISO, doc, weekDoc) {
   const q = readQuote(doc.morning) || {};
   const top3 = doc.morning?.top3 || [];
   const additionalTasks = doc.morning?.additionalTasks || [];
   const notes = doc.notes || [];
   return `
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      ${weekFocusHtml(weekDoc)}
       <div class="todaypin">
         <div class="k">Today's plan</div>
         <div class="tasks" data-taskgroup="morning-top3">${top3.map((t, i) => taskRow(t, "morning-top3", i)).join("") || `<p class="empty" style="padding:4px 0">No tasks picked.</p>`}</div>

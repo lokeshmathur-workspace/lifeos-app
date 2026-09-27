@@ -165,7 +165,7 @@ export function weekReviewHtml(ctx) {
       <label class="fld"><span>What happened</span><textarea id="wr_summary" rows="${Math.min(8, Math.max(3, p.summary.split("\n").length + 1))}">${esc(p.summary)}</textarea></label>
       <label class="fld"><span>Wins</span><textarea id="wr_wins" rows="${Math.min(8, Math.max(2, p.wins.split("\n").length + 1))}">${esc(p.wins)}</textarea></label>
       <label class="fld"><span>Patterns</span><textarea id="wr_patterns" rows="4">${esc(p.patterns)}</textarea></label>
-      <label class="fld"><span>What would you change next week?</span><textarea id="wr_change" rows="3" placeholder="${esc(p.idle.length ? `Nothing got done in ${p.idle.join(", ")} — what happened there?` : "One or two concrete changes")}">${esc(r?.changeNext || "")}</textarea></label>
+      <label class="fld"><span>What would you change next week? <em class="fldnote">becomes next week's key focus</em></span><textarea id="wr_change" rows="3" placeholder="${esc(p.idle.length ? `Nothing got done in ${p.idle.join(", ")} — what happened there?` : "One or two concrete changes")}">${esc(r?.changeNext || "")}</textarea></label>
       ${
         open.length
           ? `<div class="picker" style="margin-top:6px"><div class="pickgroup"><h4>Carry into next week? <span>unfinished on this week's board</span></h4>
@@ -218,14 +218,17 @@ export function wireWeekReview(ctx) {
     // Unfinished tasks ticked to carry: same master id on next week's board.
     const carryIds = new Set([...document.querySelectorAll(".wr_carry:checked")].map((el) => el.value));
     const nextOf = addDays(weekOf, 7);
-    if (carryIds.size) {
-      const nextDoc = await store.getWeek(nextOf);
-      const have = new Set((nextDoc.tasks || []).map((t) => t.id));
-      const add = boardTasks
-        .filter((t) => carryIds.has(t.id) && !have.has(t.id))
-        .map((t) => ({ id: t.id, task: t.task, pillar: t.pillar, assignedDay: "", status: "carried_forward", source: t.source || "manual" }));
-      if (add.length) await store.saveWeek(nextOf, { tasks: [...(nextDoc.tasks || []), ...add] }, true, `life-os: weekly ${nextOf} carry-forward`);
-    }
+    // Next week: ticked tasks carry over (same master id), and the "change next
+    // week" answer becomes its key focus unless one is already set.
+    const nextDoc = await store.getWeek(nextOf);
+    const nextPatch = {};
+    const have = new Set((nextDoc.tasks || []).map((t) => t.id));
+    const add = boardTasks
+      .filter((t) => carryIds.has(t.id) && !have.has(t.id))
+      .map((t) => ({ id: t.id, task: t.task, pillar: t.pillar, assignedDay: "", status: "carried_forward", source: t.source || "manual" }));
+    if (add.length) nextPatch.tasks = [...(nextDoc.tasks || []), ...add];
+    if (review.changeNext && !(nextDoc.keyFocus || "").trim()) nextPatch.keyFocus = review.changeNext;
+    if (Object.keys(nextPatch).length) await store.saveWeek(nextOf, nextPatch, true, `life-os: weekly ${nextOf} carry-forward`);
     // The week's HPH average goes to the month its Monday falls in, as /weekly did.
     if (review.hphAvg != null) {
       const mk = monthKeyOf(weekOf);
