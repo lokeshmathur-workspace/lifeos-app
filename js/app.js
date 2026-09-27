@@ -561,6 +561,12 @@ function eveningForm(dateISO, doc, monthDoc, weekDoc) {
   // "Plan tomorrow": today's unfinished tasks to carry over; anything else
   // gets picked from the full list in tomorrow's morning picker.
   const unfinishedToday = [...top3, ...additionalTasks].filter((t) => t.status !== "done");
+  // Reopening a saved review shows what was actually saved, not a fresh
+  // "everything ticked" default — otherwise a re-save quietly re-adds unticked tasks.
+  const savedDraft = e.completedAt && Array.isArray(e.tomorrowDraftTasks) ? e.tomorrowDraftTasks.filter((t) => t.id) : null;
+  const carryTicked = savedDraft ? new Set(savedDraft.map((t) => t.id)) : new Set(unfinishedToday.map((t) => t.id));
+  const todayIds = new Set(unfinishedToday.map((t) => t.id));
+  const addedForTomorrow = (savedDraft || []).filter((t) => !todayIds.has(t.id));
 
   return `
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
@@ -629,7 +635,8 @@ function eveningForm(dateISO, doc, monthDoc, weekDoc) {
     <section class="blk">
       <h2>Plan tomorrow</h2>
       <div class="picker">
-        ${pickerGroup("Carry over?", "didn't finish today", unfinishedToday, new Set(unfinishedToday.map((t) => t.id)))}
+        ${pickerGroup("Carry over?", "didn't finish today", unfinishedToday, carryTicked)}
+        ${pickerGroup("Added for tomorrow", "from your last save", addedForTomorrow, new Set(addedForTomorrow.map((t) => t.id)))}
       </div>
       ${!unfinishedToday.length ? `<p class="empty">Nothing left over from today.</p>` : ""}
       <label class="fld" style="margin-top:10px;margin-bottom:6px"><span>Add something new for tomorrow (one per line)</span><textarea id="tomorrownew" rows="2" placeholder="Type a task…"></textarea></label>
@@ -1144,10 +1151,11 @@ function wireToday(dateISO, doc, monthDoc, weekDoc) {
 
     // "Plan tomorrow": carry-overs keep their master id; anything typed new is
     // added to the master list first so tomorrow's picker can pre-tick it.
-    const tomorrowPool = [...top3Results, ...additionalResults];
+    const tomorrowPool = [...top3Results, ...additionalResults, ...(doc.evening?.tomorrowDraftTasks || []).filter((t) => t.id)];
     const checkedTomorrowIds = new Set([...document.querySelectorAll(".addlpick:checked")].map((el) => el.value));
+    const seenTomorrow = new Set();
     const tomorrowFromPicker = tomorrowPool
-      .filter((t) => checkedTomorrowIds.has(t.id))
+      .filter((t) => checkedTomorrowIds.has(t.id) && !seenTomorrow.has(t.id) && seenTomorrow.add(t.id))
       .map((t) => ({ id: t.id, task: t.task, pillar: t.pillar }));
     const newLines = parseTaskLines($("#tomorrownew")?.value || "");
     const created = newLines.length
