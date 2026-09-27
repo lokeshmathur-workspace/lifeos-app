@@ -97,12 +97,12 @@ header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom
 
 /* ── sections ───────────────────────────────────────────── */
 section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
-.blk > h2{
+.blk > h2,.tlsection > summary h2{
   font-family:"Manrope",sans-serif;font-size:10.5px;font-weight:600;
   letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
   margin:0 0 14px;display:flex;align-items:center;gap:10px;
 }
-.blk > h2 .count{color:var(--ink-2);letter-spacing:.02em}
+.blk > h2 .count,.tlsection > summary h2 .count{color:var(--ink-2);letter-spacing:.02em}
 .blk > h2 .spring{flex:1}
 
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;box-shadow:var(--shadow)}
@@ -377,7 +377,15 @@ label.fld > span{
 .tlsearch{display:block;width:100%;box-sizing:border-box;margin-bottom:12px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
 .tasklist{display:flex;flex-direction:column;gap:12px}
 .tlgroup{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 12px}
-.tlhead{display:flex;align-items:center;gap:8px;padding:6px 0 8px;font-weight:700;font-size:14px}
+.tlsection > summary{list-style:none;cursor:pointer}
+.tlsection > summary::-webkit-details-marker,.tlgroup > summary::-webkit-details-marker{display:none}
+.tlsection > summary h2{display:flex;align-items:center;gap:8px;margin-bottom:0}
+.tlsection > summary h2::after,.tlgroup > summary::after{content:"›";margin-left:auto;font-size:18px;line-height:1;color:var(--muted);transition:transform .15s}
+.tlsection[open] > summary h2::after,.tlgroup[open] > summary::after{transform:rotate(90deg)}
+.tlsection[open] > summary{margin-bottom:12px}
+.tlsection > summary h2::after{font-size:20px;letter-spacing:0;color:var(--ink-2)}
+.tlhead{display:flex;align-items:center;gap:8px;padding:6px 0;font-weight:700;font-size:14px;list-style:none;cursor:pointer}
+.tlgroup[open] > .tlhead{padding-bottom:8px}
 .tlhead .nm{flex:1}
 .tlcount{font-size:12px;font-weight:600;color:var(--muted)}
 .tlrow[hidden],.tlgroup[hidden]{display:none}

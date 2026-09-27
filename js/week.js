@@ -199,7 +199,7 @@ export async function renderWeekView(store, S, renderApp) {
         .join("")}
     </section>
 
-    ${editable ? taskListHtml(openList) : ""}
+    ${editable ? taskListHtml(openList, (S.taskListOpen ||= new Set())) : ""}
 
     <section class="blk">
       <h2>Stats</h2>
@@ -314,7 +314,8 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
 
 // Every open task in the master list that isn't on this week's board — the place
 // to see the whole list (Outlook imports included) and pull from it.
-function taskListHtml(openList) {
+// Collapsed by default; whatever you open stays open across redraws (S.taskListOpen).
+function taskListHtml(openList, open) {
   const today = todayISO();
   const order = (t) => (t.due ? `0${t.due}` : `1${t.created || ""}`);
   const groups = Object.entries(PILLARS)
@@ -322,8 +323,8 @@ function taskListHtml(openList) {
       const rows = openList.filter((t) => t.pillar === key).sort((a, b) => (order(a) < order(b) ? -1 : 1));
       if (!rows.length) return "";
       return `
-      <div class="tlgroup" data-pillar="${key}">
-        <div class="tlhead"><span class="pdot" data-p="${key}"></span><span class="nm">${esc(label)}</span><span class="tlcount">${rows.length}</span></div>
+      <details class="tlgroup" data-pillar="${key}" ${open.has(key) ? "open" : ""}>
+        <summary class="tlhead"><span class="pdot" data-p="${key}"></span><span class="nm">${esc(label)}</span><span class="tlcount">${rows.length}</span></summary>
         ${rows
           .map(
             (t) => `
@@ -338,19 +339,21 @@ function taskListHtml(openList) {
         </div>`
           )
           .join("")}
-      </div>`;
+      </details>`;
     })
     .join("");
   return `
     <section class="blk" id="tasklist">
-      <h2>Your task list <span class="count" id="tltotal">${openList.length} open</span></h2>
-      ${
-        openList.length
-          ? `<input type="search" id="tlsearch" class="tlsearch" placeholder="Search your tasks…" autocomplete="off">
-             <div class="tasklist">${groups}</div>
-             <p class="caterr" id="tlerr" hidden></p>`
-          : `<p class="empty">Everything open is already on this week's board.</p>`
-      }
+      <details class="tlsection" ${open.has("_all") ? "open" : ""}>
+        <summary><h2>Your task list <span class="count" id="tltotal">${openList.length} open</span></h2></summary>
+        ${
+          openList.length
+            ? `<input type="search" id="tlsearch" class="tlsearch" placeholder="Search your tasks…" autocomplete="off">
+               <div class="tasklist">${groups}</div>
+               <p class="caterr" id="tlerr" hidden></p>`
+            : `<p class="empty">Everything open is already on this week's board.</p>`
+        }
+      </details>
     </section>`;
 }
 
@@ -522,8 +525,20 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
         if (hit) shown++;
       });
       g.hidden = !shown;
+      if (q) g.open = shown > 0;
+      else g.open = S.taskListOpen.has(g.dataset.pillar);
     });
   });
+  // Remember which parts are open so adding a task doesn't fold everything back up.
+  document.querySelector("#tasklist .tlsection")?.addEventListener("toggle", (e) => {
+    e.target.open ? S.taskListOpen.add("_all") : S.taskListOpen.delete("_all");
+  });
+  document.querySelectorAll("#tasklist .tlgroup").forEach((g) =>
+    g.addEventListener("toggle", () => {
+      if ($("#tlsearch")?.value.trim()) return;
+      g.open ? S.taskListOpen.add(g.dataset.pillar) : S.taskListOpen.delete(g.dataset.pillar);
+    })
+  );
   document.querySelectorAll("#tasklist .tladd").forEach((btn) => {
     btn.addEventListener("click", async () => {
       const row = btn.closest(".tlrow");
