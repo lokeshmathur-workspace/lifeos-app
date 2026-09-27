@@ -440,7 +440,11 @@ function categoryListHtml(key, label, tasks, weekDay, openByDefault) {
       <summary><span class="pdot" data-p="${key}"></span><span class="nm">${esc(label)}</span><span class="cnt">${pickedHere ? pickedHere + " picked · " : ""}${tasks.length} open</span></summary>
       <div class="body">
         <div class="rows">${tasks.map((t) => catRowHtml(t, weekDay)).join("")}</div>
-        <div class="catadd"><input type="text" class="newcat" data-pillar="${key}" placeholder="+ New ${esc(label)} task — press Enter"></div>
+        <form class="catadd" data-pillar="${key}">
+          <input type="text" class="newcat" placeholder="+ New ${esc(label)} task" enterkeyhint="done" autocomplete="off">
+          <button type="submit" class="btn sm">Add</button>
+        </form>
+        <p class="caterr" hidden></p>
       </div>
     </details>`;
 }
@@ -751,30 +755,59 @@ function wirePicker(weekDoc) {
       return;
     }
     const id = drop.dataset.drop;
-    if (await removeTask(S.store, id)) {
+    const err = row.closest(".cat").querySelector(".caterr");
+    drop.disabled = true;
+    const ok = await removeTask(S.store, id).catch(() => null);
+    drop.disabled = false;
+    if (ok) {
       S.picked.delete(id);
       row.remove();
+      err.hidden = true;
       refreshCounts();
       flash("Removed from your list.");
+    } else {
+      showCatError(err, "Couldn't remove it");
     }
   });
-  root.addEventListener("keydown", async (e) => {
-    const input = e.target.closest(".newcat");
-    if (S.view !== "today" || !input || e.key !== "Enter") return;
+  // A real <form> per category: Enter and the phone keyboard's Done/Go both
+  // submit it, and the Add button is there for anyone who doesn't press Enter.
+  root.addEventListener("submit", async (e) => {
+    const form = e.target.closest("form.catadd");
+    if (S.view !== "today" || !form) return;
     e.preventDefault();
+    const input = form.querySelector(".newcat");
+    const btn = form.querySelector("button");
+    const err = form.closest(".cat").querySelector(".caterr");
     const text = input.value.trim();
-    if (!text || input.disabled) return;
-    input.disabled = true;
-    const created = await addTasks(S.store, [{ task: text, pillar: input.dataset.pillar }], `life-os: new task`);
-    input.disabled = false;
-    if (!created) return;
+    if (!text || btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = "Saving…";
+    let created = null;
+    try {
+      created = await addTasks(S.store, [{ task: text, pillar: form.dataset.pillar }], `life-os: new task`);
+    } catch {
+      created = null;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = "Add";
+    }
+    if (!created) {
+      showCatError(err, "Couldn't save it");
+      return;
+    }
+    err.hidden = true;
     const t = created[0];
     S.picked.add(t.id);
-    input.closest(".cat").querySelector(".rows").insertAdjacentHTML("beforeend", catRowHtml(t, pickerWeekDay));
+    form.closest(".cat").querySelector(".rows").insertAdjacentHTML("beforeend", catRowHtml(t, pickerWeekDay));
     input.value = "";
     input.focus();
     refreshCounts();
   });
+}
+
+function showCatError(el, what) {
+  el.textContent = `${what} — ${S.store.lastTasksError || "Couldn't reach GitHub."} Tap again to retry.`;
+  el.hidden = false;
 }
 
 function wireToday(dateISO, doc, monthDoc, weekDoc) {

@@ -108,16 +108,24 @@ export class Store {
   // on a sha conflict it re-reads and re-applies fn to the fresh copy once,
   // rather than overwriting the other device's change. Returns the new doc, or
   // null if the write failed (already reported via onFlash).
+  // GitHub can also 409 a commit made seconds after another one to the same
+  // branch even when the sha is right, so conflicts get up to 3 tries with a
+  // short pause, each against a fresh read.
   async updateTasks(fn, message) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+    const waits = [0, 600, 1500];
+    for (let attempt = 0; attempt < waits.length; attempt++) {
+      if (waits[attempt]) await new Promise((r) => setTimeout(r, waits[attempt]));
       const cur = await this.getTasks(attempt > 0);
       const next = fn(structuredClone(cur));
       try {
         const { sha } = await this.gh.putFile(TASKS_PATH, next, this.tasks.sha, message || "life-os: tasks");
         this.tasks = { doc: next, sha };
+        this.lastTasksError = "";
         return next;
       } catch (e) {
-        if (e instanceof GitHubStoreError && e.code === "conflict" && attempt === 0) continue;
+        this.lastTasksError =
+          e instanceof GitHubStoreError ? (e.code === "conflict" ? "GitHub was busy with another save." : e.message) : "Couldn't reach GitHub.";
+        if (e instanceof GitHubStoreError && e.code === "conflict" && attempt < waits.length - 1) continue;
         this.onFlash(e instanceof GitHubStoreError ? e.message : "Couldn't save your task list.", true);
         return null;
       }
