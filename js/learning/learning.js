@@ -583,7 +583,7 @@ function vSource() {
     <button class="btn" data-act="cap" data-mode="thought" data-id="${s.id}">Add thought</button>
   </div>
   ${processBlock}
-  <div class="btnrow">${meta.status === "finished" ? `<button class="btn" data-act="reopen" data-id="${s.id}">Mark reading</button>` : `<button class="btn" data-act="finish" data-id="${s.id}">${isBook ? "Finished book" : "Mark done"}</button>`}</div>
+  <div class="btnrow">${meta.status === "finished" ? `<button class="btn" data-act="reopen" data-id="${s.id}">Move back to active</button>` : `<button class="btn" data-act="finish" data-id="${s.id}">I've finished this — move to Finished</button>`}</div>
   ${(meta.captures || []).length ? briefBlock(meta) : ""}
   <h2>Notes <span class="count">${(meta.captures || []).length || ""}</span></h2>
   ${(meta.captures || []).length ? meta.captures.slice().reverse().map(capCard).join("") : `<div class="empty">${isBook ? "Photograph a page or jot a thought to make your first note." : "Tap <b>Paste text</b> to add the " + (s.type === "video" ? "transcript or your notes" : "article text") + " — you'll get a summary and key learnings."}</div>`}
@@ -1111,6 +1111,7 @@ document.addEventListener("click", async (e) => {
       if (newMeta) {
         l.meta = newMeta;
         l.sources = l.sources.map((r) => (r.id === b.dataset.id ? { ...r, status: newMeta.status } : r));
+        flash(a === "finish" ? "Moved to Finished — your notes are all still here." : "Moved back to your active list.");
       }
       render();
       break;
