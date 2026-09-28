@@ -11,6 +11,7 @@ import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
 import { perHabitAvg, loadMonthWeeks, monthGlanceHtml, monthReviewHtml, wireMonthReview } from "./reviews.js";
 import { isOpen } from "./tasks.js";
+import { taskListHtml, wireTaskList } from "./tasklist.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -167,9 +168,11 @@ export async function renderMonthView(store, S, renderApp) {
     <section class="blk">
       <h2>Intentions by category</h2>
       ${Object.entries(PILLARS)
-        .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable, openList))
+        .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable))
         .join("")}
     </section>
+
+    ${editable ? taskListHtml(openList, (S.monthListOpen ||= new Set()), { addLabel: "+ Intention", addTitle: "Add as this month's intention", daySelect: false, emptyText: "Every open task is already an intention this month." }) : ""}
 
     <section class="blk">
       <h2>Key dates</h2>
@@ -211,11 +214,10 @@ export async function renderMonthView(store, S, renderApp) {
     </section>`;
 
   wireMonthReview(reviewCtx);
-  wireMonth(store, S, renderApp, monthKey, monthDoc, editable);
+  wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master);
 }
 
-function intentionGroupHtml(key, label, intentions, editable, openList) {
-  const fromList = editable ? openList.filter((t) => t.pillar === key) : [];
+function intentionGroupHtml(key, label, intentions, editable) {
   const rows = intentions
     .map((it, i) => ({ it, i }))
     .filter(({ it }) => it.pillar === key);
@@ -254,22 +256,6 @@ function intentionGroupHtml(key, label, intentions, editable, openList) {
         </div>`
           )
           .join("") || (editable ? "" : `<p class="empty" style="padding:10px 14px;font-size:12.5px">No intentions.</p>`)
-      }
-      ${
-        fromList.length
-          ? `<details class="frommonth">
-        <summary class="lbl" style="cursor:pointer">From your task list (${fromList.length})</summary>
-        ${fromList
-          .map(
-            (t) => `
-        <div class="item">
-          <span>${esc(t.task)}</span>
-          <button class="pull-intent" data-pillar="${key}" data-text="${esc(t.task)}">+ Add as intention</button>
-        </div>`
-          )
-          .join("")}
-      </details>`
-          : ""
       }
       ${
         editable
@@ -350,7 +336,7 @@ function calendarGrid(year, month, daysMap) {
     </div>`;
 }
 
-function wireMonth(store, S, renderApp, monthKey, monthDoc, editable) {
+function wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master) {
   $("#prevmonth")?.addEventListener("click", () => {
     S.month = addMonths(monthKey, -1);
     S.monthReviewEditing = false;
@@ -465,13 +451,19 @@ function wireMonth(store, S, renderApp, monthKey, monthDoc, editable) {
     });
   });
 
-  document.querySelectorAll(".pull-intent").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const intentions = [...(monthDoc.intentions || []), { intention: btn.dataset.text, pillar: btn.dataset.pillar, status: "not_started", progress: 0 }];
+  // Your task list (js/tasklist.js): + Intention adds it to this month's intentions.
+  wireTaskList({
+    store,
+    open: S.monthListOpen,
+    mById: new Map((master?.tasks || []).map((t) => [t.id, t])),
+    renderApp,
+    onAdd: async (t) => {
+      const intentions = [...(monthDoc.intentions || []), { intention: t.task, pillar: t.pillar, status: "not_started", progress: 0 }];
       monthDoc.intentions = intentions;
-      saveIntentions(intentions);
-      renderApp();
-    });
+      const ok = await saveIntentions(intentions);
+      if (ok) flash("Added as an intention.");
+      return ok;
+    },
   });
 
   const saveKeyDates = (keyDates) => store.saveMonth(monthKey, { keyDates }, true, `life-os: month-plan ${monthKey}`);

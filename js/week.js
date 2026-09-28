@@ -14,11 +14,12 @@
 import { PILLARS, BIZ, VIT } from "./constants.js";
 import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, D, monthKeyOf } from "./dateutil.js";
 import { hphAvg, evening } from "./derive.js";
-import { addTasks, setTaskStatus, removeTask, isOpen, shortDue } from "./tasks.js";
+import { addTasks, setTaskStatus, isOpen } from "./tasks.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
 import { pillarHealth, monthDates } from "./month.js";
 import { weekGlanceHtml, weekReviewHtml, wireWeekReview } from "./reviews.js";
+import { taskListHtml, wireTaskList } from "./tasklist.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -121,8 +122,13 @@ export async function renderWeekView(store, S, renderApp) {
 
   // What the week's journals already say, then the review that starts from it.
   const started = weekOf <= todayISO();
-  const reviewCtx = { store, S, renderApp, weekOf, weekDoc, dates, daysMap, boardTasks: tasks, stats, editing: !!S.weekReviewEditing };
-  const rollup = (first) => (started ? weekGlanceHtml(dates, daysMap, tasks, first) + weekReviewHtml(reviewCtx) : "");
+  const reviewCtx = {
+    store, S, renderApp, weekOf, weekDoc, dates, daysMap, boardTasks: tasks, stats,
+    editing: !!S.weekReviewEditing,
+    masterTasks: master.tasks,
+    prevReviewed: !!(prevWeekDoc || (await store.getWeek(addDays(weekOf, -7)))).review?.completedAt,
+  };
+  const rollup = (first) => (started ? weekGlanceHtml(dates, daysMap, tasks, first, master.tasks) + weekReviewHtml(reviewCtx) : "");
 
   main.innerHTML = `
     <div class="datehead" style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
@@ -199,7 +205,7 @@ export async function renderWeekView(store, S, renderApp) {
         .join("")}
     </section>
 
-    ${editable ? taskListHtml(openList, (S.taskListOpen ||= new Set())) : ""}
+    ${editable ? taskListHtml(openList, (S.weekListOpen ||= new Set()), { addLabel: "+ Week", addTitle: "Add to this week", daySelect: true, emptyText: "Everything open is already on this week's board." }) : ""}
 
     <section class="blk">
       <h2>Stats</h2>
@@ -310,51 +316,6 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
           : ""
       }
     </div>`;
-}
-
-// Every open task in the master list that isn't on this week's board — the place
-// to see the whole list (Outlook imports included) and pull from it.
-// Collapsed by default; whatever you open stays open across redraws (S.taskListOpen).
-function taskListHtml(openList, open) {
-  const today = todayISO();
-  const order = (t) => (t.due ? `0${t.due}` : `1${t.created || ""}`);
-  const groups = Object.entries(PILLARS)
-    .map(([key, label]) => {
-      const rows = openList.filter((t) => t.pillar === key).sort((a, b) => (order(a) < order(b) ? -1 : 1));
-      if (!rows.length) return "";
-      return `
-      <details class="tlgroup" data-pillar="${key}" ${open.has(key) ? "open" : ""}>
-        <summary class="tlhead"><span class="pdot" data-p="${key}"></span><span class="nm">${esc(label)}</span><span class="tlcount">${rows.length}</span></summary>
-        ${rows
-          .map(
-            (t) => `
-        <div class="tlrow" data-id="${esc(t.id)}" data-text="${esc(t.task.toLowerCase())}">
-          <span class="tk">${esc(t.task)}${t.due ? ` <span class="tag ${t.due < today ? "late" : ""}">${t.due < today ? "overdue " : "due "}${esc(shortDue(t.due))}</span>` : ""}${t.source === "outlook" ? ` <span class="tag">Outlook</span>` : ""}</span>
-          <span class="tlact">
-            <select class="tlday" aria-label="Day"><option value="">No day</option>${DAYKEYS.map((dk) => `<option value="${dk}">${dk}</option>`).join("")}</select>
-            <button class="tladd" title="Add to this week">+ Week</button>
-            <button class="tldone" title="Already done" aria-label="Mark done">✓</button>
-            <button class="tldrop" title="Delete — no longer needed" aria-label="Delete">×</button>
-          </span>
-        </div>`
-          )
-          .join("")}
-      </details>`;
-    })
-    .join("");
-  return `
-    <section class="blk" id="tasklist">
-      <details class="tlsection" ${open.has("_all") ? "open" : ""}>
-        <summary><h2>Your task list <span class="count" id="tltotal">${openList.length} open</span></h2></summary>
-        ${
-          openList.length
-            ? `<input type="search" id="tlsearch" class="tlsearch" placeholder="Search your tasks…" autocomplete="off">
-               <div class="tasklist">${groups}</div>
-               <p class="caterr" id="tlerr" hidden></p>`
-            : `<p class="empty">Everything open is already on this week's board.</p>`
-        }
-      </details>
-    </section>`;
 }
 
 function hphChartHtml(byDate) {
@@ -497,106 +458,19 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
     });
   });
 
-  // Your task list: + Week / ✓ / × — done and delete update in place; adding
-  // to the week redraws the board but keeps your place on the page.
-  const tlErr = (msg) => {
-    const el = $("#tlerr");
-    if (!el) return;
-    el.textContent = msg;
-    el.hidden = false;
-  };
-  const dropRow = (row) => {
-    const group = row.closest(".tlgroup");
-    row.remove();
-    const left = group.querySelectorAll(".tlrow").length;
-    if (!left) group.remove();
-    else group.querySelector(".tlcount").textContent = String(left);
-    const total = document.querySelectorAll("#tasklist .tlrow").length;
-    const tot = $("#tltotal");
-    if (tot) tot.textContent = `${total} open`;
-  };
-  $("#tlsearch")?.addEventListener("input", (e) => {
-    const q = e.target.value.trim().toLowerCase();
-    document.querySelectorAll("#tasklist .tlgroup").forEach((g) => {
-      let shown = 0;
-      g.querySelectorAll(".tlrow").forEach((r) => {
-        const hit = !q || r.dataset.text.includes(q);
-        r.hidden = !hit;
-        if (hit) shown++;
-      });
-      g.hidden = !shown;
-      if (q) g.open = shown > 0;
-      else g.open = S.taskListOpen.has(g.dataset.pillar);
-    });
-  });
-  // Remember which parts are open so adding a task doesn't fold everything back up.
-  document.querySelector("#tasklist .tlsection")?.addEventListener("toggle", (e) => {
-    e.target.open ? S.taskListOpen.add("_all") : S.taskListOpen.delete("_all");
-  });
-  document.querySelectorAll("#tasklist .tlgroup").forEach((g) =>
-    g.addEventListener("toggle", () => {
-      if ($("#tlsearch")?.value.trim()) return;
-      g.open ? S.taskListOpen.add(g.dataset.pillar) : S.taskListOpen.delete(g.dataset.pillar);
-    })
-  );
-  document.querySelectorAll("#tasklist .tladd").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const row = btn.closest(".tlrow");
-      const t = mById.get(row.dataset.id);
-      if (!t) return;
-      btn.disabled = true;
-      const day = row.querySelector(".tlday").value;
+  // Your task list (js/tasklist.js): + Week puts it on this week's board.
+  wireTaskList({
+    store,
+    open: S.weekListOpen,
+    mById,
+    renderApp,
+    onAdd: async (t, day) => {
       const tasks = [...(weekDoc.tasks || []), { id: t.id, task: t.task, pillar: t.pillar, assignedDay: day, status: t.status, source: t.source === "outlook" ? "outlook" : "manual" }];
       weekDoc.tasks = tasks;
       const ok = await saveTasks(tasks);
-      if (!ok) {
-        btn.disabled = false;
-        return tlErr("Couldn't add it — try again.");
-      }
-      flash(day ? `Added to this week (${day}).` : "Added to this week.");
-      // Keep the task list where it was on screen, even though the board above grew.
-      const before = $("#tasklist")?.getBoundingClientRect().top;
-      await renderApp();
-      const after = $("#tasklist")?.getBoundingClientRect().top;
-      if (before != null && after != null) window.scrollBy(0, after - before);
-    });
-  });
-  document.querySelectorAll("#tasklist .tldone").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const row = btn.closest(".tlrow");
-      btn.disabled = true;
-      const ok = await setTaskStatus(store, [row.dataset.id], "done", "life-os: task done").catch(() => null);
-      if (!ok) {
-        btn.disabled = false;
-        return tlErr("Couldn't mark it done — try again.");
-      }
-      dropRow(row);
-      flash("Marked done.");
-    });
-  });
-  document.querySelectorAll("#tasklist .tldrop").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      if (btn.dataset.armed !== "1") {
-        btn.dataset.armed = "1";
-        btn.textContent = "Delete?";
-        setTimeout(() => {
-          if (btn.isConnected) {
-            btn.dataset.armed = "";
-            btn.textContent = "×";
-          }
-        }, 3000);
-        return;
-      }
-      const row = btn.closest(".tlrow");
-      btn.disabled = true;
-      const ok = await removeTask(store, row.dataset.id).catch(() => null);
-      if (!ok) {
-        btn.disabled = false;
-        return tlErr("Couldn't delete it — try again.");
-      }
-      dropRow(row);
-      flash("Deleted from your list.");
-    });
+      if (ok) flash(day ? `Added to this week (${day}).` : "Added to this week.");
+      return ok;
+    },
   });
 
   document.querySelectorAll(".dismiss-month").forEach((btn) => {

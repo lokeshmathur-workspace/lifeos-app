@@ -42,9 +42,10 @@ function lowestHabit(dates, daysMap) {
   return best;
 }
 
-// Every task that appeared in a day plan or on the board, once, with done if
-// it was finished anywhere.
-function tasksOfPeriod(dates, daysMap, boardTasks = []) {
+// Every task that appeared in a day plan or on the board, once, with done if it
+// was finished anywhere — plus master-list tasks completed inside the period
+// (ticked with ✓ in the picker or task list, never planned for a day).
+function tasksOfPeriod(dates, daysMap, boardTasks = [], masterTasks = []) {
   const byId = new Map();
   const add = (t) => {
     const key = t.id || t.task;
@@ -56,6 +57,8 @@ function tasksOfPeriod(dates, daysMap, boardTasks = []) {
     if (doc) top3Of(doc).forEach(add);
   }
   boardTasks.forEach(add);
+  const first = dates[0], last = dates[dates.length - 1];
+  masterTasks.filter((t) => t.status === "done" && t.completed && t.completed >= first && t.completed <= last).forEach(add);
   return [...byId.values()];
 }
 
@@ -80,7 +83,7 @@ export function weekReviewable(weekOf) {
   return weekOf === cur || weekOf === addDays(cur, -7);
 }
 
-export function weekGlanceHtml(dates, daysMap, boardTasks, first) {
+export function weekGlanceHtml(dates, daysMap, boardTasks, first, masterTasks = []) {
   const today = todayISO();
   const rows = dates
     .map((d) => {
@@ -101,16 +104,16 @@ export function weekGlanceHtml(dates, daysMap, boardTasks, first) {
       <h2>Week at a glance</h2>
       <div class="card glance">${rows}</div>
       <h2 style="margin-top:16px">Done by category</h2>
-      ${pillarBarsHtml(tasksOfPeriod(dates, daysMap, boardTasks))}
+      ${pillarBarsHtml(tasksOfPeriod(dates, daysMap, boardTasks, masterTasks))}
     </section>`;
 }
 
-function weekPrefill(dates, daysMap, boardTasks, stats) {
+function weekPrefill(dates, daysMap, boardTasks, stats, masterTasks) {
   const summary = dates
     .filter((d) => daysMap.has(d) && dayHighlight(daysMap.get(d)))
     .map((d) => `${dayOfWeekName(d).slice(0, 3)}: ${dayHighlight(daysMap.get(d))}`)
     .join("\n");
-  const all = tasksOfPeriod(dates, daysMap, boardTasks);
+  const all = tasksOfPeriod(dates, daysMap, boardTasks, masterTasks);
   const wins = all.filter((t) => t.done).map((t) => `✓ ${t.task}`).join("\n");
   const low = lowestHabit(dates, daysMap);
   const docs = dates.map((d) => daysMap.get(d)).filter(Boolean);
@@ -134,7 +137,7 @@ function weekPrefill(dates, daysMap, boardTasks, stats) {
 }
 
 export function weekReviewHtml(ctx) {
-  const { weekOf, weekDoc, dates, daysMap, boardTasks, stats, editing } = ctx;
+  const { weekOf, weekDoc, dates, daysMap, boardTasks, stats, editing, masterTasks, prevReviewed } = ctx;
   const r = weekDoc.review;
   const can = weekReviewable(weekOf);
   if (!editing) {
@@ -149,6 +152,23 @@ export function weekReviewHtml(ctx) {
         </section>`;
     }
     if (!can) return "";
+    // Mon–Fri of the current week: the week isn't over, so point at last week's
+    // review instead (unless that's done too — then allow starting early).
+    const early = weekOf === mondayOf(todayISO()) && todayISO() < addDays(weekOf, 5);
+    if (early) {
+      const prev = addDays(weekOf, -7);
+      return `
+      <section class="blk">
+        <h2>Weekly review</h2>
+        ${
+          !prevReviewed
+            ? `<div class="prefill"><b>Last week isn't reviewed yet</b>${esc(shortDate(prev))} – ${esc(shortDate(sundayOf(prev)))} — its journals are ready to review.</div>
+               <div class="btnrow" style="margin-top:0"><button class="btn pri" id="reviewlastweek" data-week="${prev}">Review last week →</button><button class="btn sm" id="startweekreview">Start this week's early</button></div>`
+            : `<p class="savenote">This week's review opens on Saturday, once there's a week to look back on.</p>
+               <div class="btnrow" style="margin-top:8px"><button class="btn sm" id="startweekreview">Start early</button></div>`
+        }
+      </section>`;
+    }
     return `
       <section class="blk">
         <h2>Weekly review</h2>
@@ -156,14 +176,14 @@ export function weekReviewHtml(ctx) {
         <div class="btnrow" style="margin-top:0"><button class="btn pri" id="startweekreview">Start weekly review</button></div>
       </section>`;
   }
-  const p = r?.completedAt ? { summary: r.summary, wins: r.wins, patterns: r.patterns, idle: [] } : weekPrefill(dates, daysMap, boardTasks, stats);
+  const p = r?.completedAt ? { summary: r.summary, wins: r.wins, patterns: r.patterns, idle: [] } : weekPrefill(dates, daysMap, boardTasks, stats, masterTasks);
   const open = boardTasks.filter((t) => t.status !== "done");
   return `
     <section class="blk">
       <h2>Weekly review</h2>
       ${!r?.completedAt ? `<div class="prefill"><b>From your journals</b>Everything below is pre-filled — edit freely.</div>` : ""}
-      <label class="fld"><span>What happened</span><textarea id="wr_summary" rows="${Math.min(8, Math.max(3, p.summary.split("\n").length + 1))}">${esc(p.summary)}</textarea></label>
-      <label class="fld"><span>Wins</span><textarea id="wr_wins" rows="${Math.min(8, Math.max(2, p.wins.split("\n").length + 1))}">${esc(p.wins)}</textarea></label>
+      <label class="fld"><span>What happened</span><textarea id="wr_summary" rows="${Math.min(8, Math.max(3, p.summary.split("\n").length + 1))}" placeholder="No evening synthesis or day notes this week — add a line or two about how it went.">${esc(p.summary)}</textarea></label>
+      <label class="fld"><span>Wins</span><textarea id="wr_wins" rows="${Math.min(8, Math.max(2, p.wins.split("\n").length + 1))}" placeholder="No tasks were marked done this week — anything you're proud of anyway?">${esc(p.wins)}</textarea></label>
       <label class="fld"><span>Patterns</span><textarea id="wr_patterns" rows="4">${esc(p.patterns)}</textarea></label>
       <label class="fld"><span>What would you change next week? <em class="fldnote">becomes next week's key focus</em></span><textarea id="wr_change" rows="3" placeholder="${esc(p.idle.length ? `Nothing got done in ${p.idle.join(", ")} — what happened there?` : "One or two concrete changes")}">${esc(r?.changeNext || "")}</textarea></label>
       ${
@@ -184,6 +204,11 @@ export function wireWeekReview(ctx) {
     renderApp();
   });
   $("#editweekreview")?.addEventListener("click", () => {
+    S.weekReviewEditing = true;
+    renderApp();
+  });
+  $("#reviewlastweek")?.addEventListener("click", (e) => {
+    S.week = e.currentTarget.dataset.week;
     S.weekReviewEditing = true;
     renderApp();
   });
@@ -262,6 +287,7 @@ export function weeksOfMonth(year, monthNum) {
 
 export async function loadMonthWeeks(store, year, monthNum) {
   const today = todayISO();
+  const masterTasks = (await store.getTasks()).tasks;
   const weeks = [];
   for (const weekOf of weeksOfMonth(year, monthNum)) {
     if (weekOf > today) continue;
@@ -269,7 +295,7 @@ export async function loadMonthWeeks(store, year, monthNum) {
     const [weekDoc, daysMap] = await Promise.all([store.getWeek(weekOf), store.loadJournalMap(dates)]);
     const docs = dates.map((d) => daysMap.get(d)).filter(Boolean);
     const avg = avgOf(docs.map(hphAvg).filter((v) => v != null));
-    const tasks = tasksOfPeriod(dates, daysMap);
+    const tasks = tasksOfPeriod(dates, daysMap, [], masterTasks);
     const r = weekDoc.review;
     const highlight = firstSentence(r?.summary?.replace(/^\w{3}: /, "") || r?.wins || docs.map(dayHighlight).find(Boolean) || "");
     weeks.push({ weekOf, dates, weekDoc, daysMap, avg, done: tasks.filter((t) => t.done).length, total: tasks.length, highlight, reviewed: !!r?.completedAt });
