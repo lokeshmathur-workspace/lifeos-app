@@ -143,7 +143,7 @@ export function weekReviewHtml(ctx) {
   if (!editing) {
     if (r?.completedAt) {
       return `
-        <section class="blk">
+        <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
           <h2>Weekly review <span class="count">done</span></h2>
           <div class="card rv">
             ${reviewText("What happened", r.summary)}${reviewText("Wins", r.wins)}${reviewText("Patterns", r.patterns)}${reviewText("Change next week", r.changeNext)}
@@ -151,37 +151,19 @@ export function weekReviewHtml(ctx) {
           ${can ? `<div class="btnrow"><button class="btn sm" id="editweekreview">Edit review</button><button class="btn sm" id="plannextweek">Plan next week →</button></div>` : ""}
         </section>`;
     }
-    if (!can) return "";
-    // Mon–Fri of the current week: the week isn't over, so point at last week's
-    // review instead (unless that's done too — then allow starting early).
-    const early = weekOf === mondayOf(todayISO()) && todayISO() < addDays(weekOf, 5);
-    if (early) {
-      const prev = addDays(weekOf, -7);
-      return `
-      <section class="blk">
-        <h2>Weekly review</h2>
-        ${
-          !prevReviewed
-            ? `<div class="prefill"><b>Last week isn't reviewed yet</b>${esc(shortDate(prev))} – ${esc(shortDate(sundayOf(prev)))} — its journals are ready to review.</div>
-               <div class="btnrow" style="margin-top:0"><button class="btn pri" id="reviewlastweek" data-week="${prev}">Review last week →</button><button class="btn sm" id="startweekreview">Start this week's early</button></div>`
-            : `<p class="savenote">This week's review opens on Saturday, once there's a week to look back on.</p>
-               <div class="btnrow" style="margin-top:8px"><button class="btn sm" id="startweekreview">Start early</button></div>`
-        }
-      </section>`;
-    }
-    return `
-      <section class="blk">
-        <h2>Weekly review</h2>
-        <div class="prefill"><b>Mostly written already</b>Pre-filled from this week's journals and tasks — you only add what they missed.</div>
-        <div class="btnrow" style="margin-top:0"><button class="btn pri" id="startweekreview">Start weekly review</button></div>
-      </section>`;
+    if (!can) return `<p class="empty">No review was written for this week.</p>`;
   }
+  if (!can && !r?.completedAt) return `<p class="empty">No review was written for this week.</p>`;
   const p = r?.completedAt ? { summary: r.summary, wins: r.wins, patterns: r.patterns, idle: [] } : weekPrefill(dates, daysMap, boardTasks, stats, masterTasks);
   const open = boardTasks.filter((t) => t.status !== "done");
   return `
-    <section class="blk">
-      <h2>Weekly review</h2>
-      ${!r?.completedAt ? `<div class="prefill"><b>From your journals</b>Everything below is pre-filled — edit freely.</div>` : ""}
+    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      ${
+        weekOf === mondayOf(todayISO()) && todayISO() < addDays(weekOf, 5)
+          ? `<div class="nudge"><span>This week isn't over yet — you're reviewing it early.</span>${!prevReviewed ? `<span class="nudgeact"><button type="button" class="linkbtn" id="reviewlastweek" data-week="${addDays(weekOf, -7)}">Review last week instead</button></span>` : ""}</div>`
+          : ""
+      }
+      ${!r?.completedAt ? `<div class="prefill"><b>Mostly written already</b>Pre-filled from your journals and ticked tasks — edit freely, then add what's missing.</div>` : ""}
       <label class="fld"><span>What happened</span><textarea id="wr_summary" rows="${Math.min(8, Math.max(3, p.summary.split("\n").length + 1))}" placeholder="No evening synthesis or day notes this week — add a line or two about how it went.">${esc(p.summary)}</textarea></label>
       <label class="fld"><span>Wins</span><textarea id="wr_wins" rows="${Math.min(8, Math.max(2, p.wins.split("\n").length + 1))}" placeholder="No tasks were marked done this week — anything you're proud of anyway?">${esc(p.wins)}</textarea></label>
       <label class="fld"><span>Patterns</span><textarea id="wr_patterns" rows="4">${esc(p.patterns)}</textarea></label>
@@ -193,7 +175,7 @@ export function weekReviewHtml(ctx) {
           </div></div>`
           : ""
       }
-      <div class="btnrow"><button class="btn pri" id="saveweekreview">Save weekly review</button><button class="btn" id="cancelweekreview">Cancel</button></div>
+      <div class="btnrow"><button class="btn pri" id="saveweekreview">Save review &amp; plan next week →</button><button class="btn" id="cancelweekreview">Cancel</button></div>
     </section>`;
 }
 
@@ -209,16 +191,19 @@ export function wireWeekReview(ctx) {
   });
   $("#reviewlastweek")?.addEventListener("click", (e) => {
     S.week = e.currentTarget.dataset.week;
+    S.weekStep = "review";
     S.weekReviewEditing = true;
     renderApp();
   });
   $("#cancelweekreview")?.addEventListener("click", () => {
     S.weekReviewEditing = false;
+    if (!weekDoc.review?.completedAt) S.weekStep = "progress";
     renderApp();
   });
   $("#plannextweek")?.addEventListener("click", () => {
     S.week = addDays(weekOf, 7);
     S.weekReviewEditing = false;
+    S.weekStep = "plan";
     renderApp();
   });
   document.querySelectorAll(".glrow[data-date]:not([disabled])").forEach((b) =>
@@ -264,7 +249,9 @@ export function wireWeekReview(ctx) {
       await store.saveMonth(mk, { weeklyHPHAvgs: list }, true, `life-os: weekly ${weekOf}`);
     }
     S.weekReviewEditing = false;
-    flash(`Weekly review saved${carryIds.size ? ` — ${carryIds.size} task${carryIds.size === 1 ? "" : "s"} carried into next week` : ""}.`);
+    flash(`Weekly review saved${carryIds.size ? ` — ${carryIds.size} task${carryIds.size === 1 ? "" : "s"} carried into next week` : ""}. Now plan next week.`);
+    S.week = nextOf;
+    S.weekStep = "plan";
     renderApp();
   });
 }
@@ -342,24 +329,20 @@ export function monthReviewHtml(ctx) {
   if (!editing) {
     if (r?.completedAt) {
       return `
-        <section class="blk">
+        <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
           <h2>Monthly review <span class="count">done</span></h2>
           <div class="card rv">${reviewText("Verdict", r.verdict)}${reviewText("From your weeks", r.summary)}${reviewText("Also", r.extra)}${reviewText("Lowest habit", r.lowestHabit)}</div>
           ${can ? `<div class="btnrow"><button class="btn sm" id="editmonthreview">Edit review</button><button class="btn sm" id="plannextmonth">Plan next month →</button></div>` : ""}
         </section>`;
     }
-    if (!can) return "";
-    return `
-      <section class="blk">
-        <h2>Monthly review</h2>
-        <div class="prefill"><b>Mostly written already</b>Pre-filled from your weekly reviews and journals.</div>
-        <div class="btnrow" style="margin-top:0"><button class="btn pri" id="startmonthreview">Start monthly review</button></div>
-      </section>`;
+    if (!can) return `<p class="empty">No review was written for this month.</p>`;
   }
+  if (!monthReviewable(monthKey) && !r?.completedAt) return `<p class="empty">No review was written for this month.</p>`;
   const p = r?.completedAt ? { summary: r.summary, low: r.lowestHabit ? { label: r.lowestHabit } : null } : monthPrefill(weeks, dates, daysMap, monthDoc);
   const lowText = p.low ? `${p.low.label}${p.low.v != null ? ` (${p.low.v.toFixed(1)})` : ""}` : "";
   return `
-    <section class="blk">
+    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      ${monthKey === monthKeyOf(todayISO()) ? `<div class="nudge"><span>This month isn't over yet — you're reviewing it early.</span></div>` : ""}
       <h2>Monthly review</h2>
       ${!r?.completedAt ? `<div class="prefill"><b>From your weeks</b>Pre-filled — edit freely.</div>` : ""}
       <label class="fld"><span>From your weeks</span><textarea id="mr_summary" rows="${Math.min(9, Math.max(3, p.summary.split("\n").length + 1))}">${esc(p.summary)}</textarea></label>
@@ -371,7 +354,7 @@ export function monthReviewHtml(ctx) {
       }
       <label class="fld"><span>Your one-line verdict on the month</span><input type="text" id="mr_verdict" value="${esc(r?.verdict || "")}"></label>
       <label class="fld"><span>Anything the weeks didn't capture</span><textarea id="mr_extra" rows="3">${esc(r?.extra || "")}</textarea></label>
-      <div class="btnrow"><button class="btn pri" id="savemonthreview" data-low="${esc(lowText)}">Save monthly review</button><button class="btn" id="cancelmonthreview">Cancel</button></div>
+      <div class="btnrow"><button class="btn pri" id="savemonthreview" title="Save and plan next month" data-low="${esc(lowText)}">Save review &amp; plan next month →</button><button class="btn" id="cancelmonthreview">Cancel</button></div>
     </section>`;
 }
 
@@ -387,11 +370,13 @@ export function wireMonthReview(ctx) {
   });
   $("#cancelmonthreview")?.addEventListener("click", () => {
     S.monthReviewEditing = false;
+    if (!ctx.monthDoc.review?.completedAt) S.monthStep = "progress";
     renderApp();
   });
   $("#plannextmonth")?.addEventListener("click", () => {
     S.month = addMonths(monthKey, 1);
     S.monthReviewEditing = false;
+    S.monthStep = "plan";
     renderApp();
   });
   document.querySelectorAll(".glrow.wk").forEach((b) =>
@@ -425,7 +410,9 @@ export function wireMonthReview(ctx) {
     btn.disabled = false;
     if (!ok) return;
     S.monthReviewEditing = false;
-    flash("Monthly review saved.");
+    flash("Monthly review saved. Now plan next month.");
+    S.month = addMonths(monthKey, 1);
+    S.monthStep = "plan";
     renderApp();
   });
 }

@@ -134,6 +134,7 @@ window.addEventListener("lifeos:goto-week", (e) => {
   S.week = e.detail;
   S.view = "week";
   S.weekReviewEditing = false;
+  S.weekStep = null;
   renderApp();
 });
 
@@ -142,6 +143,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const b = e.target.closest("button[data-v]");
     if (!b) return;
     S.view = b.dataset.v;
+    S.weekStep = null; // each visit opens on the right step for the day
+    S.monthStep = null;
     renderApp();
   });
   $("#settingsbtn").addEventListener("click", openSettings);

@@ -374,6 +374,28 @@ label.fld > span{
 .catrow .due{font-size:11px;font-weight:600;color:var(--muted);white-space:nowrap}
 .catrow .drop{border:0;background:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 4px;line-height:1;opacity:.55}
 .catrow .drop:hover{opacity:1;color:var(--stop)}
+/* ① Plan · ② How it's going · ③ Review (Week and Month) */
+.stepper{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--sunk);border-radius:12px;padding:4px;margin:4px 0 22px}
+.stepper button{border:0;background:none;border-radius:9px;padding:9px 6px;font:inherit;font-size:13.5px;font-weight:700;color:var(--muted);cursor:pointer;line-height:1.25;text-align:center}
+.stepper button small{display:block;font-size:11px;font-weight:500;margin-top:1px}
+.stepper button.on{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.stepper button.done{color:var(--good)}
+.stepper button:not(.on):hover{color:var(--ink-2)}
+.nudge{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;margin-bottom:16px}
+.nudgeact{display:flex;gap:14px}
+.linkbtn{border:0;background:none;padding:0;font:inherit;font-weight:700;color:var(--accent);cursor:pointer}
+.linkbtn.muted{color:var(--muted)}
+.focuspin{background:var(--accent-soft);border-radius:10px;padding:10px 12px;font-size:14.5px;margin-bottom:16px;display:flex;gap:10px;align-items:baseline}
+.focuspin .k{flex:none;font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.sofar{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.sofar .lbl{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.sofar ul{margin:0;padding-left:18px;font-size:13.5px;color:var(--ink-2)}
+.moredetail{margin-top:22px;border-top:1px solid var(--line);padding-top:14px}
+.moredetail > summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--muted)}
+.planfields{display:flex;flex-direction:column;gap:10px}
+.planfields label{display:block}
+.planfields label b{color:var(--muted);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;font-weight:600;display:block;margin-bottom:4px}
+.planfields input,.planfields select{width:100%}
 .tlsearch{display:block;width:100%;box-sizing:border-box;margin-bottom:12px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface);color:var(--ink);font:inherit;font-size:14px}
 .tasklist{display:flex;flex-direction:column;gap:12px}
 .tlgroup{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 12px}

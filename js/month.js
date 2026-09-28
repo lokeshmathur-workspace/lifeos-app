@@ -5,11 +5,12 @@
 // month and a next-month plan can all exist and be edited independently (S.month,
 // like Today's S.day and Week's S.week). A month in the past is read-only.
 import { PILLARS, HPH } from "./constants.js";
-import { todayISO, monthName, daysInMonth, D, mondayOf, monthKeyOf, addMonths } from "./dateutil.js";
+import { todayISO, nowHM, monthName, daysInMonth, D, mondayOf, monthKeyOf, addMonths } from "./dateutil.js";
 import { hphAvg, evening } from "./derive.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
-import { perHabitAvg, loadMonthWeeks, monthGlanceHtml, monthReviewHtml, wireMonthReview } from "./reviews.js";
+import { perHabitAvg, loadMonthWeeks, monthGlanceHtml, monthReviewHtml, wireMonthReview, monthReviewable } from "./reviews.js";
+import { stepperHtml, reviewNudgeHtml, soFarLines, soFarHtml, dayPlanTasks } from "./steps.js";
 import { isOpen } from "./tasks.js";
 import { taskListHtml, wireTaskList } from "./tasklist.js";
 
@@ -102,12 +103,140 @@ export async function renderMonthView(store, S, renderApp) {
   const started = monthKey <= realKey;
   const weeks = started ? await loadMonthWeeks(store, year, monthNum) : [];
   const reviewCtx = { store, S, renderApp, monthKey, monthDoc, weeks, dates, daysMap, editing: !!S.monthReviewEditing };
-  const rollup = (first) => (started ? monthGlanceHtml(weeks, first) + monthReviewHtml(reviewCtx) : "");
 
   // Open tasks from the master list, offered as intentions per category.
   const master = editable ? await store.getTasks() : { tasks: [] };
   const intentTexts = new Set(intentions.map((it) => it.intention.trim().toLowerCase()));
   const openList = master.tasks.filter((t) => isOpen(t) && !intentTexts.has(t.task.trim().toLowerCase()));
+
+  // ① Plan · ② How it's going · ③ Review — same three steps as Week and Today.
+  const today = todayISO();
+  const planned = !!monthDoc.plannedAt || intentions.length > 0 || !!(monthDoc.sprintTheme || "").trim();
+  const reviewed = !!monthDoc.review?.completedAt;
+  const endish = Number(today.slice(8)) >= daysInMonth(year, monthNum) - 2 && monthKey === realKey;
+  const isFuture = monthKey > realKey;
+  let step = S.monthStep;
+  if (!step) {
+    if (isPast) step = reviewed || monthReviewable(monthKey) ? "review" : "progress";
+    else if (isFuture || !planned) step = "plan";
+    else if (endish && !reviewed) step = "review";
+    else step = "progress";
+  }
+  S.monthStep = step; // stays on this step until you pick another or navigate
+  reviewCtx.editing = !!S.monthReviewEditing || !reviewed;
+  const prevKey = addMonths(monthKey, -1);
+  const prevDoc = editable && step === "plan" ? await store.getMonth(prevKey) : null;
+  const showNudge = step === "plan" && editable && prevDoc && !prevDoc.review?.completedAt && monthReviewable(prevKey) && !(S.nudgeSkip ||= new Set()).has(monthKey);
+  const monthName1 = (k) => { const [y, m] = k.split("-").map(Number); return monthName(y, m).split(" ")[0]; };
+  const soFar = soFarLines(dates, daysMap, dayPlanTasks(dates, daysMap));
+
+  const planStep = `
+    ${showNudge ? reviewNudgeHtml(`${monthName1(prevKey)} isn't reviewed yet.`) : ""}
+    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      <h2>The month's shape</h2>
+      ${
+        editable
+          ? `<div class="fields planfields">
+          <label><b>Sprint theme</b><input type="text" id="theme" value="${esc(monthDoc.sprintTheme || "")}" placeholder="What this month is about"></label>
+          <label><b>One thing to protect</b><input type="text" id="protect" value="${esc(monthDoc.oneThingToProtect || "")}" placeholder="e.g. family dinners, no laptop"></label>
+          <label><b>Habit focus</b><select id="focushabit"><option value="" ${monthDoc.hphFocusHabit ? "" : "selected"}>Choose a habit to focus on…</option>${HPH.map(([, l]) => `<option value="${l}" ${l === monthDoc.hphFocusHabit ? "selected" : ""}>${l}</option>`).join("")}</select></label>
+        </div>`
+          : `<div class="fields planfields">
+          <label><b>Sprint theme</b>${esc(monthDoc.sprintTheme || "—")}</label>
+          <label><b>One thing to protect</b>${esc(monthDoc.oneThingToProtect || "—")}</label>
+          <label><b>Habit focus</b>${esc(monthDoc.hphFocusHabit || "—")}</label>
+        </div>`
+      }
+      ${
+        suggestedHabit
+          ? `<div class="banner" style="margin-top:10px;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap">
+        <span>Last month's lowest habit was <b>${esc(suggestedHabit)}</b> — make it this month's focus?</span>
+        <button class="btn sm" id="acceptsuggestedhabit">Set focus</button>
+      </div>`
+          : ""
+      }
+    </section>
+    <section class="blk">
+      <h2>Intentions <span class="count">${total || ""}</span></h2>
+      ${editable ? `<p class="fldnote" style="margin:-6px 0 10px">Write one per category, or pick from your task list below.</p>` : ""}
+      ${Object.entries(PILLARS)
+        .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable, "plan"))
+        .join("")}
+    </section>
+    ${editable ? taskListHtml(openList, (S.monthListOpen ||= new Set()), { addLabel: "+ Intention", addTitle: "Add as this month's intention", daySelect: false, emptyText: "Every open task is already an intention this month." }) : ""}
+    <section class="blk">
+      <h2>Key dates</h2>
+      <div class="card">
+        ${keyDatesHtml(monthDoc.keyDates || [], editable)}
+      </div>
+    </section>
+    ${editable ? `<div class="btnrow" style="margin-top:22px"><button class="btn pri" id="startmonth">${monthDoc.plannedAt ? "Save plan →" : "Start the month →"}</button></div>` : ""}`;
+
+  const shape = [monthDoc.sprintTheme, monthDoc.oneThingToProtect && `protect: ${monthDoc.oneThingToProtect}`, monthDoc.hphFocusHabit && `focus: ${monthDoc.hphFocusHabit}`].filter(Boolean).join(" · ");
+  const progressStep = `
+    ${shape ? `<div class="focuspin"><span class="k">${isPast ? "The month" : "This month"}</span>${esc(shape)}</div>` : ""}
+    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="progressband">
+        <div class="top">
+          <div><span class="num">${done}</span> <span style="color:var(--muted);font-size:14px">of ${total} intention${total === 1 ? "" : "s"} done</span></div>
+          <span class="lbl">${total ? donePct + "%" : "—"}</span>
+        </div>
+        <div class="track">
+          <div class="seg" style="width:${donePct}%;background:var(--good)"></div>
+          <div class="seg" style="width:${inprogPct}%;background:var(--d1)"></div>
+          <div class="seg" style="width:${restPct}%;background:var(--sunk)"></div>
+        </div>
+        ${started ? soFarHtml(soFar) : ""}
+      </div>
+    </section>
+    <section class="blk">
+      <h2>Intentions</h2>
+      ${
+        total
+          ? Object.entries(PILLARS)
+              .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable, "progress"))
+              .join("")
+          : `<p class="empty">No intentions set.</p>`
+      }
+      ${editable ? `<div class="btnrow"><button class="btn sm" data-step="plan">Edit the plan</button></div>` : ""}
+    </section>
+    ${started ? monthGlanceHtml(weeks, false) : ""}
+    <details class="moredetail">
+      <summary>More detail — stats, weekly HPH, pillar health, calendar, key dates</summary>
+      <section class="blk">
+        <h2>Stats</h2>
+        <div class="stats">
+          <div class="stat"><div class="k">Days journaled</div><div class="v">${journaled}<small> / ${dates.length}</small></div></div>
+          <div class="stat"><div class="k">HPH avg</div><div class="v">${monthAvg != null ? monthAvg.toFixed(1) : "—"}</div></div>
+          <div class="stat"><div class="k">Habit focus</div><div class="v" style="font-size:22px">${esc(monthDoc.hphFocusHabit || "—")}</div></div>
+        </div>
+      </section>
+      <section class="blk">
+        <h2>Weekly HPH</h2>
+        ${weeklyHphChartHtml(monthDoc.weeklyHPHAvgs || [], curWeekOf)}
+      </section>
+      <section class="blk">
+        <h2>Pillar health</h2>
+        <div class="pbars">
+          ${Object.entries(PILLARS)
+            .map(([k, l]) => {
+              const v = health[k];
+              return `<div class="pbar"><span>${esc(l)}</span><div class="track"><div class="fill" style="width:${v ?? 0}%"></div></div><span class="n">${v != null ? v + "%" : "—"}</span></div>`;
+            })
+            .join("")}
+        </div>
+      </section>
+      <section class="blk">
+        <h2>Calendar</h2>
+        ${calendarGrid(year, monthNum, daysMap)}
+      </section>
+      <section class="blk">
+        <h2>Key dates</h2>
+        <div class="card">${keyDatesHtml(monthDoc.keyDates || [], false)}</div>
+      </section>
+    </details>`;
+
+  const reviewStep = started ? monthReviewHtml(reviewCtx) : `<p class="empty">This month hasn't started yet — there's nothing to review.</p>`;
 
   main.innerHTML = `
     <div class="datehead" style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
@@ -121,108 +250,26 @@ export async function renderMonthView(store, S, renderApp) {
       </div>
       ${monthKey !== realKey ? `<button class="btn sm" id="jumpthismonth">This month</button>` : ""}
     </div>
-
-    ${isPast ? rollup(true) : ""}
-
-    <section class="blk" ${isPast ? "" : 'style="border-top:0;padding-top:0;margin-top:0"'}>
-      <h2>This month's plan</h2>
-      <div class="progressband">
-        <div class="top">
-          <div><span class="num">${done}</span> <span style="color:var(--muted);font-size:14px">of ${total} intention${total === 1 ? "" : "s"} done</span></div>
-          <span class="lbl">${total ? donePct + "%" : "—"}</span>
-        </div>
-        <div class="track">
-          <div class="seg" style="width:${donePct}%;background:var(--good)"></div>
-          <div class="seg" style="width:${inprogPct}%;background:var(--d1)"></div>
-          <div class="seg" style="width:${restPct}%;background:var(--sunk)"></div>
-        </div>
-        ${
-          editable
-            ? `<div class="fields">
-          <label><b>Sprint theme</b><input type="text" id="theme" value="${esc(monthDoc.sprintTheme || "")}"></label>
-          <div class="rowfields">
-            <label><b>One thing to protect</b><input type="text" id="protect" value="${esc(monthDoc.oneThingToProtect || "")}"></label>
-            <label><b>Habit focus</b><select id="focushabit">${HPH.map(([, l]) => `<option value="${l}" ${l === monthDoc.hphFocusHabit ? "selected" : ""}>${l}</option>`).join("")}</select></label>
-          </div>
-          <div class="btnrow" style="margin-top:0"><button class="btn sm" id="saveplan">Save</button></div>
-        </div>`
-            : `<div class="fields" style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
-          <label><b>Sprint theme</b>${esc(monthDoc.sprintTheme || "—")}</label>
-          <label><b>One thing to protect</b>${esc(monthDoc.oneThingToProtect || "—")}</label>
-          <label><b>Habit focus</b>${esc(monthDoc.hphFocusHabit || "—")}</label>
-        </div>`
-        }
-      </div>
-      ${
-        suggestedHabit
-          ? `<div class="banner" style="margin-top:10px;display:flex;align-items:center;gap:10px;justify-content:space-between;flex-wrap:wrap">
-        <span>Last month's lowest habit was <b>${esc(suggestedHabit)}</b> — set as this month's focus?</span>
-        <button class="btn sm" id="acceptsuggestedhabit">Set focus</button>
-      </div>`
-          : ""
-      }
-    </section>
-
-    ${isPast ? "" : rollup(false)}
-
-    <section class="blk">
-      <h2>Intentions by category</h2>
-      ${Object.entries(PILLARS)
-        .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable))
-        .join("")}
-    </section>
-
-    ${editable ? taskListHtml(openList, (S.monthListOpen ||= new Set()), { addLabel: "+ Intention", addTitle: "Add as this month's intention", daySelect: false, emptyText: "Every open task is already an intention this month." }) : ""}
-
-    <section class="blk">
-      <h2>Key dates</h2>
-      <div class="card">
-        ${keyDatesHtml(monthDoc.keyDates || [], editable)}
-      </div>
-    </section>
-
-    <section class="blk">
-      <h2>Stats</h2>
-      <div class="stats">
-        <div class="stat"><div class="k">Days journaled</div><div class="v">${journaled}<small> / ${dates.length}</small></div></div>
-        <div class="stat"><div class="k">HPH avg</div><div class="v">${monthAvg != null ? monthAvg.toFixed(1) : "—"}</div></div>
-        <div class="stat"><div class="k">Habit focus</div><div class="v" style="font-size:22px">${esc(monthDoc.hphFocusHabit || "—")}</div></div>
-      </div>
-    </section>
-
-    <section class="blk">
-      <h2>Weekly HPH</h2>
-      ${weeklyHphChartHtml(monthDoc.weeklyHPHAvgs || [], curWeekOf)}
-    </section>
-
-    <section class="blk">
-      <h2>Pillar health</h2>
-      <div class="pbars">
-        ${Object.entries(PILLARS)
-          .map(([k, l]) => {
-            const v = health[k];
-            return `<div class="pbar"><span>${esc(l)}</span><div class="track"><div class="fill" style="width:${v ?? 0}%"></div></div><span class="n">${v != null ? v + "%" : "—"}</span></div>`;
-          })
-          .join("")}
-      </div>
-      <p style="font-size:12px;color:var(--muted);margin:8px 0 0">Auto-computed from daily top-3 completion — a separate reference from the self-reported intention progress above, since the two can legitimately disagree.</p>
-    </section>
-
-    <section class="blk">
-      <h2>Calendar</h2>
-      ${calendarGrid(year, monthNum, daysMap)}
-    </section>`;
+    ${stepperHtml(
+      [
+        { key: "plan", label: "Plan", note: planned ? "done" : isPast ? "" : "start here", done: planned },
+        { key: "progress", label: isPast ? "How it went" : "How it's going", note: isFuture ? "" : `${done}/${total} intentions`, done: isPast },
+        { key: "review", label: "Review", note: reviewed ? "done" : endish || isPast ? "ready" : "", done: reviewed },
+      ],
+      step
+    )}
+    <div class="stepbody">${step === "plan" ? planStep : step === "review" ? reviewStep : progressStep}</div>`;
 
   wireMonthReview(reviewCtx);
   wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master);
 }
 
-function intentionGroupHtml(key, label, intentions, editable) {
+function intentionGroupHtml(key, label, intentions, editable, mode = "plan") {
   const rows = intentions
     .map((it, i) => ({ it, i }))
     .filter(({ it }) => it.pillar === key);
 
-  if (!editable && !rows.length) return "";
+  if ((!editable || mode === "progress") && !rows.length) return "";
 
   const done = rows.filter(({ it }) => it.status === "done").length;
 
@@ -258,7 +305,7 @@ function intentionGroupHtml(key, label, intentions, editable) {
           .join("") || (editable ? "" : `<p class="empty" style="padding:10px 14px;font-size:12.5px">No intentions.</p>`)
       }
       ${
-        editable
+        editable && mode === "plan"
           ? `<div class="addrow" data-pillar="${key}">
         <input type="text" class="newintinput" placeholder="Add a ${esc(label)} intention…">
         <button class="newintadd" data-pillar="${key}">Add</button>
@@ -340,16 +387,19 @@ function wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master) {
   $("#prevmonth")?.addEventListener("click", () => {
     S.month = addMonths(monthKey, -1);
     S.monthReviewEditing = false;
+    S.monthStep = null;
     renderApp();
   });
   $("#nextmonth")?.addEventListener("click", () => {
     S.month = addMonths(monthKey, 1);
     S.monthReviewEditing = false;
+    S.monthStep = null;
     renderApp();
   });
   $("#jumpthismonth")?.addEventListener("click", () => {
     S.month = monthKeyOf(todayISO());
     S.monthReviewEditing = false;
+    S.monthStep = null;
     renderApp();
   });
 
@@ -359,7 +409,42 @@ function wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master) {
     });
   });
 
+  // Step bar (and "Edit the plan"): jump to any step.
+  document.querySelectorAll("#main [data-step]").forEach((b) =>
+    b.addEventListener("click", () => {
+      S.monthStep = b.dataset.step;
+      S.monthReviewEditing = false;
+      renderApp();
+    })
+  );
+  $("#nudgereview")?.addEventListener("click", () => {
+    S.month = addMonths(monthKey, -1);
+    S.monthStep = "review";
+    renderApp();
+  });
+  $("#nudgeskip")?.addEventListener("click", () => {
+    (S.nudgeSkip ||= new Set()).add(monthKey);
+    $(".nudge")?.remove();
+  });
+
   if (!editable) return;
+
+  $("#startmonth")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const patch = {
+      sprintTheme: ($("#theme")?.value || "").trim(),
+      oneThingToProtect: ($("#protect")?.value || "").trim(),
+      hphFocusHabit: $("#focushabit")?.value || monthDoc.hphFocusHabit || "",
+    };
+    if (!monthDoc.plannedAt) patch.plannedAt = `${todayISO()}T${nowHM()}:00`;
+    const ok = await store.saveMonth(monthKey, patch, true, `life-os: month-plan ${monthKey}`);
+    btn.disabled = false;
+    if (!ok) return;
+    flash(patch.plannedAt ? "Month planned." : "Plan saved.");
+    S.monthStep = "progress";
+    renderApp();
+  });
 
   $("#acceptsuggestedhabit")?.addEventListener("click", async () => {
     const btn = $("#acceptsuggestedhabit");

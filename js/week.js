@@ -12,13 +12,14 @@
 // past is read-only — carry-forward into a new week is an explicit pull, never
 // a mutation of the old week's file.
 import { PILLARS, BIZ, VIT } from "./constants.js";
-import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, D, monthKeyOf } from "./dateutil.js";
+import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, nowHM, D, monthKeyOf } from "./dateutil.js";
 import { hphAvg, evening } from "./derive.js";
 import { addTasks, setTaskStatus, isOpen } from "./tasks.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
 import { pillarHealth, monthDates } from "./month.js";
-import { weekGlanceHtml, weekReviewHtml, wireWeekReview } from "./reviews.js";
+import { weekGlanceHtml, weekReviewHtml, wireWeekReview, weekReviewable } from "./reviews.js";
+import { stepperHtml, reviewNudgeHtml, soFarLines, soFarHtml } from "./steps.js";
 import { taskListHtml, wireTaskList } from "./tasklist.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -128,7 +129,129 @@ export async function renderWeekView(store, S, renderApp) {
     masterTasks: master.tasks,
     prevReviewed: !!(prevWeekDoc || (await store.getWeek(addDays(weekOf, -7)))).review?.completedAt,
   };
-  const rollup = (first) => (started ? weekGlanceHtml(dates, daysMap, tasks, first, master.tasks) + weekReviewHtml(reviewCtx) : "");
+  // ① Plan · ② How it's going · ③ Review — the same three steps as Today.
+  const today = todayISO();
+  const planned = !!weekDoc.plannedAt || tasks.length > 0;
+  const reviewed = !!weekDoc.review?.completedAt;
+  const weekend = today >= addDays(weekOf, 5);
+  let step = S.weekStep;
+  if (!step) {
+    if (isPast) step = reviewed || weekReviewable(weekOf) ? "review" : "progress";
+    else if (weekOf > curMonday || !planned) step = "plan";
+    else if (weekend && !reviewed) step = "review";
+    else step = "progress";
+  }
+  S.weekStep = step; // stays on this step until you pick another or navigate
+  reviewCtx.editing = !!S.weekReviewEditing || !reviewed;
+  const prevReviewed = reviewCtx.prevReviewed;
+  const showNudge = step === "plan" && editable && !prevReviewed && weekReviewable(prevMonday) && !(S.nudgeSkip ||= new Set()).has(weekOf);
+  const datesSoFar = dates.filter((d) => d <= today);
+  const soFar = soFarLines(datesSoFar, daysMap, tasks.map((t) => ({ pillar: t.pillar, done: t.status === "done" })));
+
+  const planStep = `
+    ${showNudge ? reviewNudgeHtml(`Last week (${shortDate(prevMonday)} – ${shortDate(sundayOf(prevMonday))}) isn't reviewed yet.`) : ""}
+    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      <h2>Key focus</h2>
+      ${
+        editable
+          ? `<textarea id="keyfocus" rows="2" placeholder="The one thing this week is for">${esc(weekDoc.keyFocus || focusSuggestion)}</textarea>
+             ${
+               !weekDoc.keyFocus && focusSuggestion
+                 ? `<p class="fldnote" style="margin:4px 0 0">From last week's review — edit if you like.</p>`
+                 : weekDoc.keyFocus && weekDoc.keyFocus === prevWeekDoc?.review?.changeNext
+                   ? `<p class="fldnote" style="margin:4px 0 0">From last week's review.</p>`
+                   : ""
+             }`
+          : `<p>${esc(weekDoc.keyFocus || "—")}</p>`
+      }
+    </section>
+    <section class="blk">
+      <h2>This week's tasks <span class="count">${total || ""}</span></h2>
+      ${editable ? `<p class="fldnote" style="margin:-6px 0 10px">Add tasks per category, pull in last week's unfinished ones and this month's intentions, or pick from your task list below.</p>` : ""}
+      ${Object.entries(PILLARS)
+        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, "plan"))
+        .join("")}
+    </section>
+    ${editable ? taskListHtml(openList, (S.weekListOpen ||= new Set()), { addLabel: "+ Week", addTitle: "Add to this week", daySelect: true, emptyText: "Everything open is already on this week's board." }) : ""}
+    ${
+      editable
+        ? `<div class="btnrow" style="margin-top:22px"><button class="btn pri" id="startweek">${weekDoc.plannedAt ? "Save plan →" : "Start the week →"}</button></div>`
+        : ""
+    }`;
+
+  const progressStep = `
+    ${weekDoc.keyFocus ? `<div class="focuspin"><span class="k">${isPast ? "Key focus" : "This week"}</span>${esc(weekDoc.keyFocus)}</div>` : ""}
+    <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="progressband">
+        <div class="top">
+          <div><span class="num">${done}</span> <span style="color:var(--muted);font-size:14px">of ${total} task${total === 1 ? "" : "s"} done</span></div>
+          <span class="lbl">${total ? donePct + "%" : "—"}</span>
+        </div>
+        <div class="track">
+          <div class="seg" style="width:${donePct}%;background:var(--good)"></div>
+          <div class="seg" style="width:${inprogPct}%;background:var(--d1)"></div>
+          <div class="seg" style="width:${restPct}%;background:var(--sunk)"></div>
+        </div>
+        ${started ? soFarHtml(soFar) : ""}
+      </div>
+    </section>
+    ${started ? weekGlanceHtml(dates, daysMap, tasks, false, master.tasks) : ""}
+    <section class="blk">
+      <h2>${isPast ? "The week's tasks" : "This week's tasks"}</h2>
+      ${
+        total
+          ? Object.entries(PILLARS)
+              .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, "progress"))
+              .join("")
+          : `<p class="empty">Nothing planned yet.</p>`
+      }
+      ${editable ? `<div class="btnrow"><button class="btn sm" data-step="plan">Edit the plan</button></div>` : ""}
+    </section>
+    <details class="moredetail">
+      <summary>More detail — month progress, stats, HPH, core steps</summary>
+      <section class="blk">
+        <h2>Progress toward this month</h2>
+        ${
+          intentions.length
+            ? intentions
+                .map((it) => {
+                  const v = health[it.pillar];
+                  return `
+          <div class="monthcard">
+            <div class="row1"><span class="txt">${esc(it.intention)}</span><span class="pl">${esc(PILLARS[it.pillar] || it.pillar)}</span></div>
+            <div class="track"><div class="fill" style="width:${v ?? 0}%"></div></div>
+            <span class="pct">${v != null ? v + "%" : "—"} of ${esc(PILLARS[it.pillar] || it.pillar)} top-3s done this month</span>
+          </div>`;
+                })
+                .join("")
+            : `<p class="empty">No intentions set for this month yet.</p>`
+        }
+      </section>
+      <section class="blk">
+        <h2>Stats</h2>
+        <div class="stats">
+          <div class="stat"><div class="k">Days journaled</div><div class="v">${stats.journaled}<small> / 7</small></div></div>
+          <div class="stat"><div class="k">HPH avg</div><div class="v">${stats.hphAvg != null ? stats.hphAvg.toFixed(1) : "—"}</div></div>
+          <div class="stat"><div class="k">Task completion</div><div class="v">${stats.top3Rate != null ? stats.top3Rate + "%" : "—"}</div></div>
+        </div>
+      </section>
+      <section class="blk">
+        <h2>HPH by day</h2>
+        ${hphChartHtml(stats.byDate)}
+      </section>
+      <section class="blk">
+        <h2>Business core steps</h2>
+        ${coreTableHtml(dates, daysMap, "businessCoreSteps", BIZ)}
+      </section>
+      <section class="blk">
+        <h2>Vitality core steps</h2>
+        ${coreTableHtml(dates, daysMap, "vitalityCoreSteps", VIT)}
+      </section>
+    </details>`;
+
+  const reviewStep = started
+    ? weekReviewHtml(reviewCtx)
+    : `<p class="empty">This week hasn't started yet — there's nothing to review.</p>`;
 
   main.innerHTML = `
     <div class="datehead" style="display:flex;align-items:flex-end;justify-content:space-between;gap:14px;flex-wrap:wrap">
@@ -142,102 +265,41 @@ export async function renderWeekView(store, S, renderApp) {
       </div>
       ${weekOf !== curMonday ? `<button class="btn sm" id="jumpthisweek">This week</button>` : ""}
     </div>
-
-    ${isPast ? rollup(true) : ""}
-
-    <section class="blk" ${isPast ? "" : 'style="border-top:0;padding-top:0;margin-top:0"'}>
-      <h2>This week's plan</h2>
-      <div class="progressband">
-        <div class="top">
-          <div><span class="num">${done}</span> <span style="color:var(--muted);font-size:14px">of ${total} task${total === 1 ? "" : "s"} done</span></div>
-          <span class="lbl">${total ? donePct + "%" : "—"}</span>
-        </div>
-        <div class="track">
-          <div class="seg" style="width:${donePct}%;background:var(--good)"></div>
-          <div class="seg" style="width:${inprogPct}%;background:var(--d1)"></div>
-          <div class="seg" style="width:${restPct}%;background:var(--sunk)"></div>
-        </div>
-        <div class="keyfocus">
-          <b>Key focus</b>
-          ${
-            editable
-              ? `<textarea id="keyfocus" rows="2" placeholder="The one thing this week is for">${esc(weekDoc.keyFocus || focusSuggestion)}</textarea>
-                 ${
-                   !weekDoc.keyFocus && focusSuggestion
-                     ? `<p class="fldnote" style="margin:4px 0 0">From last week's review — edit if you like, then Save.</p>`
-                     : weekDoc.keyFocus && weekDoc.keyFocus === prevWeekDoc?.review?.changeNext
-                       ? `<p class="fldnote" style="margin:4px 0 0">From last week's review.</p>`
-                       : ""
-                 }
-                 <div class="btnrow" style="margin-top:8px"><button class="btn sm" id="savefocus">Save</button></div>`
-              : esc(weekDoc.keyFocus || "—")
-          }
-        </div>
-      </div>
-    </section>
-
-    ${isPast ? "" : rollup(false)}
-
-    <section class="blk">
-      <h2>Progress toward this month</h2>
-      ${
-        intentions.length
-          ? intentions
-              .map((it) => {
-                const v = health[it.pillar];
-                return `
-        <div class="monthcard">
-          <div class="row1"><span class="txt">${esc(it.intention)}</span><span class="pl">${esc(PILLARS[it.pillar] || it.pillar)}</span></div>
-          <div class="track"><div class="fill" style="width:${v ?? 0}%"></div></div>
-          <span class="pct">${v != null ? v + "%" : "—"} of ${esc(PILLARS[it.pillar] || it.pillar)} top-3s done this month</span>
-        </div>`;
-              })
-              .join("")
-          : `<p class="empty">No intentions set for this month yet.</p>`
-      }
-      <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Progress is by category, not this exact sentence — no task is linked to one specific intention yet, just tagged by pillar.</p>
-    </section>
-
-    <section class="blk">
-      <h2>By category</h2>
-      ${Object.entries(PILLARS)
-        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward))
-        .join("")}
-    </section>
-
-    ${editable ? taskListHtml(openList, (S.weekListOpen ||= new Set()), { addLabel: "+ Week", addTitle: "Add to this week", daySelect: true, emptyText: "Everything open is already on this week's board." }) : ""}
-
-    <section class="blk">
-      <h2>Stats</h2>
-      <div class="stats">
-        <div class="stat"><div class="k">Days journaled</div><div class="v">${stats.journaled}<small> / 7</small></div></div>
-        <div class="stat"><div class="k">HPH avg</div><div class="v">${stats.hphAvg != null ? stats.hphAvg.toFixed(1) : "—"}</div></div>
-        <div class="stat"><div class="k">Task completion</div><div class="v">${stats.top3Rate != null ? stats.top3Rate + "%" : "—"}</div></div>
-      </div>
-    </section>
-
-    <section class="blk">
-      <h2>HPH by day</h2>
-      ${hphChartHtml(stats.byDate)}
-      <p style="font-size:12px;color:var(--muted);margin-top:6px">Dashed line = the 6 threshold. Empty days are a flat stub, not a gap.</p>
-    </section>
-
-    <section class="blk">
-      <h2>Business core steps</h2>
-      ${coreTableHtml(dates, daysMap, "businessCoreSteps", BIZ)}
-    </section>
-
-    <section class="blk">
-      <h2>Vitality core steps</h2>
-      ${coreTableHtml(dates, daysMap, "vitalityCoreSteps", VIT)}
-    </section>`;
+    ${stepperHtml(
+      [
+        { key: "plan", label: "Plan", note: planned ? "done" : isPast ? "" : "start here", done: planned },
+        { key: "progress", label: isPast ? "How it went" : "How it's going", note: isPast ? "" : weekOf > curMonday ? "" : `${done}/${total} done`, done: isPast },
+        { key: "review", label: "Review", note: reviewed ? "done" : weekend || isPast ? "ready" : "", done: reviewed },
+      ],
+      step
+    )}
+    <div class="stepbody">${step === "plan" ? planStep : step === "review" ? reviewStep : progressStep}</div>`;
 
   wireWeekReview(reviewCtx);
   wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById);
 }
 
-function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward) {
+function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, mode = "plan") {
   const inPillar = tasks.filter((t) => t.pillar === key);
+  // "progress" = tick things off only; adding, removing and pull-ins live in "plan".
+  if (mode === "progress") {
+    if (!inPillar.length) return "";
+    const d = inPillar.filter((t) => t.status === "done").length;
+    return `
+    <div class="pillargroup" data-pillar="${key}">
+      <div class="pillarhead"><span class="nm">${esc(label)}</span><span class="prog">${d}/${inPillar.length}</span></div>
+      ${inPillar
+        .map(
+          (t) => `
+        <div class="ptask2 ${t.status === "done" ? "done" : ""}" data-id="${esc(t.id)}">
+          <span class="box" ${editable ? 'data-toggle="1"' : ""}></span>
+          <span class="tk">${esc(t.task)}</span>
+          ${t.status === "carried_forward" ? `<span class="cf">carried over</span>` : `<span class="daychip">${esc(t.assignedDay || "—")}</span>`}
+        </div>`
+        )
+        .join("")}
+    </div>`;
+  }
   const usedTexts = new Set(inPillar.map((t) => t.task.trim().toLowerCase()));
   // Pull-ins are an editing affordance — a past (read-only) week must never show
   // an actionable "+ Add as task" button, since its handlers aren't wired (see
@@ -356,20 +418,55 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
   $("#prevweek")?.addEventListener("click", () => {
     S.week = addDays(weekOf, -7);
     S.weekReviewEditing = false;
+    S.weekStep = null;
     renderApp();
   });
   $("#nextweek")?.addEventListener("click", () => {
     S.week = addDays(weekOf, 7);
     S.weekReviewEditing = false;
+    S.weekStep = null;
     renderApp();
   });
   $("#jumpthisweek")?.addEventListener("click", () => {
     S.week = mondayOf(todayISO());
     S.weekReviewEditing = false;
+    S.weekStep = null;
     renderApp();
   });
 
+  // Step bar (and "Edit the plan"): jump to any step.
+  document.querySelectorAll("#main [data-step]").forEach((b) =>
+    b.addEventListener("click", () => {
+      S.weekStep = b.dataset.step;
+      S.weekReviewEditing = false;
+      renderApp();
+    })
+  );
+  // Optional reminder on Plan: review last week first, or skip it.
+  $("#nudgereview")?.addEventListener("click", () => {
+    S.week = addDays(weekOf, -7);
+    S.weekStep = "review";
+    renderApp();
+  });
+  $("#nudgeskip")?.addEventListener("click", () => {
+    (S.nudgeSkip ||= new Set()).add(weekOf);
+    $(".nudge")?.remove();
+  });
+
   if (!editable) return;
+
+  $("#startweek")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    const patch = { keyFocus: ($("#keyfocus")?.value || "").trim() };
+    if (!weekDoc.plannedAt) patch.plannedAt = `${todayISO()}T${nowHM()}:00`;
+    const ok = await store.saveWeek(weekOf, patch, true, `life-os: week-plan ${weekOf}`);
+    btn.disabled = false;
+    if (!ok) return;
+    flash(patch.plannedAt ? "Week planned." : "Plan saved.");
+    S.weekStep = "progress";
+    renderApp();
+  });
 
   $("#savefocus")?.addEventListener("click", async (e) => {
     const btn = e.currentTarget;
