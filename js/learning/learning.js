@@ -275,7 +275,7 @@ async function openSource(id) {
   // meta.json's captures[] is a light projection (no transcript/insights/
   // suggestedActions) — fetch each ready capture's full file so capCard()
   // can actually show its content.
-  const ready = (l.meta?.captures || []).filter((c) => c.status === CAPTURE_STATUS.READY);
+  const ready = (l.meta?.captures || []).filter((c) => c.status === CAPTURE_STATUS.READY || c.status === CAPTURE_STATUS.NEEDS_TEXT);
   await loadFullCaptures(id, ready);
   if (l.view === "source" && l.curId === id) render();
 }
@@ -413,8 +413,16 @@ function capCard(c) {
       <p class="sub" style="margin-top:8px">No usable text came back from this ${isBookSrc ? "photo. Retake it with better lighting." : "image. Try again with a clearer photo or screenshot."}</p></div>`;
   }
   if (c.status === CAPTURE_STATUS.NEEDS_TEXT) {
+    const full = l.fullCaptures[c.id];
+    const note = full?.fetchNote || c.fetchNote || "Couldn't fetch that link.";
+    const saving = l.busy === `paste:${c.id}`;
+    const prev = full?.pastedText || "";
     return `<div class="card"><div class="row"><div class="kicker">${esc(label)}</div><div style="display:flex;gap:6px;align-items:center"><span class="pill no">Needs text</span>${delBtn}</div></div>
-      <p class="sub" style="margin-top:8px">Couldn't fetch that link. Paste the transcript or key points to summarize it.</p></div>`;
+      <p class="sub" style="margin-top:8px">${esc(note)}</p>
+      <p class="sub" style="margin-top:6px">Open the link, select the article text (or transcript), copy it, and paste it here.</p>
+      <textarea class="pastetext" data-cid="${c.id}" rows="6" placeholder="Paste the text here…" style="width:100%;margin-top:8px">${esc(prev.length >= 200 ? prev : "")}</textarea>
+      <div class="btnrow" style="margin-top:8px"><button class="btn pri" data-act="pastetext" data-cid="${c.id}" ${saving ? "disabled" : ""} style="flex:0 1 auto">${saving ? "Saving…" : "Summarize this"}</button></div>
+      <p class="sub pasteerr" data-cid="${c.id}" style="color:var(--danger,#c0392b)" hidden></p></div>`;
   }
 
   const full = l.fullCaptures[c.id];
@@ -670,7 +678,7 @@ async function runTick(manual) {
         if (nowDone.length) {
           changed = true;
           l.meta = meta;
-          await loadFullCaptures(sid, nowDone.filter((c) => c.status === CAPTURE_STATUS.READY));
+          await loadFullCaptures(sid, nowDone.filter((c) => c.status === CAPTURE_STATUS.READY || c.status === CAPTURE_STATUS.NEEDS_TEXT));
         }
       }
     }
@@ -1084,6 +1092,34 @@ document.addEventListener("click", async (e) => {
     case "dismissaction":
       await dismissAction(b.dataset.id);
       break;
+    case "pastetext": {
+      const cid = b.dataset.cid;
+      const box = document.querySelector(`.pastetext[data-cid="${cid}"]`);
+      const err = document.querySelector(`.pasteerr[data-cid="${cid}"]`);
+      const text = (box?.value || "").trim();
+      const showErr = (m) => {
+        if (err) {
+          err.textContent = m;
+          err.hidden = false;
+        }
+      };
+      if (text.length < 40) return showErr("Paste a bit more — a paragraph or two at least.");
+      if (loadRun()) return showErr("A run is already in progress — wait for it to finish, then tap again.");
+      l.busy = `paste:${cid}`;
+      b.disabled = true;
+      b.textContent = "Saving…";
+      const ok = await learningStore.resubmitLinkText(l.curId, cid, text);
+      l.busy = "";
+      if (!ok) {
+        b.disabled = false;
+        b.textContent = "Summarize this";
+        return showErr("Couldn't save — your text is still here. Tap again to retry.");
+      }
+      l.meta = await learningStore.getSource(l.curId, true);
+      delete l.fullCaptures[cid];
+      await processNow();
+      break;
+    }
     case "delcap": {
       const cid = b.dataset.cid;
       const key = `cap:${cid}`;

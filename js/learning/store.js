@@ -618,6 +618,34 @@ export class LearningStore {
     return this._writeFile(capturePath(sourceId, captureId), doc, () => this.captures.get(key), (n) => this.captures.set(key, n), `learning: ${sourceId}/${captureId} note`, true);
   }
 
+  // A link the routine couldn't fetch (needs_text): save the text Lokesh pasted
+  // and put the capture back in the queue as pending_summary, so the next
+  // Process now summarizes it. Capture file first, then the meta row, then the
+  // index — same write order as everywhere else. Returns true/false honestly.
+  async resubmitLinkText(sourceId, captureId, text) {
+    const key = `${sourceId}/${captureId}`;
+    const fresh = await this.getCapture(sourceId, captureId, true);
+    if (!fresh) return false;
+    const cur = this.captures.get(key);
+    const { fetchNote, ...rest } = fresh;
+    const doc = { ...rest, pastedText: text, status: "pending_summary" };
+    this.captures.set(key, { doc, sha: cur ? cur.sha : null });
+    const ok = await this._writeFile(capturePath(sourceId, captureId), doc, () => this.captures.get(key), (n) => this.captures.set(key, n), `learning: ${sourceId}/${captureId} pasted text`, true);
+    if (!ok) return false;
+    const newMeta = await this._writeMeta(
+      sourceId,
+      (freshMeta) => ({
+        ...freshMeta,
+        captures: (freshMeta.captures || []).map((c) => (c.id === captureId ? { ...c, status: "pending_summary" } : c)),
+        updatedAt: new Date().toISOString(),
+      }),
+      `learning: ${sourceId} ${captureId} pending_summary`
+    );
+    if (!newMeta) return false;
+    await this._writeIndex((sources) => sources.map((r) => (r.id === sourceId ? indexRowFrom(newMeta) : r)));
+    return true;
+  }
+
   // Ticking actions on a specific capture: writes queue.json via
   // confirmActions() (unchanged), then — the part confirmActions() alone
   // doesn't do — records the new ids on the capture file's confirmedActions[]
