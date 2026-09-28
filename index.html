@@ -447,6 +447,13 @@ label.fld > span{
    of Learning's own class names collided with existing ones here (.seg,
    .note) and were renamed on the way in (.typeseg, .lnote) rather than
    resolved by CSS scoping tricks — simpler to read later. */
+.learning .addnew{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:14px 0 6px}
+.learning .addnew .btn{display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;font-weight:600;min-height:72px}
+.learning .addnew .ic{font-size:20px;line-height:1}
+.learning .yourtext{margin-top:12px;border-top:1px solid var(--line);padding-top:10px}
+.learning .yourtext summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+.learning .yourtextbody{margin-top:8px;max-height:360px;overflow:auto;font-size:14px;line-height:1.55;color:var(--ink-2)}
+.learning .yourtextbody p{margin:0 0 10px}
 .learning{
   --accent:#1E5A43; --accent-soft:#DCEEE3; --on-accent:#FFFFFF; --d1:#174935;
 }

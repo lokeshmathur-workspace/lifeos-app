@@ -183,15 +183,20 @@ function vHome() {
 
   return `<div class="top"><div><h1 class="serif">Learning</h1><div class="sub">${prettyDate(todayISO())}</div></div>
   <button class="btn ghost" data-act="settings" style="flex:0 1 auto">Settings</button></div>
+  <div class="addnew">
+    <button class="btn" data-act="new" data-type="book"><span class="ic">📖</span>New book</button>
+    <button class="btn" data-act="new" data-type="video"><span class="ic">▶</span>New video</button>
+    <button class="btn" data-act="new" data-type="article"><span class="ic">📰</span>New article</button>
+  </div>
   <div class="stats"><div class="stat"><div class="k">Captures</div><div class="v">${captures}</div></div>
   <button class="stat" data-act="actions" style="cursor:pointer;text-align:left"><div class="k">Actions pending</div><div class="v">${openActions}</div>${actionsBreakdown ? `<span style="display:block;margin-top:3px;font-size:11px;color:var(--muted);font-weight:600">${esc(actionsBreakdown)}</span>` : ""}</button></div>
   ${homeProcessHint(pendingTotal)}
   <h2>Books you're reading <span class="count">${books.length || ""}</span></h2>
   ${books.length ? books.map(bookCard).join("") : `<div class="empty">Start a book to capture pages, highlights and notes as you read.</div>`}
-  <h2>Videos <span class="count">${vids.length || ""}</span></h2>${rows(vids) || `<div class="empty">Add a YouTube link and paste the transcript or your notes to capture learnings.</div>`}
-  <h2>Articles and web <span class="count">${arts.length || ""}</span></h2>${rows(arts) || `<div class="empty">Add an article link and paste the text to get a summary.</div>`}
+  <h2>Videos <span class="count">${vids.length || ""}</span></h2>${rows(vids) || `<div class="empty">Tap <b>New video</b>, add the link and paste the transcript or your notes.</div>`}
+  <h2>Articles and web <span class="count">${arts.length || ""}</span></h2>${rows(arts) || `<div class="empty">Tap <b>New article</b> and paste the text — you'll get a summary and key learnings.</div>`}
   ${done.length ? `<details style="margin-top:22px"><summary>Finished (${done.length})</summary><div style="margin-top:10px">${rows(done)}</div></details>` : ""}
-  <div class="btnrow" style="margin-top:24px"><button class="btn pri" data-act="new" data-type="book">New book</button><button class="btn" data-act="new" data-type="video">Add link</button></div>`;
+`;
 }
 
 function homeProcessHint(pendingTotal) {
@@ -206,17 +211,26 @@ function homeProcessHint(pendingTotal) {
 /* ---------- New source (FR-2) ---------- */
 function vNew() {
   const f = L().form;
-  const isBook = f.type === "book";
-  return `<button class="btn ghost back" data-act="home">‹ Library</button><h1 class="serif">${isBook ? "New book" : "Add a video or article"}</h1>
-  <label>Type</label><div class="typeseg">${Object.entries(SOURCE_TYPES).map(([k, v]) => `<button class="btn" aria-pressed="${f.type === k}" data-act="ftype" data-type="${k}">${v}</button>`).join("")}</div>
-  <label for="f-title">Title</label><input id="f-title" type="text" data-f="title" value="${esc(f.title)}" placeholder="${isBook ? "The Culture Code" : "Why AI pilots stall"}">
-  <label for="f-author">${isBook ? "Author" : "Creator or publication"}</label><input id="f-author" type="text" data-f="author" value="${esc(f.author)}" placeholder="${isBook ? "Daniel Coyle" : "Harvard Business Review"}">
-  ${isBook
-    ? `<label for="f-pages">Total pages (optional, for progress)</label><input id="f-pages" type="number" inputmode="numeric" data-f="totalPages" value="${esc(f.totalPages)}" placeholder="304">`
-    : `<label for="f-url">Link</label><input id="f-url" type="url" inputmode="url" data-f="url" value="${esc(f.url)}" placeholder="https://youtube.com/watch?v=…">
-  <label for="f-text">Transcript, article text or your notes (optional)</label><textarea id="f-text" data-f="text" style="min-height:140px" placeholder="Paste the transcript or article text — Process now will summarize the learnings.">${esc(f.text)}</textarea>`}
+  const t = f.type;
+  const head = { book: "New book", video: "New video", article: "New article" }[t] || "New item";
+  const busy = !!L().busy;
+  if (t === "book") {
+    return `<button class="btn ghost back" data-act="home">‹ Library</button><h1 class="serif">${head}</h1>
+  <label for="f-title">Title</label><input id="f-title" type="text" data-f="title" value="${esc(f.title)}" placeholder="The Culture Code">
+  <label for="f-author">Author</label><input id="f-author" type="text" data-f="author" value="${esc(f.author)}" placeholder="Daniel Coyle">
+  <label for="f-pages">Total pages (optional, for progress)</label><input id="f-pages" type="number" inputmode="numeric" data-f="totalPages" value="${esc(f.totalPages)}" placeholder="304">
   ${f.err ? `<p class="err">${esc(f.err)}</p>` : ""}
-  <div class="sticky"><button class="btn pri" style="width:100%" data-act="create" ${L().busy ? "disabled" : ""}>${isBook ? "Start book" : "Add"}</button></div>`;
+  <div class="sticky"><button class="btn pri" style="width:100%" data-act="create" ${busy ? "disabled" : ""}>Start book</button></div>`;
+  }
+  const isVideo = t === "video";
+  return `<button class="btn ghost back" data-act="home">‹ Library</button><h1 class="serif">${head}</h1>
+  <p class="sub" style="margin:6px 0 4px">${isVideo ? "Paste the transcript or your notes and you'll get a summary and key learnings in a couple of minutes." : "Paste the article text and you'll get a summary and key learnings in a couple of minutes."}</p>
+  <label for="f-title">Title</label><input id="f-title" type="text" data-f="title" value="${esc(f.title)}" placeholder="${isVideo ? "How great leaders inspire action" : "10 lessons from the Tony Robbins documentary"}">
+  <label for="f-text">${isVideo ? "Transcript or your notes" : "Article text"}</label><textarea id="f-text" data-f="text" style="min-height:200px" placeholder="${isVideo ? "Paste the transcript (YouTube: … → Show transcript) or type your notes" : "Open the article, select all the text, copy, and paste it here"}">${esc(f.text)}</textarea>
+  <label for="f-url">Link (optional)</label><input id="f-url" type="url" inputmode="url" data-f="url" value="${esc(f.url)}" placeholder="https://…">
+  <label for="f-author">${isVideo ? "Channel or speaker" : "Author or publication"} (optional)</label><input id="f-author" type="text" data-f="author" value="${esc(f.author)}" placeholder="${isVideo ? "Simon Sinek" : "Tony Robbins"}">
+  ${f.err ? `<p class="err">${esc(f.err)}</p>` : ""}
+  <div class="sticky"><button class="btn pri" style="width:100%" data-act="create" ${busy ? "disabled" : ""}>${busy ? "Saving…" : "Save & summarize"}</button></div>`;
 }
 
 async function createSource() {
@@ -224,6 +238,10 @@ async function createSource() {
   const f = l.form;
   if (!f.title.trim()) {
     f.err = "Enter a title first.";
+    return render();
+  }
+  if (f.type !== "book" && !(f.text || "").trim() && !(f.url || "").trim()) {
+    f.err = f.type === "video" ? "Paste the transcript or your notes (or at least the link)." : "Paste the article text (or at least the link).";
     return render();
   }
   l.busy = "create";
@@ -244,9 +262,11 @@ async function createSource() {
   const text = (f.text || "").trim();
   const url = (f.url || "").trim();
   l.form = null;
-  if (url) {
-    await learningStore.addLinkCapture(id, { url, pastedText: text });
-    flash("Added — waiting for processing.");
+  if (url || text) {
+    const capId = await learningStore.addLinkCapture(id, { url, pastedText: text });
+    await openSource(id);
+    if (capId) await processNow();
+    return;
   }
   await openSource(id);
 }
@@ -275,7 +295,7 @@ async function openSource(id) {
   // meta.json's captures[] is a light projection (no transcript/insights/
   // suggestedActions) — fetch each ready capture's full file so capCard()
   // can actually show its content.
-  const ready = (l.meta?.captures || []).filter((c) => c.status === CAPTURE_STATUS.READY || c.status === CAPTURE_STATUS.NEEDS_TEXT);
+  const ready = (l.meta?.captures || []).filter((c) => c.status === CAPTURE_STATUS.READY || c.status === CAPTURE_STATUS.NEEDS_TEXT || c.type === "link");
   await loadFullCaptures(id, ready);
   if (l.view === "source" && l.curId === id) render();
 }
@@ -381,7 +401,7 @@ function capCard(c) {
   const isBookSrc = l.sources.find((x) => x.id === l.curId)?.type === "book";
   // meta.json's light rows don't carry page numbers — take them from the full capture once loaded.
   const pageLabel = (cap) => ((cap && cap.pages) || []).map((p) => (p.page ? "p. " + p.page : isBookSrc ? "page" : "screenshot")).join(", ");
-  const label = c.type === "page" ? pageLabel(c.pages ? c : l.fullCaptures[c.id]) || (isBookSrc ? "Page" : "Screenshot") : c.type === "link" ? "Summary" : "Thought" + (c.pageRef ? " · p. " + c.pageRef : "");
+  const label = c.type === "page" ? pageLabel(c.pages ? c : l.fullCaptures[c.id]) || (isBookSrc ? "Page" : "Screenshot") : c.type === "link" ? (L().sources.find((x) => x.id === L().curId)?.type === "video" ? "Video" : "Article") : "Thought" + (c.pageRef ? " · p. " + c.pageRef : "");
   const dupOf = c.duplicateOf || l.fullCaptures[c.id]?.duplicateOf;
   const armed = l.delArm === `cap:${c.id}`;
   const delBtn = `<button class="btn ghost danger" data-act="delcap" data-cid="${c.id}" style="min-height:30px">${armed ? "Confirm" : "Delete"}</button>`;
@@ -398,7 +418,7 @@ function capCard(c) {
         : "Saved to your library. Tap <b>Process now</b> above to transcribe/summarize it.";
     return `<div class="card" style="border-style:dashed">
       <div class="row"><div class="kicker">${esc(label)} · ${fmtRelative(c.createdAt)}</div><div style="display:flex;gap:6px;align-items:center">${pill}${delBtn}</div></div>
-      <p class="sub" style="margin-top:8px">${text}</p></div>`;
+      <p class="sub" style="margin-top:8px">${text}</p>${c.type === "link" ? yourTextHTML(l.fullCaptures[c.id], true) : ""}</div>`;
   }
   if (dupOf) {
     const origLabel = pageLabel(l.fullCaptures[dupOf]) || "an earlier note";
@@ -444,8 +464,19 @@ function capCard(c) {
     if (full.note) body += `<div class="lnote"><b>My note</b>${esc(full.note)}</div>`;
     body += insightsHTML(full);
     body += actionsHTML(full, c.id);
+    if (full.type === "link") body += yourTextHTML(full, false);
   }
   return `<div class="card"><div class="row"><div class="kicker">${esc(label)} · ${fmtRelative(c.createdAt)}</div>${delBtn}</div>${body}</div>`;
+}
+
+// The text Lokesh pasted for an article/video — shown while it's being
+// summarized (so it's clearly saved) and tucked under the summary afterwards.
+function yourTextHTML(full, preview) {
+  const t = (full?.pastedText || "").trim();
+  if (t.length < 40) return "";
+  const words = t.split(/\s+/).length;
+  const paras = t.split(/\n{2,}|\r\n\r\n/).map((p) => `<p>${esc(p.trim())}</p>`).join("");
+  return `<details class="yourtext"><summary>${preview ? "Your pasted text" : "Original text"} · ${words} words</summary><div class="yourtextbody">${paras}</div></details>`;
 }
 
 // Builds an editable working copy of a routine-drafted brief the first
@@ -546,14 +577,16 @@ function vSource() {
   <div class="kicker">${SOURCE_TYPES[s.type]}${meta.status === "finished" ? " · finished" : ""}</div><h1 class="serif">${esc(meta.title)}</h1>
   <div class="sub">${esc(meta.author || "")}${meta.url ? ` · <a href="${esc(meta.url)}" target="_blank" rel="noopener">Open link</a>` : ""}</div>
   <div class="btnrow">
-    <button class="btn pri" data-act="cap" data-mode="page" data-id="${s.id}">${isBook ? "Add page" : "Add screenshot"}</button>
+    ${isBook
+      ? `<button class="btn pri" data-act="cap" data-mode="page" data-id="${s.id}">Add page</button>`
+      : `<button class="btn pri" data-act="cap" data-mode="text" data-id="${s.id}">Paste text</button><button class="btn" data-act="cap" data-mode="page" data-id="${s.id}">Add screenshot</button>`}
     <button class="btn" data-act="cap" data-mode="thought" data-id="${s.id}">Add thought</button>
   </div>
   ${processBlock}
   <div class="btnrow">${meta.status === "finished" ? `<button class="btn" data-act="reopen" data-id="${s.id}">Mark reading</button>` : `<button class="btn" data-act="finish" data-id="${s.id}">${isBook ? "Finished book" : "Mark done"}</button>`}</div>
   ${(meta.captures || []).length ? briefBlock(meta) : ""}
   <h2>Notes <span class="count">${(meta.captures || []).length || ""}</span></h2>
-  ${(meta.captures || []).length ? meta.captures.slice().reverse().map(capCard).join("") : `<div class="empty">${isBook ? "Photograph a page or jot a thought to make your first note." : "Add a screenshot, jot a thought, or paste text to capture what you learned."}</div>`}
+  ${(meta.captures || []).length ? meta.captures.slice().reverse().map(capCard).join("") : `<div class="empty">${isBook ? "Photograph a page or jot a thought to make your first note." : "Tap <b>Paste text</b> to add the " + (s.type === "video" ? "transcript or your notes" : "article text") + " — you'll get a summary and key learnings."}</div>`}
   <div class="btnrow" style="margin-top:30px"><button class="btn ghost danger" data-act="delsrc" style="flex:0 1 auto">${l.delArm === "src" ? "Tap again to delete this and all its notes" : "Delete"}</button></div>`;
 }
 
@@ -813,6 +846,14 @@ function vCapture() {
     <label class="btn filebtn" style="width:100%;margin:10px 0 0">Choose from library<input type="file" accept="image/*" multiple data-act="photos" aria-label="Choose from library"></label>`}
     ${d.err ? `<p class="err">${esc(d.err)}</p>` : ""}`;
   }
+  if (d.mode === "text") {
+    const isVideo = s.type === "video";
+    return `<button class="btn ghost back" data-act="cancelcap">‹ ${esc(s.title)}</button><h1 class="serif">Paste text</h1>
+    <p class="sub" style="margin:6px 0 4px">You'll get a summary and key learnings in a couple of minutes.</p>
+    <label for="c-text">${isVideo ? "Transcript or your notes" : "Article text"}</label><textarea id="c-text" data-f="text" style="min-height:220px" placeholder="${isVideo ? "Paste the transcript or type your notes" : "Open the article, select all the text, copy, and paste it here"}">${esc(d.text || "")}</textarea>
+    ${d.err ? `<p class="err">${esc(d.err)}</p>` : ""}
+    <div class="sticky"><button class="btn pri" style="width:100%" data-act="savetext" ${l.busy ? "disabled" : ""}>${l.busy ? "Saving…" : "Save & summarize"}</button></div>`;
+  }
   if (d.mode !== "thought") {
     return `<button class="btn ghost back" data-act="cancelcap">‹ ${esc(s.title)}</button><h1 class="serif">Coming soon</h1><p class="sub" style="margin-top:10px">This capture type lands in a later update — Add page and Add thought already work.</p>`;
   }
@@ -860,6 +901,25 @@ async function saveThought() {
   flash("Note saved.");
   l.draft = null;
   await openSource(d.srcId);
+}
+
+async function saveText() {
+  const l = L();
+  const d = l.draft;
+  const text = (d.text || "").trim();
+  if (text.length < 40) {
+    d.err = "Paste a bit more — a paragraph or two at least.";
+    return render();
+  }
+  l.busy = "save";
+  render();
+  const url = (l.meta && l.meta.id === d.srcId && l.meta.url) || "";
+  const capId = await learningStore.addLinkCapture(d.srcId, { url, pastedText: text });
+  l.busy = "";
+  if (!capId) return render();
+  l.draft = null;
+  await openSource(d.srcId);
+  await processNow();
 }
 
 /* ---------- Actions (FR-7) ---------- */
@@ -989,6 +1049,9 @@ document.addEventListener("click", async (e) => {
       break;
     case "savethought":
       await saveThought();
+      break;
+    case "savetext":
+      await saveText();
       break;
     case "processnow":
       await processNow();
