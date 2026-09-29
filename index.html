@@ -489,7 +489,7 @@ label.fld > span{
 }
 
 .sub{color:var(--muted);font-size:14px}
-label:not(.fld):not(.pickrow):not(.catrow):not(.btn){display:block;font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 6px}
+label:not(.fld):not(.pickrow):not(.catrow):not(.btn):not(.actrow label){display:block;font-size:13px;font-weight:600;color:var(--muted);margin:14px 0 6px}
 .kicker{font-size:13px;color:var(--muted);font-weight:600}
 .row{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
 button.stat{font:inherit;color:inherit;text-align:left;width:100%}
@@ -572,7 +572,7 @@ ul.ins li{margin:4px 0}
 .actrow{display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--line);font-size:15px}
 .actrow:first-child{border-top:0}
 .actrow input[type=checkbox]{width:20px;height:20px;margin-top:2px;accent-color:var(--accent);flex:none}
-.actrow label{display:block;font:inherit;color:inherit;margin:0;cursor:pointer;flex:1 1 auto}
+.actrow label{display:block;font:inherit;color:var(--ink);margin:0;cursor:pointer;flex:1 1 auto}
 .actrow small{display:block;color:var(--muted);font-size:12px}
 .rm{background:none;border:0;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px;flex:none}
 .rm.danger{color:var(--stop);font-size:13px;font-weight:600}

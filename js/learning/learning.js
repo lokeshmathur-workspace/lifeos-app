@@ -374,7 +374,7 @@ function actionsHTML(full, capId) {
     .filter(({ a }) => !a || a.status !== QUEUE_ACTION_STATUS.DISMISSED);
   // Suggestions already turned into actions aren't offered again (by index, or —
   // for notes saved before that was recorded — by matching an action's text).
-  const used = new Set(full.usedSuggestions || []);
+  const used = new Set([...(full.usedSuggestions || []), ...(full.dismissedSuggestions || [])]);
   const confirmedTexts = new Set(confirmed.map(({ a }) => (a?.action || "").trim().toLowerCase()));
   const suggested = (full.suggestedActions || [])
     .map((a, i) => ({ ...a, i }))
@@ -392,7 +392,13 @@ function actionsHTML(full, capId) {
     <div class="acts-list">${suggested
       .map(
         ({ i, ...a }) =>
-          `<div class="actrow"><input type="checkbox" id="pk-${capId}-${i}" data-act="pick" data-cid="${capId}" data-i="${i}" ${ui.picks.has(i) ? "checked" : ""}><label for="pk-${capId}-${i}">${esc(a.action)}<small>${esc(PILLARS[a.pillar] || a.pillar)}</small></label></div>`
+          L().editSugg === `${capId}:${i}`
+            ? `<div class="actedit">
+              <input type="text" class="se-text" data-cid="${capId}" data-i="${i}" value="${esc(a.action)}">
+              <select class="se-pillar" data-cid="${capId}" data-i="${i}" aria-label="Category">${Object.entries(PILLARS).map(([k, v]) => `<option value="${k}" ${k === a.pillar ? "selected" : ""}>${v}</option>`).join("")}</select>
+              <div class="btnrow" style="margin-top:6px"><button class="btn pri" data-act="savesuggedit" data-cid="${capId}" data-i="${i}" style="flex:0 1 auto">Save</button><button class="btn ghost" data-act="canceledit" style="flex:0 1 auto">Cancel</button></div>
+            </div>`
+            : `<div class="actrow"><input type="checkbox" id="pk-${capId}-${i}" data-act="pick" data-cid="${capId}" data-i="${i}" ${ui.picks.has(i) ? "checked" : ""}><label for="pk-${capId}-${i}">${esc(a.action)}<small>${esc(PILLARS[a.pillar] || a.pillar)}</small></label><button class="iconact" data-act="editsugg" data-cid="${capId}" data-i="${i}" aria-label="Edit suggestion" title="Edit">✎</button><button class="iconact danger" data-act="dismisssugg" data-cid="${capId}" data-i="${i}" aria-label="Remove suggestion" title="Remove">×</button></div>`
       )
       .join("")}${ui.custom
       .map(
@@ -1202,7 +1208,42 @@ document.addEventListener("click", async (e) => {
       l.editAction = null;
       render();
       break;
+    case "editsugg":
+      l.editSugg = `${b.dataset.cid}:${b.dataset.i}`;
+      l.editAction = null;
+      l.editThought = null;
+      render();
+      break;
+    case "savesuggedit":
+    case "dismisssugg": {
+      const cid = b.dataset.cid;
+      const i = parseInt(b.dataset.i, 10);
+      let doc;
+      b.disabled = true;
+      if (a === "dismisssugg") {
+        doc = await learningStore.dismissSuggestion(l.curId, cid, i);
+      } else {
+        const text = (document.querySelector(`.se-text[data-cid="${cid}"][data-i="${i}"]`)?.value || "").trim();
+        const pillar = document.querySelector(`.se-pillar[data-cid="${cid}"][data-i="${i}"]`)?.value;
+        if (!text) {
+          b.disabled = false;
+          return flash("The action can't be empty — use × to remove it.", true);
+        }
+        doc = await learningStore.editSuggestion(l.curId, cid, i, { action: text, pillar });
+      }
+      if (!doc) {
+        b.disabled = false;
+        return flash("Couldn't save — try again.", true);
+      }
+      l.fullCaptures[cid] = doc;
+      actionUIFor(cid).picks.delete(i);
+      l.editSugg = null;
+      flash(a === "dismisssugg" ? "Suggestion removed." : "Suggestion updated.");
+      render();
+      break;
+    }
     case "canceledit":
+      l.editSugg = null;
       l.editAction = null;
       l.editThought = null;
       render();

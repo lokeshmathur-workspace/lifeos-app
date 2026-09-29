@@ -635,6 +635,37 @@ export class LearningStore {
     return this._writeFile(capturePath(sourceId, captureId), doc, () => this.captures.get(key), (n) => this.captures.set(key, n), `learning: ${sourceId}/${captureId} note`, true);
   }
 
+  // Suggested actions (not yet saved as actions) live on the capture file:
+  // edit one's wording/pillar, or remove it from the list (dismissedSuggestions).
+  async _patchCapture(sourceId, captureId, fn, message) {
+    const key = `${sourceId}/${captureId}`;
+    const fresh = await this.getCapture(sourceId, captureId, true);
+    if (!fresh) return null;
+    const cur = this.captures.get(key);
+    const doc = fn({ ...fresh });
+    this.captures.set(key, { doc, sha: cur ? cur.sha : null });
+    const ok = await this._writeFile(capturePath(sourceId, captureId), doc, () => this.captures.get(key), (n) => this.captures.set(key, n), message, true);
+    return ok ? doc : null;
+  }
+
+  editSuggestion(sourceId, captureId, index, { action, pillar }) {
+    return this._patchCapture(
+      sourceId,
+      captureId,
+      (doc) => ({ ...doc, suggestedActions: (doc.suggestedActions || []).map((a, i) => (i === index ? { ...a, action, pillar: pillar || a.pillar } : a)) }),
+      `learning: ${sourceId}/${captureId} edit suggestion`
+    );
+  }
+
+  dismissSuggestion(sourceId, captureId, index) {
+    return this._patchCapture(
+      sourceId,
+      captureId,
+      (doc) => ({ ...doc, dismissedSuggestions: [...new Set([...(doc.dismissedSuggestions || []), index])].sort((a, b) => a - b) }),
+      `learning: ${sourceId}/${captureId} remove suggestion`
+    );
+  }
+
   // Edits a thought (text, page, note): the capture file, then its light row in
   // meta.json (which carries the thought text for quick display).
   async updateThought(sourceId, captureId, { thought, pageRef, note }) {
