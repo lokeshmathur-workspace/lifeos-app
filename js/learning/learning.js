@@ -354,29 +354,44 @@ function insightsHTML(full) {
     .join("")}${(ins.connections || []).map((c) => `<li>Connects to: ${esc(c)}</li>`).join("")}</ul></div>`;
 }
 
+// One confirmed/open action: text + category, ✎ edit and × delete. Editing
+// swaps the row for an inline form (l.editAction = its id).
+function actionRowHTML(id, a, extra = "") {
+  const l = L();
+  if (l.editAction === id && a) {
+    return `<div class="actedit">
+      <input type="text" class="actedit-text" data-id="${id}" value="${esc(a.action)}">
+      <select class="actedit-pillar" data-id="${id}" aria-label="Category">${Object.entries(PILLARS).map(([k, v]) => `<option value="${k}" ${k === a.pillar ? "selected" : ""}>${v}</option>`).join("")}</select>
+      <div class="btnrow" style="margin-top:6px"><button class="btn pri" data-act="saveactionedit" data-id="${id}" style="flex:0 1 auto">Save</button><button class="btn ghost" data-act="canceledit" style="flex:0 1 auto">Cancel</button></div>
+    </div>`;
+  }
+  return `<div class="actionrow"><span class="tx">${esc(a ? a.action : id)}${a ? `<small>${esc(PILLARS[a.pillar] || a.pillar)}${extra}</small>` : ""}</span>${a ? `<button class="iconact" data-act="editaction" data-id="${id}" aria-label="Edit action" title="Edit">✎</button>` : ""}<button class="iconact danger" data-act="dismissaction" data-id="${id}" aria-label="Delete action" title="Delete">×</button></div>`;
+}
+
 function actionsHTML(full, capId) {
   const confirmed = (full.confirmedActions || [])
     .map((id) => ({ id, a: queueAction(id) }))
     .filter(({ a }) => !a || a.status !== QUEUE_ACTION_STATUS.DISMISSED);
-  const suggested = full.suggestedActions || [];
+  // Suggestions already turned into actions aren't offered again (by index, or —
+  // for notes saved before that was recorded — by matching an action's text).
+  const used = new Set(full.usedSuggestions || []);
+  const confirmedTexts = new Set(confirmed.map(({ a }) => (a?.action || "").trim().toLowerCase()));
+  const suggested = (full.suggestedActions || [])
+    .map((a, i) => ({ ...a, i }))
+    .filter((a) => !used.has(a.i) && !confirmedTexts.has((a.action || "").trim().toLowerCase()));
   const ui = actionUIFor(capId);
   if (!confirmed.length && !suggested.length && !ui.custom.length) return "";
   const pickedCount = ui.picks.size + ui.custom.length;
 
   let h = `<div class="block block-actions"><div class="block-label">Actions</div>`;
   if (confirmed.length) {
-    h += confirmed
-      .map(
-        ({ id, a }) =>
-          `<div class="confirmedrow"><span style="flex:1 1 auto">${esc(a ? a.action : id)}${a ? ` <span class="meta" style="margin:0">· ${esc(PILLARS[a.pillar] || a.pillar)}</span>` : ""}</span><button class="rm" data-act="dismissaction" data-id="${id}" aria-label="Delete task">×</button></div>`
-      )
-      .join("");
+    h += `<div class="actionlist">${confirmed.map(({ id, a }) => actionRowHTML(id, a)).join("")}</div>`;
   }
   if (suggested.length || ui.custom.length) {
     h += `<p class="sub" style="margin:${confirmed.length ? "10px" : "0"} 0 6px">Tick or add actions, then tap Save to send them to Life OS.</p>
     <div class="acts-list">${suggested
       .map(
-        (a, i) =>
+        ({ i, ...a }) =>
           `<div class="actrow"><input type="checkbox" id="pk-${capId}-${i}" data-act="pick" data-cid="${capId}" data-i="${i}" ${ui.picks.has(i) ? "checked" : ""}><label for="pk-${capId}-${i}">${esc(a.action)}<small>${esc(PILLARS[a.pillar] || a.pillar)}</small></label></div>`
       )
       .join("")}${ui.custom
@@ -450,23 +465,43 @@ function capCard(c) {
   if (!full) {
     // ready, but its full file hasn't loaded yet (openSource's fetch is
     // still in flight) — light row still has enough for a minimal card.
-    if (c.type === "thought") body += `<p class="quote">${esc(c.thought)}</p>`;
+    if (c.type === "thought") body += thoughtHTML(c, c.id);
     body += `<p class="sub" style="margin-top:8px">Loading…</p>`;
   } else {
     if (full.type === "page") body += `<div class="reader">${pagesHTML(full, c.id)}</div>`;
-    if (full.type === "thought") body += `<p class="quote">${esc(full.thought)}</p>`;
+    if (full.type === "thought") body += thoughtHTML(full, c.id);
     if (full.type === "link" && full.summary) {
       body += `<p style="margin-top:6px">${esc(full.summary.summary)}</p>`;
       if ((full.summary.learnings || []).length) {
         body += `<div class="kicker" style="margin-top:10px">Key learnings</div><ul class="ins">${full.summary.learnings.map((l2) => `<li>${esc(l2)}</li>`).join("")}</ul>`;
       }
     }
-    if (full.note) body += `<div class="lnote"><b>My note</b>${esc(full.note)}</div>`;
+    if (full.note && full.type !== "thought") body += `<div class="lnote"><b>My note</b>${esc(full.note)}</div>`;
     body += insightsHTML(full);
     body += actionsHTML(full, c.id);
     if (full.type === "link") body += yourTextHTML(full, false);
   }
   return `<div class="card"><div class="row"><div class="kicker">${esc(label)} · ${fmtRelative(c.createdAt)}</div>${delBtn}</div>${body}</div>`;
+}
+
+// A thought: its own tinted block (distinct from a page's transcript), with Edit.
+function thoughtHTML(t, capId) {
+  const l = L();
+  const isBookSrc = l.sources.find((x) => x.id === l.curId)?.type === "book";
+  if (l.editThought === capId) {
+    return `<div class="block block-thought">
+      <div class="block-label">Edit thought</div>
+      <textarea class="te-thought" data-cid="${capId}" rows="4">${esc(t.thought || "")}</textarea>
+      ${isBookSrc ? `<label style="margin-top:8px">Page (optional)</label><input type="text" inputmode="numeric" class="te-page" data-cid="${capId}" value="${esc(t.pageRef || "")}">` : ""}
+      <label style="margin-top:8px">Your note (optional)</label><textarea class="te-note" data-cid="${capId}" rows="2">${esc(t.note || "")}</textarea>
+      <div class="btnrow" style="margin-top:8px"><button class="btn pri" data-act="savethoughtedit" data-cid="${capId}" style="flex:0 1 auto">Save</button><button class="btn ghost" data-act="canceledit" style="flex:0 1 auto">Cancel</button></div>
+    </div>`;
+  }
+  return `<div class="block block-thought">
+    <div class="block-label">Your thought${t.pageRef ? ` · p. ${esc(t.pageRef)}` : ""}<button class="iconact" data-act="editthought" data-cid="${capId}" aria-label="Edit thought" title="Edit">✎ Edit</button></div>
+    <p class="quote" style="margin-top:2px">${esc(t.thought || "")}</p>
+    ${t.note ? `<div class="thoughtnote"><b>My note</b> ${esc(t.note)}</div>` : ""}
+  </div>`;
 }
 
 // The text Lokesh pasted for an article/video — shown while it's being
@@ -630,7 +665,8 @@ async function saveActionsFor(capId) {
   if (!actions.length) return;
   ui.saving = true;
   render();
-  const newIds = await learningStore.confirmCaptureActions(l.curId, capId, l.meta, actions);
+  const usedIdx = (full.suggestedActions || []).map((_, i) => i).filter((i) => ui.picks.has(i));
+  const newIds = await learningStore.confirmCaptureActions(l.curId, capId, l.meta, actions, usedIdx);
   ui.saving = false;
   if (newIds.length) {
     flash(`${newIds.length} action${newIds.length > 1 ? "s" : ""} added.`);
@@ -929,10 +965,10 @@ function vActions() {
   const open = (l.queue.items || []).flatMap((it) => (it.actionItems || []).filter(isOpen).map((a) => ({ ...a, srcTitle: it.title })));
   const done = (l.queue.items || []).flatMap((it) => (it.actionItems || []).filter((a) => a.status === QUEUE_ACTION_STATUS.DONE).map((a) => ({ ...a, srcTitle: it.title })));
   const statusLabel = (a) => (a.status === QUEUE_ACTION_STATUS.ACCEPTED ? "In Life OS" : a.status === QUEUE_ACTION_STATUS.DONE ? "Done" : "Waiting for /today");
-  const openItem = (a) => `<div class="chk" style="cursor:default"><span>○</span><span style="flex:1 1 auto">${esc(a.action)}<small>${esc(PILLARS[a.pillar] || a.pillar)} · ${esc(a.srcTitle || "")} · ${statusLabel(a)}</small></span><button class="rm" data-act="dismissaction" data-id="${a.actionId}" aria-label="Delete task">×</button></div>`;
+  const openItem = (a) => actionRowHTML(a.actionId, a, ` · ${esc(a.srcTitle || "")} · ${statusLabel(a)}`);
   const doneItem = (a) => `<div class="chk" style="cursor:default"><span>✓</span><span>${esc(a.action)}<small>${esc(PILLARS[a.pillar] || a.pillar)} · ${esc(a.srcTitle || "")} · ${statusLabel(a)}</small></span></div>`;
   return `<button class="btn ghost back" data-act="home">‹ Library</button><h1 class="serif">Actions</h1>
-  <h2>Open <span class="count">${open.length || ""}</span></h2>${open.length ? `<div class="card">${open.map(openItem).join("")}</div>` : `<div class="empty">No open actions. Actions you tick when saving a note land here.</div>`}
+  <h2>Open <span class="count">${open.length || ""}</span></h2>${open.length ? `<div class="block block-actions actionlist">${open.map(openItem).join("")}</div>` : `<div class="empty">No open actions. Actions you tick when saving a note land here.</div>`}
   ${done.length ? `<h2>Recently done</h2><div class="card">${done.slice(-15).reverse().map(doneItem).join("")}</div>` : ""}`;
 }
 
@@ -1156,6 +1192,58 @@ document.addEventListener("click", async (e) => {
     case "dismissaction":
       await dismissAction(b.dataset.id);
       break;
+    case "editaction":
+      l.editAction = b.dataset.id;
+      l.editThought = null;
+      render();
+      break;
+    case "editthought":
+      l.editThought = b.dataset.cid;
+      l.editAction = null;
+      render();
+      break;
+    case "canceledit":
+      l.editAction = null;
+      l.editThought = null;
+      render();
+      break;
+    case "saveactionedit": {
+      const id = b.dataset.id;
+      const text = (document.querySelector(`.actedit-text[data-id="${id}"]`)?.value || "").trim();
+      const pillar = document.querySelector(`.actedit-pillar[data-id="${id}"]`)?.value;
+      if (!text) return flash("The action can't be empty — use × to delete it.", true);
+      b.disabled = true;
+      const ok = await learningStore.editAction(id, { action: text, pillar });
+      if (!ok) {
+        b.disabled = false;
+        return flash("Couldn't save — try again.", true);
+      }
+      l.editAction = null;
+      l.queue = await learningStore.getQueue();
+      flash("Action updated.");
+      render();
+      break;
+    }
+    case "savethoughtedit": {
+      const cid = b.dataset.cid;
+      const thought = (document.querySelector(`.te-thought[data-cid="${cid}"]`)?.value || "").trim();
+      const pageRef = (document.querySelector(`.te-page[data-cid="${cid}"]`)?.value || "").trim();
+      const note = (document.querySelector(`.te-note[data-cid="${cid}"]`)?.value || "").trim();
+      if (!thought) return flash("The thought can't be empty — use Delete to remove it.", true);
+      b.disabled = true;
+      const ok = await learningStore.updateThought(l.curId, cid, { thought, pageRef, note });
+      if (!ok) {
+        b.disabled = false;
+        return flash("Couldn't save — your edit is still here. Try again.", true);
+      }
+      l.editThought = null;
+      l.meta = await learningStore.getSource(l.curId);
+      const full = await learningStore.getCapture(l.curId, cid);
+      if (full) l.fullCaptures[cid] = full;
+      flash("Thought updated.");
+      render();
+      break;
+    }
     case "pastetext": {
       const cid = b.dataset.cid;
       const box = document.querySelector(`.pastetext[data-cid="${cid}"]`);

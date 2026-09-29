@@ -525,6 +525,23 @@ export class LearningStore {
     return this._writeFile(QUEUE_PATH, doc, () => this.queue, (n) => (this.queue = n), "learning: update queue", immediate);
   }
 
+  // Edits an action's wording/category in queue.json (the one place actions live).
+  async editAction(actionId, { action, pillar }) {
+    const q = await this.getQueue(true);
+    let found = false;
+    for (const item of q.items) {
+      const a = (item.actionItems || []).find((x) => x.actionId === actionId);
+      if (a) {
+        a.action = action;
+        if (pillar) a.pillar = pillar;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+    return this.saveQueue(q.items, true);
+  }
+
   // Removes a task from view without deleting it (learning/CLAUDE.md rule:
   // "A dismissed action stays in the queue with status: 'dismissed'; don't
   // delete it") — same convention already used for Life OS's own queue
@@ -618,6 +635,29 @@ export class LearningStore {
     return this._writeFile(capturePath(sourceId, captureId), doc, () => this.captures.get(key), (n) => this.captures.set(key, n), `learning: ${sourceId}/${captureId} note`, true);
   }
 
+  // Edits a thought (text, page, note): the capture file, then its light row in
+  // meta.json (which carries the thought text for quick display).
+  async updateThought(sourceId, captureId, { thought, pageRef, note }) {
+    const key = `${sourceId}/${captureId}`;
+    const fresh = await this.getCapture(sourceId, captureId, true);
+    if (!fresh) return false;
+    const cur = this.captures.get(key);
+    const doc = { ...fresh, thought, pageRef: pageRef || "", note: note || "" };
+    this.captures.set(key, { doc, sha: cur ? cur.sha : null });
+    const ok = await this._writeFile(capturePath(sourceId, captureId), doc, () => this.captures.get(key), (n) => this.captures.set(key, n), `learning: ${sourceId}/${captureId} edit thought`, true);
+    if (!ok) return false;
+    const newMeta = await this._writeMeta(
+      sourceId,
+      (freshMeta) => ({
+        ...freshMeta,
+        captures: (freshMeta.captures || []).map((c) => (c.id === captureId ? { ...c, thought, pageRef: pageRef || "" } : c)),
+        updatedAt: new Date().toISOString(),
+      }),
+      `learning: ${sourceId} ${captureId} thought edited`
+    );
+    return !!newMeta;
+  }
+
   // A link the routine couldn't fetch (needs_text): save the text Lokesh pasted
   // and put the capture back in the queue as pending_summary, so the next
   // Process now summarizes it. Capture file first, then the meta row, then the
@@ -652,7 +692,7 @@ export class LearningStore {
   // and on meta.json's light row actionIds[], so a confirmed action shows as
   // confirmed everywhere (and so delete-cascade logic, which reads exactly
   // these two fields, can find it later). Returns the new action ids.
-  async confirmCaptureActions(sourceId, captureId, sourceMeta, actions) {
+  async confirmCaptureActions(sourceId, captureId, sourceMeta, actions, usedSuggestions = []) {
     const newIds = await this.confirmActions(sourceId, sourceMeta, actions);
     if (!newIds.length) return newIds;
 
@@ -660,6 +700,8 @@ export class LearningStore {
     const cap = this.captures.get(key);
     if (cap) {
       const doc = { ...cap.doc, confirmedActions: [...(cap.doc.confirmedActions || []), ...newIds] };
+      // Remember which suggestions became actions, so they stop being offered.
+      if (usedSuggestions.length) doc.usedSuggestions = [...new Set([...(cap.doc.usedSuggestions || []), ...usedSuggestions])].sort((a, b) => a - b);
       this.captures.set(key, { doc, sha: cap.sha });
       await this._writeFile(capturePath(sourceId, captureId), doc, () => this.captures.get(key), (n) => this.captures.set(key, n), `learning: ${sourceId}/${captureId} confirm actions`, true);
     }
