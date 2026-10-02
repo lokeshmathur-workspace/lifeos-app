@@ -1,0 +1,212 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="theme-color" content="#0a0c10"><title>Navya — Parent Log</title><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
+:root{--bg:#0a0c10;--panel:#1a1f2b;--p2:#222836;--border:#2a3040;
+  --gold:#f0c040;--gold2:#c8880a;--sky:#4a9eff;--coral:#ff6b5b;
+  --mint:#4ecba0;--lav:#a088ff;--warm:#ff9955;
+  --text:#e8eaf0;--dim:#8892a4;--muted:#4a5568;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;
+  font-size:15px;line-height:1.5;max-width:480px;margin:0 auto;min-height:100vh;
+  padding-bottom:env(safe-area-inset-bottom,20px)}
+.btn{border:none;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
+.btn:active{transform:scale(.97)}
+input,textarea{font-family:inherit;background:var(--panel);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:12px 14px;font-size:14px;outline:none;width:100%}
+input:focus,textarea:focus{border-color:var(--gold)}
+
+.hdr{background:#12161e;border-bottom:2px solid var(--lav);padding:14px 18px 12px}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px;margin-bottom:14px}
+.sub{font-family:'DM Mono',monospace;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 10px 2px}
+.rgy-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.rgy-btn{padding:16px 4px;border:2px solid var(--border);border-radius:10px;background:var(--panel);cursor:pointer;font-family:inherit;font-size:13px;font-weight:700;transition:all .2s;text-align:center;line-height:1.5}
+.rgy-btn.r.sel{border-color:#ff4444;background:rgba(255,68,68,.15);color:#ff6666}
+.rgy-btn.y.sel{border-color:#f0c040;background:rgba(240,192,64,.15);color:var(--gold)}
+.rgy-btn.g.sel{border-color:#4ecba0;background:rgba(78,203,160,.15);color:var(--mint)}
+.save-btn{width:100%;padding:16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--lav),#6644cc);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;margin-top:4px}
+.save-btn.done{background:var(--mint);color:#0a0c10}
+.log-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border)}
+.log-row:last-child{border-bottom:none}
+.rgy-dot{display:inline-block;width:12px;height:12px;border-radius:50%;margin:0 2px;vertical-align:middle}
+</style></head><body><div id="pin-screen" style="position:fixed;inset:0;background:#0a0c10;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'DM Sans',system-ui,sans-serif;padding:30px;transition:opacity .4s"><div style="font-size:36px;margin-bottom:8px">🏐</div><div style="font-family:'Bebas Neue',cursive;font-size:26px;letter-spacing:2px;color:#e8eaf0;margin-bottom:4px">Parent Logger</div><div style="font-size:11px;color:#8892a4;margin-bottom:32px;font-family:monospace;letter-spacing:1px;text-transform:uppercase">Enter PIN</div><div style="display:flex;gap:14px;margin-bottom:32px" id="pdots"><div class="pd"></div><div class="pd"></div><div class="pd"></div><div class="pd"></div></div><div style="display:grid;grid-template-columns:repeat(3,72px);gap:10px"><button class="pkey btn" onclick="pk('1')">1</button><button class="pkey btn" onclick="pk('2')">2</button><button class="pkey btn" onclick="pk('3')">3</button><button class="pkey btn" onclick="pk('4')">4</button><button class="pkey btn" onclick="pk('5')">5</button><button class="pkey btn" onclick="pk('6')">6</button><button class="pkey btn" onclick="pk('7')">7</button><button class="pkey btn" onclick="pk('8')">8</button><button class="pkey btn" onclick="pk('9')">9</button><div></div><button class="pkey btn" onclick="pk('0')">0</button><button class="pkey btn" onclick="pb()" style="font-size:20px">&#x232B;</button></div><div id="pmsg" style="height:20px;margin-top:16px;font-size:12px;color:#ff6b5b;font-weight:600"></div></div><style>.pd{width:14px;height:14px;border-radius:50%;border:2px solid #2a3040;transition:background .15s}.pkey{width:72px;height:72px;border-radius:50%;border:1px solid #2a3040;background:#1a1f2b;color:#e8eaf0;font-size:22px;font-weight:500}.pkey:active{background:#2a3040}@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}.shake{animation:shake .35s ease}</style><script>var _p="",_ok="0518",_lk=false;(function(){if(localStorage.getItem("nvb_auth")==="yes")document.getElementById("pin-screen").style.display="none";})();function pk(k){if(_lk||_p.length>=4)return;_p+=k;ud();if(_p.length===4)chk();}function pb(){if(_p.length>0){_p=_p.slice(0,-1);ud();}}function ud(){document.querySelectorAll(".pd").forEach(function(d,i){d.style.background=i<_p.length?"#f0c040":"transparent";d.style.borderColor=i<_p.length?"#f0c040":"#2a3040";});}function chk(){_lk=true;if(_p===_ok){localStorage.setItem("nvb_auth","yes");var s=document.getElementById("pin-screen");s.style.opacity="0";setTimeout(function(){s.style.display="none";},400);}else{var dd=document.getElementById("pdots");dd.classList.add("shake");document.querySelectorAll(".pd").forEach(function(d){d.style.background="#ff6b5b";d.style.borderColor="#ff6b5b";});document.getElementById("pmsg").textContent="Incorrect PIN";setTimeout(function(){dd.classList.remove("shake");_p="";ud();document.getElementById("pmsg").textContent="";_lk=false;},700);}}</script>
+<div id="token-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9998;align-items:center;justify-content:center;padding:24px">
+  <div style="background:#1a1f2b;border:1px solid #f0c040;border-radius:16px;padding:24px;width:100%;max-width:420px">
+    <div style="font-family:Bebas Neue,cursive;font-size:22px;letter-spacing:1px;color:#f0c040;margin-bottom:6px">GitHub Token Setup</div>
+    <div style="font-size:12px;color:#8892a4;margin-bottom:16px;line-height:1.6">To save data, you need to paste your GitHub personal access token. This is stored only on this device — never in the code.</div>
+    <div id="token-error" style="display:none;background:rgba(255,107,91,.15);border:1px solid #ff6b5b;border-radius:6px;padding:8px 12px;font-size:12px;color:#ff6b5b;margin-bottom:12px"></div>
+    <div style="font-size:11px;color:#8892a4;margin-bottom:6px">How to get your token:<br>GitHub → Settings → Developer settings → Tokens (classic) → Generate new token → check <b style="color:#e8eaf0">repo</b> → Generate → copy</div>
+    <textarea id="token-input" placeholder="Paste your GitHub token here (ghp_...)" style="min-height:70px;resize:none;margin-bottom:12px;font-size:12px;font-family:monospace"></textarea>
+    <button onclick="saveToken()" style="width:100%;padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#f0c040,#c8880a);color:#0a0c10;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Save Token &amp; Continue</button>
+  </div>
+</div>
+
+<div class="hdr">
+  <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--lav);margin-bottom:2px">⚡ Parent Daily Log</div>
+  <div style="font-size:21px;font-weight:700">Sleep &amp; Nutrition</div>
+  <div style="font-size:12px;color:var(--dim)" id="hdr-date"></div>
+</div>
+
+<div style="padding:16px">
+  <div class="card">
+    <div class="sub">📅 Date</div>
+    <input type="date" id="log-date">
+  </div>
+  <div class="card">
+    <div class="sub">😴 Sleep</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+      <div><div style="font-size:11px;color:var(--dim);margin-bottom:6px">Bedtime</div><input type="time" id="bedtime" value="21:15"></div>
+      <div><div style="font-size:11px;color:var(--dim);margin-bottom:6px">Wake Time</div><input type="time" id="waketime" value="06:30"></div>
+    </div>
+    <div style="margin-top:10px;padding:10px 12px;background:var(--bg);border-radius:8px;font-size:12px;color:var(--dim)">
+      Sleep duration: <strong id="sleep-calc" style="color:var(--mint)">—</strong>
+    </div>
+  </div>
+  <div class="card">
+    <div class="sub">🥗 Nutrition Quality</div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--dim);margin-bottom:8px">🌅 Breakfast</div>
+      <div class="rgy-grid" id="grid-breakfast"><button class="rgy-btn r btn" onclick="selMeal('breakfast','red',this)">🔴<br>Poor</button><button class="rgy-btn y btn" onclick="selMeal('breakfast','yellow',this)">🟡<br>OK</button><button class="rgy-btn g btn" onclick="selMeal('breakfast','green',this)">🟢<br>Good</button></div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:12px;color:var(--dim);margin-bottom:8px">☀️ Lunch</div>
+      <div class="rgy-grid" id="grid-lunch"><button class="rgy-btn r btn" onclick="selMeal('lunch','red',this)">🔴<br>Poor</button><button class="rgy-btn y btn" onclick="selMeal('lunch','yellow',this)">🟡<br>OK</button><button class="rgy-btn g btn" onclick="selMeal('lunch','green',this)">🟢<br>Good</button></div>
+    </div>
+    <div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:8px">🌙 Dinner</div>
+      <div class="rgy-grid" id="grid-dinner"><button class="rgy-btn r btn" onclick="selMeal('dinner','red',this)">🔴<br>Poor</button><button class="rgy-btn y btn" onclick="selMeal('dinner','yellow',this)">🟡<br>OK</button><button class="rgy-btn g btn" onclick="selMeal('dinner','green',this)">🟢<br>Good</button></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="sub" style="margin-bottom:8px">📝 Notes (optional)</div>
+    <textarea id="parent-notes" placeholder="Anything notable — sick, long day, travel…" style="min-height:60px;resize:none"></textarea>
+  </div>
+  <button class="save-btn btn" id="save-btn" onclick="saveLog()">☁ Save to Cloud</button>
+  <div style="margin-top:20px">
+    <div class="sub" style="margin-bottom:10px">Recent Log</div>
+    <div style="background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px">
+      <div id="log-list"><div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">Loading...</div></div>
+    </div>
+  </div>
+  <div style="height:20px"></div>
+</div>
+<script>var _O="lokeshmathur-workspace",_R="Navya",_F="navya_data.json";function _T(){return localStorage.getItem("nvb_gh_token")||"";}function _em(){return {daily_logs:{},parent_logs:{},game_logs:{}};}async function ghRead(){  var tok=_T();  if(!tok){console.log("No token set");return{data:_em(),sha:null,notoken:true};}  try{    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json"}});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected — please re-enter");return{data:_em(),sha:null,autherror:true};}    if(r.status===404)return{data:_em(),sha:null};    var j=await r.json();    var data=JSON.parse(atob(j.content.replace(/\s/g,"")));    localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));    return{data:data,sha:j.sha};  }catch(e){    try{var c=localStorage.getItem("nvb_cache");if(c){var p=JSON.parse(c);return{data:p.data,sha:null,cached:true};}}catch(_){}    return{data:_em(),sha:null,cached:true};  }}async function ghWrite(data,sha,msg){  var tok=_T();if(!tok)return{ok:false,notoken:true};  localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));  try{    var content=btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2))));    var body={message:msg||"Update",content:content};    if(sha)body.sha=sha;    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,{      method:"PUT",      headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json","Content-Type":"application/json"},      body:JSON.stringify(body)});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected — please re-enter");return{ok:false};}    var j=await r.json();    return{ok:r.ok,sha:j.content&&j.content.sha};  }catch(e){return{ok:false};}}async function ghMerge(section,key,value,msg){  for(var i=0;i<3;i++){    var rd=await ghRead();    if(rd.notoken||rd.autherror)return{ok:false};    if(!rd.data[section])rd.data[section]={};    rd.data[section][key]=value;    var res=await ghWrite(rd.data,rd.sha,msg);    if(res.ok)return res;  }  return{ok:false};}function showTokenSetup(msg){  var ov=document.getElementById("token-overlay");  if(ov){ov.style.display="flex";}  var em=document.getElementById("token-error");  if(em&&msg){em.textContent=msg;em.style.display="block";}}function saveToken(){  var t=document.getElementById("token-input").value.trim();  if(!t||t.length<10){alert("Please paste a valid GitHub token");return;}  localStorage.setItem("nvb_gh_token",t);  var ov=document.getElementById("token-overlay");if(ov)ov.style.display="none";  if(typeof init==="function")init();}function checkToken(){  if(!_T())showTokenSetup();}</script>
+<div id="token-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9998;align-items:center;justify-content:center;padding:24px">
+  <div style="background:#1a1f2b;border:1px solid #f0c040;border-radius:16px;padding:24px;width:100%;max-width:420px">
+    <div style="font-family:Bebas Neue,cursive;font-size:22px;letter-spacing:1px;color:#f0c040;margin-bottom:6px">GitHub Token Setup</div>
+    <div style="font-size:12px;color:#8892a4;margin-bottom:16px;line-height:1.6">To save data, you need to paste your GitHub personal access token. This is stored only on this device — never in the code.</div>
+    <div id="token-error" style="display:none;background:rgba(255,107,91,.15);border:1px solid #ff6b5b;border-radius:6px;padding:8px 12px;font-size:12px;color:#ff6b5b;margin-bottom:12px"></div>
+    <div style="font-size:11px;color:#8892a4;margin-bottom:6px">How to get your token:<br>GitHub → Settings → Developer settings → Tokens (classic) → Generate new token → check <b style="color:#e8eaf0">repo</b> → Generate → copy</div>
+    <textarea id="token-input" placeholder="Paste your GitHub token here (ghp_...)" style="min-height:70px;resize:none;margin-bottom:12px;font-size:12px;font-family:monospace"></textarea>
+    <button onclick="saveToken()" style="width:100%;padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#f0c040,#c8880a);color:#0a0c10;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Save Token &amp; Continue</button>
+  </div>
+</div>
+
+<script>
+var meals={breakfast:"",lunch:"",dinner:""};
+var ghData=null;
+
+function selMeal(meal,color,el){
+  meals[meal]=color;
+  el.parentElement.querySelectorAll(".rgy-btn").forEach(function(b){b.classList.remove("sel");});
+  el.classList.add("sel");
+}
+function calcSleep(){
+  var bt=document.getElementById("bedtime").value;
+  var wt=document.getElementById("waketime").value;
+  if(!bt||!wt){document.getElementById("sleep-calc").textContent="—";return;}
+  var bp=bt.split(":"),wp=wt.split(":");
+  var bm=parseInt(bp[0])*60+parseInt(bp[1]);
+  var wm=parseInt(wp[0])*60+parseInt(wp[1]);
+  if(wm<=bm)wm+=1440;
+  var hrs=Math.round((wm-bm)/60*10)/10;
+  var col=hrs>=9?"#4ecba0":hrs>=8?"#f0c040":"#ff6b5b";
+  document.getElementById("sleep-calc").textContent=hrs+" hours";
+  document.getElementById("sleep-calc").style.color=col;
+}
+document.addEventListener("DOMContentLoaded",function(){
+  document.getElementById("bedtime").addEventListener("change",calcSleep);
+  document.getElementById("waketime").addEventListener("change",calcSleep);
+  calcSleep();
+});
+
+async function saveLog(){
+  var btn=document.getElementById("save-btn");btn.textContent="Saving...";btn.disabled=true;
+  var bt=document.getElementById("bedtime").value;
+  var wt=document.getElementById("waketime").value;
+  var bp=bt.split(":"),wp=wt.split(":");
+  var bm=parseInt(bp[0])*60+parseInt(bp[1]),wm=parseInt(wp[0])*60+parseInt(wp[1]);
+  if(wm<=bm)wm+=1440;
+  var hrs=Math.round((wm-bm)/60*10)/10;
+  var dateKey=document.getElementById("log-date").value||new Date().toISOString().split("T")[0];
+  var entry={bedtime:bt,wake_time:wt,sleep_hrs:hrs,breakfast:meals.breakfast,lunch:meals.lunch,dinner:meals.dinner,notes:document.getElementById("parent-notes").value};
+  var res=await ghMerge("parent_logs",dateKey,entry,"Parent log "+dateKey);
+  if(res.ok){
+    btn.className="save-btn btn done";btn.textContent="✅ Saved!";
+    var rd=await ghRead();ghData=rd.data;buildLog();
+    setTimeout(function(){btn.className="save-btn btn";btn.textContent="☁ Save to Cloud";btn.disabled=false;},3000);
+  }else{btn.textContent="❌ Failed — retry";btn.disabled=false;}
+}
+
+function buildLog(){
+  if(!ghData)return;
+  var pl=ghData.parent_logs||{};
+  var keys=Object.keys(pl).sort(function(a,b){return b.localeCompare(a);}).slice(0,10);
+  var ll=document.getElementById("log-list");
+  if(!keys.length){ll.innerHTML="<div style='text-align:center;padding:16px;color:var(--muted);font-size:13px'>No logs yet</div>";return;}
+  function dot(c){var col=c==="green"?"#4ecba0":c==="yellow"?"#f0c040":c==="red"?"#ff6b5b":"#2a3040";return "<span class='rgy-dot' style='background:"+col+"'></span>";}
+  ll.innerHTML=keys.map(function(k){
+    var d=pl[k];var sleepCol=d.sleep_hrs>=9?"#4ecba0":d.sleep_hrs>=8?"#f0c040":"#ff6b5b";
+    var dateStr=new Date(k+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});
+    return "<div class='log-row'><div><div style='font-size:13px;font-weight:500'>"+dateStr+"</div><div style='font-size:11px;color:var(--dim);margin-top:2px'>"+dot(d.breakfast)+"🌅 "+dot(d.lunch)+"☀️ "+dot(d.dinner)+"🌙</div></div><div style='font-size:14px;font-weight:700;color:"+sleepCol+"'>"+d.sleep_hrs+"h</div></div>";
+  }).join("");
+}
+
+function prefillForm(d){
+  if(!d)return;
+  if(d.bedtime)document.getElementById("bedtime").value=d.bedtime;
+  if(d.wake_time)document.getElementById("waketime").value=d.wake_time;
+  if(d.notes)document.getElementById("parent-notes").value=d.notes;
+  calcSleep();
+  ["breakfast","lunch","dinner"].forEach(function(meal){
+    var color=d[meal];if(!color)return;
+    meals[meal]=color;
+    var clsMap={red:"r",yellow:"y",green:"g"};
+    var grid=document.getElementById("grid-"+meal);
+    if(!grid)return;
+    grid.querySelectorAll(".rgy-btn").forEach(function(btn){
+      btn.classList.remove("sel");
+      if(btn.classList.contains(clsMap[color]))btn.classList.add("sel");
+    });
+  });
+}
+
+async function init(){
+  document.getElementById("hdr-date").textContent=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+  var todayKey=new Date().toISOString().split("T")[0];
+  document.getElementById("log-date").value=todayKey;
+  calcSleep();
+  checkToken();if(!_T())return;
+  var rd=await ghRead();ghData=rd.data;buildLog();
+  // Pre-populate today's form if data already exists for today
+  var todayData=ghData.parent_logs&&ghData.parent_logs[todayKey];
+  if(todayData){
+    prefillForm(todayData);
+    document.getElementById("save-btn").textContent="☁ Update Today";
+  }
+  // Re-populate when date changes
+  document.getElementById("log-date").addEventListener("change",function(){
+    var d=ghData&&ghData.parent_logs&&ghData.parent_logs[this.value];
+    if(d){prefillForm(d);document.getElementById("save-btn").textContent="☁ Update Entry";}
+    else{
+      meals={breakfast:"",lunch:"",dinner:""};
+      document.querySelectorAll(".rgy-btn").forEach(function(b){b.classList.remove("sel");});
+      document.getElementById("bedtime").value="21:15";
+      document.getElementById("waketime").value="06:30";
+      document.getElementById("parent-notes").value="";
+      calcSleep();
+      document.getElementById("save-btn").textContent="☁ Save to Cloud";
+    }
+  });
+}
+init();
+</script>
+</body></html>

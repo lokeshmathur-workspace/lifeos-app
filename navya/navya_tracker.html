@@ -1,0 +1,468 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Navya D1"><meta name="theme-color" content="#0a0c10"><title>Navya — Daily Tracker</title><link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"><style>
+:root{--bg:#0a0c10;--panel:#1a1f2b;--p2:#222836;--border:#2a3040;
+  --gold:#f0c040;--gold2:#c8880a;--sky:#4a9eff;--coral:#ff6b5b;
+  --mint:#4ecba0;--lav:#a088ff;--warm:#ff9955;
+  --text:#e8eaf0;--dim:#8892a4;--muted:#4a5568;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:'DM Sans',system-ui,sans-serif;
+  font-size:15px;line-height:1.5;max-width:480px;margin:0 auto;min-height:100vh;
+  padding-bottom:env(safe-area-inset-bottom,20px)}
+.btn{border:none;cursor:pointer;font-family:inherit;-webkit-tap-highlight-color:transparent}
+.btn:active{transform:scale(.97)}
+input,textarea{font-family:inherit;background:var(--panel);border:1px solid var(--border);
+  color:var(--text);border-radius:8px;padding:12px 14px;font-size:14px;outline:none;width:100%}
+input:focus,textarea:focus{border-color:var(--gold)}
+
+.hdr{background:#12161e;border-bottom:2px solid var(--gold);padding:14px 18px 10px;position:sticky;top:0;z-index:50}
+.tabs{display:flex;background:#12161e;border-bottom:1px solid var(--border)}
+.tab-b{flex:1;padding:11px 0;background:none;border:none;border-bottom:2px solid transparent;color:var(--dim);font-family:inherit;font-size:12px;font-weight:600;cursor:pointer}
+.tab-b.active{color:var(--gold);border-bottom-color:var(--gold)}
+.page{display:none;padding:16px 16px 0}.page.active{display:block;animation:fi .3s ease}
+@keyframes fi{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding:0 2px}
+.sec-ttl{display:flex;align-items:center;gap:7px}
+.sec-nm{font-family:'DM Mono',monospace;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1px}
+.sec-pct{font-family:'DM Mono',monospace;font-size:11px;font-weight:700}
+.mcard{display:flex;align-items:center;justify-content:space-between;padding:13px 14px;background:var(--panel);border:1px solid var(--border);border-radius:10px;margin-bottom:8px;gap:10px}
+.micon{font-size:20px;flex-shrink:0}.mlbl{font-size:13px;font-weight:500;color:var(--text);flex:1}
+.tog{width:56px;height:30px;border-radius:15px;border:none;background:var(--border);cursor:pointer;position:relative;transition:background .2s;display:block}
+.tog-th{width:24px;height:24px;border-radius:50%;background:#fff;position:absolute;top:3px;left:3px;transition:left .2s;box-shadow:0 1px 4px rgba(0,0,0,.5)}
+.tog.on .tog-th{left:29px}
+.tog[data-c="vb"].on{background:var(--sky)}.tog[data-c="cond"].on{background:var(--gold)}
+.tog[data-c="nut"].on{background:var(--mint)}.tog[data-c="mind"].on{background:var(--lav)}
+.cw{display:flex;flex-direction:column;align-items:flex-end;gap:4px}
+.cr{display:flex;align-items:stretch}
+.cbtn{width:46px;height:46px;background:#12161e;border:1px solid var(--border);color:var(--text);font-size:22px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.cbtn.L{border-radius:10px 0 0 10px}.cbtn.R{border-radius:0 10px 10px 0}
+.cmid{min-width:70px;height:46px;background:var(--bg);border-top:1px solid var(--border);border-bottom:1px solid var(--border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px}
+.cv{font-size:16px;font-weight:700;color:var(--text);line-height:1}.cv.done{color:var(--mint)}
+.cu{font-size:9px;color:var(--muted);font-family:'DM Mono',monospace}
+.cbb{height:3px;background:var(--border);border-radius:2px;overflow:hidden;width:162px}
+.cbr{height:100%;border-radius:2px;transition:width .3s}
+.cgl{font-size:9px;color:var(--muted);font-family:'DM Mono',monospace}
+.feel-grid{display:flex;gap:6px;margin-bottom:20px}
+.fbtn{flex:1;padding:10px 3px;background:var(--panel);border:1px solid var(--border);border-radius:10px;color:var(--dim);font-size:10px;cursor:pointer;font-family:inherit;line-height:1.5;transition:all .2s}
+.fbtn.sel{background:rgba(240,192,64,.18);border-color:var(--gold);color:var(--gold)}
+.sub{font-family:'DM Mono',monospace;font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:1px;color:var(--dim);margin:0 0 10px 2px}
+.save-btn{width:100%;padding:16px;border:none;border-radius:12px;background:linear-gradient(135deg,var(--gold),var(--gold2));color:#0a0c10;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .3s;margin-top:4px;margin-bottom:8px}
+.save-btn.done{background:var(--mint)}
+.box{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:14px}
+.hm{display:grid;grid-template-columns:repeat(7,1fr);gap:5px;margin-bottom:10px}
+.hc{text-align:center}.hs{width:100%;aspect-ratio:1;border-radius:7px;display:flex;flex-direction:column;align-items:center;justify-content:center;margin-bottom:3px}
+.hd{font-size:8px;color:var(--muted);font-family:'DM Mono',monospace}
+.lgrow{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)}
+.lgrow:last-child{border-bottom:none}
+.stat3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.sbox{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:12px 8px;text-align:center}
+.sval{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:1px;line-height:1}
+.slbl{font-family:'DM Mono',monospace;font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:var(--dim);margin-top:4px}
+.export-btn{width:100%;padding:14px;border:1px solid var(--sky);border-radius:12px;background:rgba(74,158,255,.1);color:var(--sky);font-size:13px;font-weight:600;cursor:pointer;font-family:inherit;margin-bottom:14px;display:flex;align-items:center;justify-content:center;gap:8px}
+.cmp-row{display:flex;align-items:center;padding:9px 0;border-bottom:1px solid rgba(255,255,255,.04);gap:8px}
+.cmp-row:last-child{border-bottom:none}
+.cmp-ic{font-size:15px;width:24px;flex-shrink:0}.cmp-lbl{font-size:12px;color:var(--dim);flex:1}
+.cmp-vals{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.cmp-this{font-size:13px;font-weight:700;color:var(--sky);min-width:38px;text-align:right;font-family:monospace}
+.cmp-last{font-size:11px;color:var(--muted);min-width:34px;text-align:right;font-family:monospace}
+.cmp-tr{font-size:12px;font-weight:700;min-width:30px;text-align:right}
+.month-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.mdow{font-family:'DM Mono',monospace;font-size:8px;color:var(--muted);text-align:center;padding:3px 0}
+.mcell{aspect-ratio:1;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600}
+.chart-svg{width:100%;display:block;overflow:visible}
+.chart-ttl{font-size:11px;font-weight:600;color:var(--dim);margin-bottom:6px;display:flex;justify-content:space-between}
+.legend{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:8px}
+.leg-i{display:flex;align-items:center;gap:3px}
+.leg-d{width:9px;height:9px;border-radius:2px}
+.leg-t{font-size:8px;color:var(--muted);font-family:'DM Mono',monospace}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+.perfect{text-align:center;font-size:14px;padding:6px 0 14px;animation:pulse 1.2s infinite;display:none}
+.perfect.show{display:block}
+.ins-card{background:rgba(240,192,64,.06);border:1px solid rgba(240,192,64,.2);border-radius:10px;padding:12px;margin-bottom:10px}
+.ins-card p{font-size:12px;color:var(--dim);line-height:1.6}
+.ins-card strong{color:var(--gold)}
+</style></head><body><div id="pin-screen" style="position:fixed;inset:0;background:#0a0c10;z-index:9999;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:'DM Sans',system-ui,sans-serif;padding:30px;transition:opacity .4s"><div style="font-size:36px;margin-bottom:8px">🏐</div><div style="font-family:'Bebas Neue',cursive;font-size:26px;letter-spacing:2px;color:#e8eaf0;margin-bottom:4px">Navya D1 Tracker</div><div style="font-size:11px;color:#8892a4;margin-bottom:32px;font-family:monospace;letter-spacing:1px;text-transform:uppercase">Enter PIN</div><div style="display:flex;gap:14px;margin-bottom:32px" id="pdots"><div class="pd"></div><div class="pd"></div><div class="pd"></div><div class="pd"></div></div><div style="display:grid;grid-template-columns:repeat(3,72px);gap:10px"><button class="pkey btn" onclick="pk('1')">1</button><button class="pkey btn" onclick="pk('2')">2</button><button class="pkey btn" onclick="pk('3')">3</button><button class="pkey btn" onclick="pk('4')">4</button><button class="pkey btn" onclick="pk('5')">5</button><button class="pkey btn" onclick="pk('6')">6</button><button class="pkey btn" onclick="pk('7')">7</button><button class="pkey btn" onclick="pk('8')">8</button><button class="pkey btn" onclick="pk('9')">9</button><div></div><button class="pkey btn" onclick="pk('0')">0</button><button class="pkey btn" onclick="pb()" style="font-size:20px">&#x232B;</button></div><div id="pmsg" style="height:20px;margin-top:16px;font-size:12px;color:#ff6b5b;font-weight:600"></div></div><style>.pd{width:14px;height:14px;border-radius:50%;border:2px solid #2a3040;transition:background .15s}.pkey{width:72px;height:72px;border-radius:50%;border:1px solid #2a3040;background:#1a1f2b;color:#e8eaf0;font-size:22px;font-weight:500}.pkey:active{background:#2a3040}@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}.shake{animation:shake .35s ease}</style><script>var _p="",_ok="0518",_lk=false;(function(){if(localStorage.getItem("nvb_auth")==="yes")document.getElementById("pin-screen").style.display="none";})();function pk(k){if(_lk||_p.length>=4)return;_p+=k;ud();if(_p.length===4)chk();}function pb(){if(_p.length>0){_p=_p.slice(0,-1);ud();}}function ud(){document.querySelectorAll(".pd").forEach(function(d,i){d.style.background=i<_p.length?"#f0c040":"transparent";d.style.borderColor=i<_p.length?"#f0c040":"#2a3040";});}function chk(){_lk=true;if(_p===_ok){localStorage.setItem("nvb_auth","yes");var s=document.getElementById("pin-screen");s.style.opacity="0";setTimeout(function(){s.style.display="none";},400);}else{var dd=document.getElementById("pdots");dd.classList.add("shake");document.querySelectorAll(".pd").forEach(function(d){d.style.background="#ff6b5b";d.style.borderColor="#ff6b5b";});document.getElementById("pmsg").textContent="Incorrect PIN";setTimeout(function(){dd.classList.remove("shake");_p="";ud();document.getElementById("pmsg").textContent="";_lk=false;},700);}}</script>
+<div id="token-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9998;align-items:center;justify-content:center;padding:24px">
+  <div style="background:#1a1f2b;border:1px solid #f0c040;border-radius:16px;padding:24px;width:100%;max-width:420px">
+    <div style="font-family:Bebas Neue,cursive;font-size:22px;letter-spacing:1px;color:#f0c040;margin-bottom:6px">GitHub Token Setup</div>
+    <div style="font-size:12px;color:#8892a4;margin-bottom:16px;line-height:1.6">To save data, you need to paste your GitHub personal access token. This is stored only on this device — never in the code.</div>
+    <div id="token-error" style="display:none;background:rgba(255,107,91,.15);border:1px solid #ff6b5b;border-radius:6px;padding:8px 12px;font-size:12px;color:#ff6b5b;margin-bottom:12px"></div>
+    <div style="font-size:11px;color:#8892a4;margin-bottom:6px">How to get your token:<br>GitHub → Settings → Developer settings → Tokens (classic) → Generate new token → check <b style="color:#e8eaf0">repo</b> → Generate → copy</div>
+    <textarea id="token-input" placeholder="Paste your GitHub token here (ghp_...)" style="min-height:70px;resize:none;margin-bottom:12px;font-size:12px;font-family:monospace"></textarea>
+    <button onclick="saveToken()" style="width:100%;padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#f0c040,#c8880a);color:#0a0c10;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Save Token &amp; Continue</button>
+  </div>
+</div>
+
+<div class="hdr">
+  <div style="font-family:'DM Mono',monospace;font-size:9px;letter-spacing:3px;text-transform:uppercase;color:var(--gold);margin-bottom:2px">⚡ D1 Volleyball Tracker</div>
+  <div style="display:flex;align-items:center;justify-content:space-between">
+    <div>
+      <div style="font-size:21px;font-weight:700">Navya's Daily Log</div>
+      <div style="font-size:12px;color:var(--dim);margin-top:1px" id="hdr-date"></div>
+      <div style="font-size:12px;color:var(--gold);font-weight:600;margin-top:3px" id="streak-txt"></div>
+    </div>
+    <svg width="88" height="88" viewBox="0 0 88 88" style="flex-shrink:0">
+      <circle cx="44" cy="44" r="36" fill="none" stroke="#2a3040" stroke-width="7"/>
+      <circle id="ring-arc" cx="44" cy="44" r="36" fill="none" stroke="#2a3040" stroke-width="7"
+        stroke-dasharray="0 226.2" stroke-linecap="round" transform="rotate(-90 44 44)" style="transition:stroke-dasharray .5s,stroke .3s"/>
+      <text x="44" y="40" text-anchor="middle" id="ring-num" fill="#4a5568" font-size="18" font-weight="700" font-family="system-ui">0</text>
+      <text x="44" y="52" text-anchor="middle" fill="#8892a4" font-size="8" font-family="monospace">TODAY %</text>
+    </svg>
+  </div>
+  <div style="display:flex;gap:16px;margin-top:10px;align-items:center">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11" fill="none" stroke="#2a3040" stroke-width="3"/><circle id="mr-vb" cx="14" cy="14" r="11" fill="none" stroke="#4a9eff" stroke-width="3" stroke-dasharray="0 69.1" stroke-linecap="round" transform="rotate(-90 14 14)" style="transition:stroke-dasharray .4s"/></svg>
+      <div style="font-size:8px;color:var(--muted);font-family:monospace">🏐</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11" fill="none" stroke="#2a3040" stroke-width="3"/><circle id="mr-cond" cx="14" cy="14" r="11" fill="none" stroke="#f0c040" stroke-width="3" stroke-dasharray="0 69.1" stroke-linecap="round" transform="rotate(-90 14 14)" style="transition:stroke-dasharray .4s"/></svg>
+      <div style="font-size:8px;color:var(--muted);font-family:monospace">💪</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11" fill="none" stroke="#2a3040" stroke-width="3"/><circle id="mr-nut" cx="14" cy="14" r="11" fill="none" stroke="#4ecba0" stroke-width="3" stroke-dasharray="0 69.1" stroke-linecap="round" transform="rotate(-90 14 14)" style="transition:stroke-dasharray .4s"/></svg>
+      <div style="font-size:8px;color:var(--muted);font-family:monospace">🥗</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <svg width="28" height="28" viewBox="0 0 28 28"><circle cx="14" cy="14" r="11" fill="none" stroke="#2a3040" stroke-width="3"/><circle id="mr-mind" cx="14" cy="14" r="11" fill="none" stroke="#a088ff" stroke-width="3" stroke-dasharray="0 69.1" stroke-linecap="round" transform="rotate(-90 14 14)" style="transition:stroke-dasharray .4s"/></svg>
+      <div style="font-size:8px;color:var(--muted);font-family:monospace">🧠</div>
+    </div>
+    <a href="dashboard.html" style="margin-left:auto;margin-right:10px;font-size:10px;font-family:monospace;color:var(--sky);text-decoration:none;background:rgba(74,158,255,.12);border:1px solid rgba(74,158,255,.3);border-radius:6px;padding:3px 8px">📊 Dashboard</a>    <div style="font-size:10px;font-family:monospace;color:var(--muted)" id="sync-lbl">loading...</div>
+  </div>
+</div>
+<div class="tabs">
+  <button class="tab-b btn" id="tab-today" onclick="sw('today')">📋 Today</button>
+  <button class="tab-b btn active" id="tab-x" style="display:none"></button>
+  <button class="tab-b btn" id="tab-history" onclick="sw('history')">📊 History</button>
+  <button class="tab-b btn" id="tab-progress" onclick="sw('progress')">📈 Progress</button>
+</div>
+
+<div class="page active" id="page-today">
+  <div style="margin-bottom:20px">
+    <div class="sec-hdr"><div class="sec-ttl"><span>🏐</span><span class="sec-nm" style="color:var(--sky)">Volleyball</span></div><span class="sec-pct" id="pct-vb" style="color:var(--sky)">0%</span></div>
+    <div class="mcard"><span class="micon">🏐</span><span class="mlbl">Setting Reps</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('setting_reps',-100)">−</button><div class="cmid"><span class="cv" id="v-setting_reps">0</span><span class="cu">reps</span></div><button class="cbtn R btn" onclick="cc('setting_reps',100)">+</button></div><div class="cbb"><div class="cbr" id="bar-setting_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 1000 reps</span></div></div></div>
+    <div class="mcard"><span class="micon">👟</span><span class="mlbl">Footwork Reps</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('footwork_reps',-25)">−</button><div class="cmid"><span class="cv" id="v-footwork_reps">0</span><span class="cu">reps</span></div><button class="cbtn R btn" onclick="cc('footwork_reps',25)">+</button></div><div class="cbb"><div class="cbr" id="bar-footwork_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 100 reps</span></div></div></div>
+    <div class="mcard"><span class="micon">💫</span><span class="mlbl">Serves Practiced</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('serve_reps',-5)">−</button><div class="cmid"><span class="cv" id="v-serve_reps">0</span><span class="cu">serves</span></div><button class="cbtn R btn" onclick="cc('serve_reps',5)">+</button></div><div class="cbb"><div class="cbr" id="bar-serve_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 30 serves</span></div></div></div>
+    <div class="mcard"><span class="micon">✅</span><span class="mlbl">Practice / Training</span><button class="tog btn" id="tog-practice_done" data-c="vb" onclick="tc('practice_done')"><div class="tog-th"></div></button></div>
+  </div>
+  <div style="margin-bottom:20px">
+    <div class="sec-hdr"><div class="sec-ttl"><span>💪</span><span class="sec-nm" style="color:var(--gold)">Conditioning</span></div><span class="sec-pct" id="pct-cond" style="color:var(--gold)">0%</span></div>
+    <div class="mcard"><span class="micon">💪</span><span class="mlbl">Conditioning Session</span><button class="tog btn" id="tog-conditioning_done" data-c="cond" onclick="tc('conditioning_done')"><div class="tog-th"></div></button></div>
+    <div class="mcard"><span class="micon">🔄</span><span class="mlbl">Foam Roll / Recovery</span><button class="tog btn" id="tog-recovery_done" data-c="cond" onclick="tc('recovery_done')"><div class="tog-th"></div></button></div>
+  </div>
+  <div style="margin-bottom:20px">
+    <div class="sec-hdr"><div class="sec-ttl"><span>🥗</span><span class="sec-nm" style="color:var(--mint)">Nutrition</span></div><span class="sec-pct" id="pct-nut" style="color:var(--mint)">0%</span></div>
+    <div class="mcard"><span class="micon">🥩</span><span class="mlbl">Protein Goal Met</span><button class="tog btn" id="tog-protein_met" data-c="nut" onclick="tc('protein_met')"><div class="tog-th"></div></button></div>
+    <div class="mcard"><span class="micon">💧</span><span class="mlbl">Hydration (2L+)</span><button class="tog btn" id="tog-hydration_met" data-c="nut" onclick="tc('hydration_met')"><div class="tog-th"></div></button></div>
+    <div class="mcard"><span class="micon">🥣</span><span class="mlbl">Good Breakfast</span><button class="tog btn" id="tog-breakfast_had" data-c="nut" onclick="tc('breakfast_had')"><div class="tog-th"></div></button></div>
+  </div>
+  <div style="margin-bottom:20px">
+    <div class="sec-hdr"><div class="sec-ttl"><span>🧠</span><span class="sec-nm" style="color:var(--lav)">Mental</span></div><span class="sec-pct" id="pct-mind" style="color:var(--lav)">0%</span></div>
+    <div class="mcard"><span class="micon">😴</span><span class="mlbl">Sleep Hours</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('sleep_hrs',-0.5)">−</button><div class="cmid"><span class="cv" id="v-sleep_hrs">0</span><span class="cu">hrs</span></div><button class="cbtn R btn" onclick="cc('sleep_hrs',0.5)">+</button></div><div class="cbb"><div class="cbr" id="bar-sleep_hrs" style="background:var(--lav);width:0%"></div></div><span class="cgl">goal: 9 hrs</span></div></div></div>
+    <div class="mcard"><span class="micon">📓</span><span class="mlbl">Journaled Tonight</span><button class="tog btn" id="tog-journal_done" data-c="mind" onclick="tc('journal_done')"><div class="tog-th"></div></button></div>
+    <div class="mcard"><span class="micon">🧘</span><span class="mlbl">Visualization Done</span><button class="tog btn" id="tog-viz_done" data-c="mind" onclick="tc('viz_done')"><div class="tog-th"></div></button></div>
+  </div>
+  <div class="sub">💫 Energy Level Today</div>
+  <div class="feel-grid">
+    <button class="fbtn btn" onclick="sf(1)">😴<br>Wiped</button>
+    <button class="fbtn btn" onclick="sf(2)">😑<br>Meh</button>
+    <button class="fbtn btn" onclick="sf(3)">🙂<br>Good</button>
+    <button class="fbtn btn" onclick="sf(4)">😃<br>Great</button>
+    <button class="fbtn btn" onclick="sf(5)">🔥<br>Fire!</button>
+  </div>
+  <div style="margin-bottom:20px">
+    <div class="sub">📝 Notes (Optional)</div>
+    <textarea style="min-height:76px;resize:none" id="notes-field" placeholder="Any notes… wins, struggles, how practice felt" oninput="nc()"></textarea>
+  </div>
+  <button class="save-btn btn" id="save-btn" onclick="saveDay()">💾 Save Today's Progress</button>
+  <div style="font-size:10px;color:var(--dim);text-align:center;padding:4px 0 12px" id="sync-msg"></div>
+  <div class="perfect" id="perf">🏆 Perfect Day! You're building a D1 athlete! 🏆</div>
+  <div style="height:20px"></div>
+</div>
+
+<div class="page" id="page-history">
+  <div class="stat3" style="padding-top:4px">
+    <div class="sbox"><div class="sval" id="h-avg" style="color:var(--gold)">—</div><div class="slbl">7-Day Avg</div></div>
+    <div class="sbox"><div class="sval" id="h-logged" style="color:var(--sky)">0</div><div class="slbl">Days Logged</div></div>
+    <div class="sbox"><div class="sval" id="h-best" style="color:var(--mint)">—</div><div class="slbl">Best Day</div></div>
+  </div>
+  <div class="box"><div class="sub" style="margin-bottom:12px">Last 14 Days</div><div class="hm" id="heatmap"></div>
+    <div class="legend">
+      <div class="leg-i"><div class="leg-d" style="background:#4ecba0"></div><span class="leg-t">80%+</span></div>
+      <div class="leg-i"><div class="leg-d" style="background:#f0c040"></div><span class="leg-t">60%+</span></div>
+      <div class="leg-i"><div class="leg-d" style="background:#ff9955"></div><span class="leg-t">40%+</span></div>
+      <div class="leg-i"><div class="leg-d" style="background:#ff6b5b"></div><span class="leg-t">&lt;40%</span></div>
+    </div>
+  </div>
+  <div class="box"><div class="sub" style="margin-bottom:12px">Recent Log</div><div id="log-list"></div></div>
+  <button class="export-btn btn" onclick="exportCSV()">⬇ Export All Data to CSV</button>
+  <div style="height:20px"></div>
+</div>
+
+<div class="page" id="page-progress">
+  <div style="padding-top:4px">
+    <div class="sub">📊 This Week vs Last Week</div>
+    <div class="box" style="margin-bottom:14px">
+      <div style="display:grid;grid-template-columns:1fr 56px 50px 36px;gap:4px;padding-bottom:6px;margin-bottom:4px;border-bottom:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--muted);font-family:monospace;text-transform:uppercase"></div>
+        <div style="font-size:9px;color:var(--sky);font-family:monospace;text-align:right;text-transform:uppercase">THIS</div>
+        <div style="font-size:9px;color:var(--muted);font-family:monospace;text-align:right;text-transform:uppercase">LAST</div>
+        <div style="font-size:9px;color:var(--muted);font-family:monospace;text-align:right;text-transform:uppercase">↕</div>
+      </div>
+      <div id="cmp-rows"></div>
+    </div>
+    <div class="sub">📆 This Month — <span id="month-name" style="color:var(--gold)"></span></div>
+    <div class="box" style="margin-bottom:14px"><div class="month-grid" id="month-cal"></div>
+      <div class="legend" style="margin-top:10px">
+        <div class="leg-i"><div class="leg-d" style="background:#4ecba0"></div><span class="leg-t">80%+</span></div>
+        <div class="leg-i"><div class="leg-d" style="background:#f0c040"></div><span class="leg-t">60%+</span></div>
+        <div class="leg-i"><div class="leg-d" style="background:#ff9955"></div><span class="leg-t">40%+</span></div>
+        <div class="leg-i"><div class="leg-d" style="background:#ff6b5b"></div><span class="leg-t">&lt;40%</span></div>
+        <div class="leg-i"><div class="leg-d" style="background:var(--p2);border:1px solid var(--border)"></div><span class="leg-t">—</span></div>
+      </div>
+    </div>
+    <div class="sub">📈 30-Day Trends</div>
+    <div class="box" style="margin-bottom:12px"><div class="chart-ttl">Overall Score <span id="ca-score"></span></div><svg class="chart-svg" id="ch-score" viewBox="0 0 320 110"></svg></div>
+    <div class="box" style="margin-bottom:12px"><div class="chart-ttl">Setting Reps / Day <span id="ca-reps"></span></div><svg class="chart-svg" id="ch-reps" viewBox="0 0 320 110"></svg></div>
+    <div class="box" style="margin-bottom:16px"><div class="chart-ttl">Sleep Hours <span id="ca-sleep"></span></div><svg class="chart-svg" id="ch-sleep" viewBox="0 0 320 110"></svg></div>
+    <div id="insights"></div>
+    <div style="height:20px"></div>
+  </div>
+</div>
+<script>var _O="lokeshmathur-workspace",_R="Navya",_F="navya_data.json";function _T(){return localStorage.getItem("nvb_gh_token")||"";}function _em(){return {daily_logs:{},parent_logs:{},game_logs:{}};}async function ghRead(){  var tok=_T();  if(!tok){console.log("No token set");return{data:_em(),sha:null,notoken:true};}  try{    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json"}});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected — please re-enter");return{data:_em(),sha:null,autherror:true};}    if(r.status===404)return{data:_em(),sha:null};    var j=await r.json();    var data=JSON.parse(atob(j.content.replace(/\s/g,"")));    localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));    return{data:data,sha:j.sha};  }catch(e){    try{var c=localStorage.getItem("nvb_cache");if(c){var p=JSON.parse(c);return{data:p.data,sha:null,cached:true};}}catch(_){}    return{data:_em(),sha:null,cached:true};  }}async function ghWrite(data,sha,msg){  var tok=_T();if(!tok)return{ok:false,notoken:true};  localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));  try{    var content=btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2))));    var body={message:msg||"Update",content:content};    if(sha)body.sha=sha;    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,{      method:"PUT",      headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json","Content-Type":"application/json"},      body:JSON.stringify(body)});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected — please re-enter");return{ok:false};}    var j=await r.json();    return{ok:r.ok,sha:j.content&&j.content.sha};  }catch(e){return{ok:false};}}async function ghMerge(section,key,value,msg){  for(var i=0;i<3;i++){    var rd=await ghRead();    if(rd.notoken||rd.autherror)return{ok:false};    if(!rd.data[section])rd.data[section]={};    rd.data[section][key]=value;    var res=await ghWrite(rd.data,rd.sha,msg);    if(res.ok)return res;  }  return{ok:false};}function showTokenSetup(msg){  var ov=document.getElementById("token-overlay");  if(ov){ov.style.display="flex";}  var em=document.getElementById("token-error");  if(em&&msg){em.textContent=msg;em.style.display="block";}}function saveToken(){  var t=document.getElementById("token-input").value.trim();  if(!t||t.length<10){alert("Please paste a valid GitHub token");return;}  localStorage.setItem("nvb_gh_token",t);  var ov=document.getElementById("token-overlay");if(ov)ov.style.display="none";  if(typeof init==="function")init();}function checkToken(){  if(!_T())showTokenSetup();}</script>
+<div id="token-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.92);z-index:9998;align-items:center;justify-content:center;padding:24px">
+  <div style="background:#1a1f2b;border:1px solid #f0c040;border-radius:16px;padding:24px;width:100%;max-width:420px">
+    <div style="font-family:Bebas Neue,cursive;font-size:22px;letter-spacing:1px;color:#f0c040;margin-bottom:6px">GitHub Token Setup</div>
+    <div style="font-size:12px;color:#8892a4;margin-bottom:16px;line-height:1.6">To save data, you need to paste your GitHub personal access token. This is stored only on this device — never in the code.</div>
+    <div id="token-error" style="display:none;background:rgba(255,107,91,.15);border:1px solid #ff6b5b;border-radius:6px;padding:8px 12px;font-size:12px;color:#ff6b5b;margin-bottom:12px"></div>
+    <div style="font-size:11px;color:#8892a4;margin-bottom:6px">How to get your token:<br>GitHub → Settings → Developer settings → Tokens (classic) → Generate new token → check <b style="color:#e8eaf0">repo</b> → Generate → copy</div>
+    <textarea id="token-input" placeholder="Paste your GitHub token here (ghp_...)" style="min-height:70px;resize:none;margin-bottom:12px;font-size:12px;font-family:monospace"></textarea>
+    <button onclick="saveToken()" style="width:100%;padding:14px;border:none;border-radius:10px;background:linear-gradient(135deg,#f0c040,#c8880a);color:#0a0c10;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Save Token &amp; Continue</button>
+  </div>
+</div>
+
+<script>
+var CNTS={setting_reps:{t:1000,s:100,bc:"#4a9eff"},footwork_reps:{t:100,s:25,bc:"#4a9eff"},serve_reps:{t:30,s:5,bc:"#4a9eff"},sleep_hrs:{t:9,s:0.5,bc:"#a088ff"}};
+var TOGS=["practice_done","conditioning_done","recovery_done","protein_met","hydration_met","breakfast_had","journal_done","viz_done"];
+var ALLK=Object.keys(CNTS).concat(TOGS);
+var SECS={vb:["setting_reps","footwork_reps","serve_reps","practice_done"],cond:["conditioning_done","recovery_done"],nut:["protein_met","hydration_met","breakfast_had"],mind:["sleep_hrs","journal_done","viz_done"]};
+var FEELS=["","😴 Wiped","😑 Meh","🙂 Good","😃 Great","🔥 On Fire!"];
+var CM=226.2,CS=69.1;
+var todayK=new Date().toISOString().split("T")[0];
+var state={metrics:{},feel:0,notes:""};
+var ghData=null,ghSha=null;
+
+function dk(d){return d.toISOString().split("T")[0];}
+function computeScore(m){var p=0;ALLK.forEach(function(k){if(CNTS[k])p+=Math.min(1,(m[k]||0)/CNTS[k].t);else p+=m[k]?1:0;});return Math.round(p/ALLK.length*100);}
+function secScore(sid,m){var ks=SECS[sid],p=0;ks.forEach(function(k){if(CNTS[k])p+=Math.min(1,(m[k]||0)/CNTS[k].t);else p+=m[k]?1:0;});return Math.round(p/ks.length*100);}
+function scol(s){return s>=80?"#4ecba0":s>=60?"#f0c040":s>=40?"#ff9955":"#ff6b5b";}
+function fmtD(k){return new Date(k+"T12:00:00").toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"});}
+function fmtS(k){return new Date(k+"T12:00:00").toLocaleDateString("en-US",{weekday:"short"});}
+function setSL(t,c){var e=document.getElementById("sync-lbl");if(e){e.textContent=t;e.style.color=c||"#8892a4";}}
+
+function updRings(){
+  var s=computeScore(state.metrics);
+  var col=s>=80?"#4ecba0":s>=60?"#f0c040":s>=40?"#ff9955":s>0?"#ff6b5b":"#2a3040";
+  var arc=document.getElementById("ring-arc");arc.style.stroke=col;arc.setAttribute("stroke-dasharray",CM*s/100+" "+CM);
+  var num=document.getElementById("ring-num");num.textContent=s;num.setAttribute("fill",s>0?col:"#4a5568");
+  ["vb","cond","nut","mind"].forEach(function(sid){
+    var p=secScore(sid,state.metrics);
+    var el=document.getElementById("mr-"+sid);if(el)el.setAttribute("stroke-dasharray",CS*p/100+" "+CS);
+    var pe=document.getElementById("pct-"+sid);if(pe)pe.textContent=p+"%";
+  });
+  document.getElementById("perf").classList.toggle("show",s===100);
+}
+function updCnt(id){
+  var v=state.metrics[id]||0,cfg=CNTS[id];if(!cfg)return;
+  var el=document.getElementById("v-"+id),bar=document.getElementById("bar-"+id);if(!el)return;
+  el.textContent=v;el.className="cv"+(v>=cfg.t?" done":"");
+  bar.style.width=Math.min(100,v/cfg.t*100)+"%";bar.style.background=v>=cfg.t?"#4ecba0":cfg.bc;
+}
+function updTog(id){var el=document.getElementById("tog-"+id);if(el)el.classList.toggle("on",!!state.metrics[id]);}
+function updFeel(){document.querySelectorAll(".fbtn").forEach(function(b,i){b.classList.toggle("sel",state.feel===i+1);});}
+function updAll(){Object.keys(CNTS).forEach(updCnt);TOGS.forEach(updTog);updFeel();updRings();var nf=document.getElementById("notes-field");if(nf)nf.value=state.notes||"";}
+
+function cc(id,d){var v=Math.max(0,Math.round(((state.metrics[id]||0)+d)*10)/10);state.metrics[id]=v;updCnt(id);updRings();mk();}
+function tc(id){state.metrics[id]=!state.metrics[id];updTog(id);updRings();mk();}
+function sf(n){state.feel=n;updFeel();mk();}
+function nc(){state.notes=document.getElementById("notes-field").value;mk();}
+function mk(){setSL("unsaved","#ff9955");var b=document.getElementById("save-btn");if(b){b.className="save-btn btn";b.textContent="💾 Save Today's Progress";}}
+
+async function saveDay(){
+  var b=document.getElementById("save-btn");b.textContent="Saving...";b.disabled=true;
+  setSL("syncing...","#f0c040");
+  var s=computeScore(state.metrics);
+  var entry={metrics:state.metrics,feel:state.feel,notes:state.notes,score:s,date:todayK};
+  var rd=await ghRead();
+  rd.data.daily_logs[todayK]=entry;
+  var res=await ghWrite(rd.data,rd.sha,"Daily log "+todayK);
+  if(res.ok){ghSha=res.sha;b.className="save-btn btn done";b.textContent="✅ Saved to cloud! 💪";setSL("✓ synced","#4ecba0");}
+  else{b.className="save-btn btn";b.textContent="💾 Save Today's Progress";setSL("save failed","#ff6b5b");}
+  b.disabled=false;
+}
+
+function sw(t){
+  document.querySelectorAll(".page").forEach(function(p){p.classList.remove("active");});
+  document.querySelectorAll(".tab-b").forEach(function(b){b.classList.remove("active");});
+  document.getElementById("page-"+t).classList.add("active");
+  document.getElementById("tab-"+t).classList.add("active");
+  if(t==="history")bldHist();if(t==="progress")bldProg();
+  window.scrollTo({top:0,behavior:"smooth"});
+}
+
+function getDays(n,off){off=off||0;return Array.from({length:n},function(_,i){var d=new Date();d.setDate(d.getDate()-off-(n-1-i));return dk(d);});}
+
+function bldHist(){
+  if(!ghData)return;
+  var dl=ghData.daily_logs||{};var keys=Object.keys(dl);
+  var d14=getDays(14);var r7=d14.slice(7).filter(function(k){return dl[k];});
+  var avg=r7.length?Math.round(r7.reduce(function(s,k){return s+(dl[k].score||0);},0)/r7.length):null;
+  var best=keys.length?Math.max.apply(null,keys.map(function(k){return dl[k].score||0;})):null;
+  document.getElementById("h-avg").textContent=avg!==null?avg+"%":"—";
+  document.getElementById("h-logged").textContent=keys.length;
+  document.getElementById("h-best").textContent=best!==null?best+"%":"—";
+  var hg=document.getElementById("heatmap");hg.innerHTML="";
+  d14.forEach(function(k){
+    var d=dl[k],s=d&&d.score;
+    var bg=!s?"#12161e":scol(s);var tc=s>=40?"#0a0c10":s?"#e8eaf0":"#2a3040";
+    var fe=d&&d.feel?["😴","😑","🙂","😃","🔥"][d.feel-1]:"";
+    hg.innerHTML+="<div class='hc'><div class='hs' style='background:"+bg+"'>"+(s?"<span style='font-size:11px;font-weight:700;color:"+tc+"'>"+s+"</span><span style='font-size:8px'>"+fe+"</span>":"<span style='font-size:10px;color:#2a3040'>·</span>")+"</div><div class='hd'>"+fmtS(k)+"</div></div>";
+  });
+  var ll=document.getElementById("log-list");
+  var sorted=keys.sort(function(a,b){return b.localeCompare(a);}).slice(0,12);
+  if(!sorted.length){ll.innerHTML="<div style='text-align:center;padding:20px;color:var(--muted);font-size:13px'>No history yet 🏐</div>";return;}
+  ll.innerHTML=sorted.map(function(k){
+    var d=dl[k],col=scol(d.score);
+    var note=d.notes?"<div style='font-size:11px;color:var(--muted);margin-top:2px;font-style:italic'>"+d.notes.slice(0,50)+(d.notes.length>50?"…":"")+"</div>":"";
+    return "<div class='lgrow'><div><div style='font-size:13px;font-weight:500'>"+fmtD(k)+"</div><div style='font-size:11px;color:var(--dim)'>"+FEELS[d.feel||0]+"</div>"+note+"</div><div style='font-size:22px;font-weight:700;color:"+col+"'>"+d.score+"%</div></div>";
+  }).join("");
+}
+
+function exportCSV(){
+  if(!ghData)return;var dl=ghData.daily_logs||{};var keys=Object.keys(dl).sort();
+  if(!keys.length){alert("No data yet!");return;}
+  var hdrs=["Date","Score","Setting Reps","Footwork Reps","Serves","Practice","Conditioning","Recovery","Protein","Hydration","Breakfast","Sleep Hrs","Journal","Visualization","Energy","Notes"];
+  var rows=[hdrs.join(",")];
+  keys.forEach(function(k){var m=dl[k].metrics||{};
+    rows.push([k,dl[k].score,m.setting_reps||0,m.footwork_reps||0,m.serve_reps||0,
+      m.practice_done?"Yes":"No",m.conditioning_done?"Yes":"No",m.recovery_done?"Yes":"No",
+      m.protein_met?"Yes":"No",m.hydration_met?"Yes":"No",m.breakfast_had?"Yes":"No",
+      m.sleep_hrs||0,m.journal_done?"Yes":"No",m.viz_done?"Yes":"No",
+      dl[k].feel||"",'"'+(dl[k].notes||"").replace(/"/g,'""')+'"'].join(","));
+  });
+  var blob=new Blob([rows.join("\n")],{type:"text/csv"});
+  var url=URL.createObjectURL(blob);var a=document.createElement("a");
+  a.href=url;a.download="Navya_Practice_"+new Date().toISOString().split("T")[0]+".csv";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+}
+
+function bldProg(){
+  if(!ghData)return;var dl=ghData.daily_logs||{};
+  function wkStats(days){
+    var logged=days.filter(function(k){return dl[k];});if(!logged.length)return null;
+    var ts=0,tr=0,tsl=0,nd=0,cd=0,n=logged.length;
+    logged.forEach(function(k){var m=dl[k].metrics||{};ts+=dl[k].score||0;tr+=m.setting_reps||0;tsl+=m.sleep_hrs||0;if(m.protein_met&&m.hydration_met&&m.breakfast_had)nd++;if(m.conditioning_done)cd++;});
+    return{n:n,sc:Math.round(ts/n),reps:Math.round(tr/n),sl:Math.round(tsl/n*10)/10,nd:nd,cd:cd};
+  }
+  var tw=wkStats(getDays(7)),lw=wkStats(getDays(7,7));
+  var cmpData=[
+    {ic:"🎯",lbl:"Avg Daily Score",tv:tw?tw.sc+"%":null,lv:lw?lw.sc+"%":null,tn:tw&&tw.sc,ln:lw&&lw.sc},
+    {ic:"🏐",lbl:"Avg Setting Reps",tv:tw?tw.reps:null,lv:lw?lw.reps:null,tn:tw&&tw.reps,ln:lw&&lw.reps},
+    {ic:"😴",lbl:"Avg Sleep",tv:tw?tw.sl+"h":null,lv:lw?lw.sl+"h":null,tn:tw&&tw.sl,ln:lw&&lw.sl},
+    {ic:"🥗",lbl:"Nutrition Days",tv:tw?tw.nd+"/"+tw.n:null,lv:lw?lw.nd+"/"+lw.n:null,tn:tw&&tw.nd,ln:lw&&lw.nd},
+    {ic:"💪",lbl:"Conditioning",tv:tw?tw.cd+"/"+tw.n:null,lv:lw?lw.cd+"/"+lw.n:null,tn:tw&&tw.cd,ln:lw&&lw.cd},
+  ];
+  var cr=document.getElementById("cmp-rows");
+  cr.innerHTML=cmpData.map(function(r){
+    var d=r.tn!==null&&r.ln!==null&&r.ln!==0?r.tn-r.ln:null;
+    var arr=d===null?"—":d>0?"↑":d<0?"↓":"→";var acol=d===null?"#4a5568":d>0?"#4ecba0":d<0?"#ff6b5b":"#8892a4";
+    return "<div class='cmp-row'><span class='cmp-ic'>"+r.ic+"</span><span class='cmp-lbl'>"+r.lbl+"</span><div class='cmp-vals'><span class='cmp-this'>"+(r.tv||"—")+"</span><span class='cmp-last'>"+(r.lv||"—")+"</span><span class='cmp-tr' style='color:"+acol+"'>"+arr+"</span></div></div>";
+  }).join("");
+  var now=new Date();
+  document.getElementById("month-name").textContent=now.toLocaleDateString("en-US",{month:"long",year:"numeric"});
+  var first=new Date(now.getFullYear(),now.getMonth(),1);
+  var dim=new Date(now.getFullYear(),now.getMonth()+1,0).getDate();
+  var mc=document.getElementById("month-cal");
+  var html=["Su","Mo","Tu","We","Th","Fr","Sa"].map(function(d){return "<div class='mdow'>"+d+"</div>";}).join("");
+  for(var i=0;i<first.getDay();i++)html+="<div class='mcell' style='background:transparent'></div>";
+  for(var d2=1;d2<=dim;d2++){
+    var kk=now.getFullYear()+"-"+String(now.getMonth()+1).padStart(2,"0")+"-"+String(d2).padStart(2,"0");
+    var ss2=dl[kk]&&dl[kk].score;var isT=kk===todayK;
+    var bg=!ss2?(isT?"rgba(240,192,64,.2)":"#1a1f2b"):scol(ss2);
+    var tc=ss2>=40?"#0a0c10":ss2?"#e8eaf0":isT?"var(--gold)":"var(--muted)";
+    html+="<div class='mcell' style='background:"+bg+";color:"+tc+";"+(isT?"border:1px solid var(--gold);":"")+"'>"+d2+"</div>";
+  }
+  mc.innerHTML=html;
+  var d30=getDays(30);
+  bldLine("ch-score",d30.map(function(k){return{k:k,v:dl[k]?dl[k].score:null};}),  "#4a9eff",0,100,"ca-score","%",null);
+  bldBar( "ch-reps", d30.map(function(k){return{k:k,v:dl[k]?(dl[k].metrics&&dl[k].metrics.setting_reps||0):null};}), "#f0c040","ca-reps","reps",1000);
+  bldLine("ch-sleep",d30.map(function(k){return{k:k,v:dl[k]?(dl[k].metrics&&dl[k].metrics.sleep_hrs||0):null};}), "#a088ff",0,11,"ca-sleep","h",9);
+  var ins=[];
+  if(tw&&lw){if(tw.sl<8)ins.push("<strong>Sleep avg "+tw.sl+"h</strong> — below the 9h goal. The single biggest performance lever available.");
+    if(tw.reps<500)ins.push("<strong>Setting reps avg "+tw.reps+"/day</strong>. Weeks above 800 show up as better assist rates in games.");
+    if(tw.sc>lw.sc+5)ins.push("<strong>Score up "+(tw.sc-lw.sc)+"% week-over-week</strong> — consistency is compounding.");
+    if(tw.nd<tw.n-1)ins.push("<strong>Nutrition missed "+( tw.n-tw.nd)+" day(s)</strong> this week. Consistent fueling affects late-set energy.");}
+  if(!tw)ins.push("Log at least a few days to unlock weekly insights.");
+  document.getElementById("insights").innerHTML=ins.map(function(t){return "<div class='ins-card'><p>💡 "+t+"</p></div>";}).join("");
+}
+
+function bldLine(id,data,color,mn,mx,aid,unit,tgt){
+  var svg=document.getElementById(id);if(!svg)return;
+  var W=320,H=110,PL=28,PR=10,PT=8,PB=22,cW=W-PL-PR,cH=H-PT-PB;
+  var vals=data.filter(function(d){return d.v!==null&&d.v!==undefined;}).map(function(d){return d.v;});
+  var avg=vals.length?Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length*10)/10:null;
+  if(aid){var ae=document.getElementById(aid);if(ae)ae.textContent=avg!==null?"avg "+avg+unit:"";}
+  var lo=Math.min.apply(null,[mn].concat(vals)),hi=Math.max.apply(null,[mx].concat(vals));var range=hi-lo||1;
+  var tx=function(i){return PL+(i/(data.length-1||1))*cW;};
+  var ty=function(v){return PT+cH-((v-lo)/range)*cH;};
+  var out="<line x1='"+PL+"' y1='"+PT+"' x2='"+PL+"' y2='"+(PT+cH)+"' stroke='#2a3040' stroke-width='1'/>";
+  out+="<line x1='"+PL+"' y1='"+(PT+cH)+"' x2='"+(W-PR)+"' y2='"+(PT+cH)+"' stroke='#2a3040' stroke-width='1'/>";
+  [lo,Math.round((lo+hi)/2),hi].forEach(function(v){var y=ty(v);
+    out+="<text x='"+(PL-3)+"' y='"+(y+4)+"' text-anchor='end' fill='#4a5568' font-size='8' font-family='monospace'>"+Math.round(v)+"</text>";
+    out+="<line x1='"+PL+"' y1='"+y+"' x2='"+(W-PR)+"' y2='"+y+"' stroke='#2a3040' stroke-width='.5' stroke-dasharray='2,3'/>";
+  });
+  if(tgt!==null&&tgt!==undefined){var ty2=ty(tgt);out+="<line x1='"+PL+"' y1='"+ty2+"' x2='"+(W-PR)+"' y2='"+ty2+"' stroke='#4ecba0' stroke-width='1.5' stroke-dasharray='4,3' opacity='.7'/>";}
+  [0,7,14,21,29].forEach(function(i){if(i<data.length){var lbl=new Date(data[i].k+"T12:00:00").toLocaleDateString("en-US",{month:"numeric",day:"numeric"});out+="<text x='"+tx(i)+"' y='"+(H-4)+"' text-anchor='middle' fill='#4a5568' font-size='7' font-family='monospace'>"+lbl+"</text>";}});
+  var pts=data.map(function(d,i){return d.v!==null&&d.v!==undefined?tx(i)+","+ty(d.v):null;}).filter(Boolean);
+  if(pts.length>1)out+="<polyline points='"+pts.join(" ")+"' fill='none' stroke='"+color+"' stroke-width='2' stroke-linejoin='round' stroke-linecap='round'/>";
+  data.forEach(function(d,i){if(d.v!==null&&d.v!==undefined)out+="<circle cx='"+tx(i)+"' cy='"+ty(d.v)+"' r='2.5' fill='"+color+"'/>";});
+  svg.innerHTML=out;
+}
+
+function bldBar(id,data,color,aid,unit,tgt){
+  var svg=document.getElementById(id);if(!svg)return;
+  var W=320,H=110,PL=32,PR=8,PT=8,PB=22,cW=W-PL-PR,cH=H-PT-PB;
+  var vals=data.filter(function(d){return d.v!==null&&d.v>0;}).map(function(d){return d.v;});
+  var avg=vals.length?Math.round(vals.reduce(function(a,b){return a+b;},0)/vals.length):null;
+  if(aid){var ae=document.getElementById(aid);if(ae)ae.textContent=avg!==null?"avg "+avg+" "+unit:"";}
+  var hi=Math.max.apply(null,[tgt].concat(vals).concat([1]));var bw=Math.max(2,cW/data.length-1.5);
+  var out="<line x1='"+PL+"' y1='"+PT+"' x2='"+PL+"' y2='"+(PT+cH)+"' stroke='#2a3040' stroke-width='1'/>";
+  out+="<line x1='"+PL+"' y1='"+(PT+cH)+"' x2='"+(W-PR)+"' y2='"+(PT+cH)+"' stroke='#2a3040' stroke-width='1'/>";
+  [0,Math.round(hi/2),hi].forEach(function(v){var y=PT+cH-(v/hi)*cH;
+    out+="<text x='"+(PL-3)+"' y='"+(y+4)+"' text-anchor='end' fill='#4a5568' font-size='8' font-family='monospace'>"+(v>=1000?Math.round(v/100)/10+"k":v)+"</text>";
+    out+="<line x1='"+PL+"' y1='"+y+"' x2='"+(W-PR)+"' y2='"+y+"' stroke='#2a3040' stroke-width='.5' stroke-dasharray='2,3'/>";
+  });
+  var ty=PT+cH-(tgt/hi)*cH;out+="<line x1='"+PL+"' y1='"+ty+"' x2='"+(W-PR)+"' y2='"+ty+"' stroke='#4ecba0' stroke-width='1.5' stroke-dasharray='4,3' opacity='.7'/>";
+  [0,7,14,21,29].forEach(function(i){if(i<data.length){var lbl=new Date(data[i].k+"T12:00:00").toLocaleDateString("en-US",{month:"numeric",day:"numeric"});out+="<text x='"+(PL+(i+0.5)*(cW/data.length))+"' y='"+(H-4)+"' text-anchor='middle' fill='#4a5568' font-size='7' font-family='monospace'>"+lbl+"</text>";}});
+  data.forEach(function(d,i){if(d.v!==null&&d.v>0){var bh=(d.v/hi)*cH,bx=PL+i*(cW/data.length)+1,by=PT+cH-bh;out+="<rect x='"+bx+"' y='"+by+"' width='"+bw+"' height='"+bh+"' fill='"+(d.v>=tgt?"#4ecba0":color)+"' rx='1.5'/>";}});
+  svg.innerHTML=out;
+}
+
+async function init(){
+  document.getElementById("hdr-date").textContent=new Date().toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric"});
+  setSL("loading...","#f0c040");
+  checkToken();
+  if(!_T())return;
+  var rd=await ghRead();ghData=rd.data;ghSha=rd.sha;
+  var td=ghData.daily_logs&&ghData.daily_logs[todayK];
+  if(td){state.metrics=td.metrics||{};state.feel=td.feel||0;state.notes=td.notes||"";}
+  updAll();
+  if(td){setSL("✓ synced","#4ecba0");var b=document.getElementById("save-btn");b.className="save-btn btn done";b.textContent="✅ Synced — tap to update";}
+  else if(rd.cached){setSL("offline cache","#ff9955");}
+  else{setSL("connected","#4ecba0");}
+  var dl=ghData.daily_logs||{};var streak=0,sd=new Date();
+  if(!dl[todayK])sd.setDate(sd.getDate()-1);
+  for(var i=0;i<90;i++){var k=dk(sd);if(dl[k]&&dl[k].score>0){streak++;sd.setDate(sd.getDate()-1);}else break;}
+  var st=document.getElementById("streak-txt");if(streak>=2)st.textContent="🔥 "+streak+"-day streak!";
+}
+init();
+</script>
+<script>document.getElementById("tab-today").classList.add("active");document.getElementById("tab-x").style.display="none";</script></body></html>
