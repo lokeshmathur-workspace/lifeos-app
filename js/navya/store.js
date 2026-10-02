@@ -40,10 +40,17 @@ export class NavyaStore {
 
   // Loads every data file in parallel, plus check-ins and coach reads listed from the tree.
   async loadAll() {
+    // List the repo first: a token without access to a private repo gets 404 on every read,
+    // which would otherwise look like an empty repo. This turns it into a clear message.
+    try { this.tree = await this.gh.listTree(); }
+    catch (e) {
+      if (e instanceof GitHubStoreError && (e.code === "auth" || e.status === 404 || e.status === 403 || e.code === "unknown"))
+        throw new GitHubStoreError("This device's GitHub token can't see the Navya repo yet.", "no_access", e.status);
+      throw e;
+    }
     const keys = Object.keys(FILES);
     const got = await Promise.all(keys.map((k) => this._get(FILES[k][0], FILES[k][1])));
     keys.forEach((k, i) => (this.docs[k] = got[i]));
-    this.tree = await this.gh.listTree();
     const dated = (dir) => this.tree.filter((e) => e.type === "blob" && new RegExp(`^${dir}/\\d{4}-\\d{2}-\\d{2}\\.json$`).test(e.path));
     const ci = dated("checkins").map((e) => e.path).sort().slice(-60);
     const co = dated("coach").map((e) => e.path).sort().slice(-8);

@@ -37,7 +37,8 @@ export async function renderNavyaView(store, S, renderApp) {
     try { await store.loadAll(); N.loaded = true; }
     catch (e) {
       main.innerHTML = `<div class="navya"><div class="nv-tile"><h3>Can't open the Navya repo</h3><p>${esc(e.message)}</p>
-        <p class="sub">The token on this device needs <b>Contents: read and write</b> on <span class="mono">${esc(store.repo)}</span>. On GitHub: Settings → Developer settings → Fine-grained tokens → your token → Repository access → add <b>Navya</b>.</p>
+        <p class="sub">Give the token on this device access to <span class="mono">${esc(store.repo)}</span>: on GitHub, <b>Settings → Developer settings → Personal access tokens → Fine-grained tokens</b> → open the token this app uses → <b>Edit</b> → Repository access → <b>Only select repositories</b> → add <b>Navya</b> → check Permissions → Contents is <b>Read and write</b> → <b>Update</b>. The token itself doesn't change, so just tap Try again.</p>
+        <p class="sub">If GitHub shows the token as <b>pending</b> for the organization, an owner approves it under the organization's Settings → Personal access tokens → Pending requests.</p>
         <button class="nv-btn" data-act="retry">Try again</button></div></div>`;
       $("[data-act=retry]", main).onclick = () => renderNavyaView(store, S, renderApp);
       return;
