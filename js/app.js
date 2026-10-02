@@ -15,6 +15,8 @@ import { openOutlookSync } from "./outlook.js";
 import { renderLearningView } from "./learning/learning.js";
 import { LearningStore } from "./learning/store.js";
 import { loadRoutineConfig, saveRoutineConfig, clearRoutineConfig } from "./learning/routine.js";
+import { renderNavyaView } from "./navya/navya.js";
+import { NavyaStore, NAVYA_REPO_KEY, DEFAULT_NAVYA_REPO, navyaRepo } from "./navya/store.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -46,6 +48,13 @@ export async function boot() {
   // ever needed Contents read/write on this same private repo, so there's
   // nothing a second token bought once they share one page anyway.
   S.learningStore = new LearningStore(cfg, flash);
+  // Navya tab: the private Navya repo, same token. Family mode = a token for that repo only
+  // (Navya's mom or Navya herself): the app shows just the Navya tab.
+  S.navyaStore = new NavyaStore(cfg, flash);
+  S.navya = null; // reload the tab's data after a (re)connect
+  S.family = !!cfg.family;
+  document.body.classList.toggle("family", S.family);
+  if (S.family) S.view = "navya";
 
   const pinHash = loadPinHash();
   if (pinHash && !S.unlocked) return renderPinGate(pinHash);
@@ -60,9 +69,11 @@ function renderSetup() {
       <p class="empty" style="padding:0 0 14px">Paste a GitHub fine-grained token for the private repo that holds your journal. Create it at GitHub → Settings → Developer settings → Fine-grained tokens. Repository access: <b>only</b> the data repo. Permissions: <b>Contents → Read and write</b>, nothing else.</p>
       <label class="fld"><span>Token</span><input type="password" id="tok" placeholder="github_pat_…" autocomplete="off" spellcheck="false"></label>
       <label class="fld"><span>Repository (owner/name)</span><input type="text" id="repo" value="lokeshmathur-workspace/Claude" spellcheck="false"></label>
+      <label class="pickrow" style="margin:4px 0 10px"><input type="checkbox" id="family"> <span>Family device: Navya tab only (token for the Navya repo)</span></label>
       <div class="btnrow"><button class="btn pri" id="save">Connect</button></div>
       <p class="savenote" id="note" style="margin-top:10px"></p>
     </section>`;
+  $("#family").onchange = (e) => { $("#repo").value = e.target.checked ? DEFAULT_NAVYA_REPO : "lokeshmathur-workspace/Claude"; };
   $("#save").onclick = async () => {
     const token = $("#tok").value.trim();
     const repo = $("#repo").value.trim();
@@ -75,7 +86,7 @@ function renderSetup() {
       note.textContent = "Repository should look like owner/name.";
       return;
     }
-    saveConfig({ token, repo, branch: "main" });
+    saveConfig({ token, repo, branch: "main", ...($("#family").checked ? { family: true } : {}) });
     boot();
   };
 }
@@ -105,12 +116,15 @@ function renderPinGate(pinHash) {
 /* ═══ shell ════════════════════════════════════════════════ */
 
 function renderApp() {
+  if (S.family) S.view = "navya";
   wrap().classList.toggle("wide", S.view !== "today");
+  document.body.classList.toggle("navya-mode", S.view === "navya");
   document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.v === S.view)));
   if (S.view === "today") return renderToday();
   if (S.view === "week") return renderWeekView(S.store, S, renderApp);
   if (S.view === "month") return renderMonthView(S.store, S, renderApp);
   if (S.view === "learning") return renderLearningView(S.learningStore, S, renderApp);
+  if (S.view === "navya") return renderNavyaView(S.navyaStore, S, renderApp);
 }
 
 window.addEventListener("lifeos:open-settings", openSettings);
@@ -118,7 +132,7 @@ window.addEventListener("lifeos:open-settings", openSettings);
 // After an Outlook import: redraw so new tasks show up — except mid-planning or
 // mid-review, where a redraw would wipe what's being typed.
 window.addEventListener("lifeos:tasks-changed", () => {
-  if (S.view === "learning" || S.planning || S.eveningEditing) return;
+  if (S.view === "learning" || S.view === "navya" || S.planning || S.eveningEditing) return;
   renderApp();
 });
 
@@ -211,6 +225,11 @@ function openSettings() {
       </div>
       <div class="btnrow" style="margin-top:18px"><button class="btn" id="privacytest">Check: is today's journal file publicly reachable?</button></div>
       <p class="savenote" id="privacynote" style="margin-top:8px"></p>
+      <h2 style="margin-top:22px">Navya tab</h2>
+      ${cfg?.family ? `<p class="savenote">Family device: this token only opens the Navya repo, so only the Navya tab shows.</p>`
+        : `<p class="savenote" style="margin-bottom:10px">Her private repo. Your token needs Contents read/write on it too (GitHub → fine-grained token → Repository access → add Navya).</p>
+      <label class="fld"><span>Navya repository</span><input type="text" id="navyarepo" value="${esc(navyaRepo(cfg))}" spellcheck="false"></label>
+      <div class="btnrow" style="margin-top:0"><button class="btn sm" id="savenavya">Save</button></div>`}
       <h2 style="margin-top:22px">AI features</h2>
       <p class="savenote" style="margin-bottom:10px">${ai?.url ? `Connected to <span class="mono">${esc(ai.url)}</span>.` : "Not set up — every AI feature has a manual fallback, so this is optional."} See worker/README.md for deploy steps.</p>
       <label class="fld"><span>Worker URL</span><input type="text" id="aiurl" value="${esc(ai?.url || "")}" placeholder="https://lifeos-ai-proxy.….workers.dev" spellcheck="false"></label>
@@ -277,6 +296,13 @@ function openSettings() {
   $("#clearai", back)?.addEventListener("click", () => {
     clearAiConfig();
     back.remove();
+  });
+  $("#savenavya", back)?.addEventListener("click", () => {
+    const v = $("#navyarepo", back).value.trim();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(v)) return;
+    try { localStorage.setItem(NAVYA_REPO_KEY, v); } catch {}
+    back.remove();
+    boot();
   });
   $("#saveroutine", back).addEventListener("click", () => {
     const url = $("#rurl", back).value.trim();
