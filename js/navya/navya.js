@@ -411,7 +411,9 @@ const after = {
     const rows = await Promise.all(ids.map(async (id) => { try { return { id, ...(await ctx.store.getBatch(id)) }; } catch { return { id, batch: null }; } }));
     if (!$("#nvbatches")) return;
     box.innerHTML = `<ul class="nv-plain">${rows.map((r) => `<li><b>${esc(r.id)}</b> · ${r.batch ? `${r.batch.files.length} screenshot${r.batch.files.length > 1 ? "s" : ""} · ` : ""}${
-      r.batch?.status === "needs_review" ? `<button class="nv-btn sm pri" data-act="review" data-id="${esc(r.id)}">Check &amp; save</button>` : r.batch?.status === "pending" ? "being read…" : esc(r.batch?.status || "unknown")}</li>`).join("")}</ul>`;
+      r.batch?.status === "needs_review" ? `<button class="nv-btn sm pri" data-act="review" data-id="${esc(r.id)}">Check &amp; save</button>`
+      : r.batch?.status === "pending" ? (activeRun()?.id === r.id ? "being read…" : `waiting to be read · <button class="nv-btn sm" data-act="readnow" data-id="${esc(r.id)}">Read now</button>`)
+      : esc(r.batch?.status || "unknown")}</li>`).join("")}</ul>`;
   },
 };
 function commChart(C) {
@@ -458,6 +460,7 @@ function wire(root, D, C) {
       else if (act === "clearstage") { N.staged.forEach((f) => URL.revokeObjectURL(f.url)); N.staged = []; N.dupNote = ""; draw(); }
       else if (act === "upload") await uploadStaged(t);
       else if (act === "review") await openReview(t.dataset.id);
+      else if (act === "readnow") { t.disabled = true; await startRun("batch", t.dataset.id); }
       else if (act === "closereview") { N.review = null; draw(); }
       else if (act === "savebatch") await saveBatch(root, t);
       else if (act === "discardbatch") { t.disabled = true; await ctx.store.clearBatch(N.review.batchId); N.review = null; flash("Batch cleared."); draw(); }
