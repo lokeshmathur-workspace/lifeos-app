@@ -23,7 +23,7 @@
   --ink:#2E2013; --ink-2:#6B5A3D; --muted:#A5906D;
   --line:#F1DFB8; --line-2:#E4C88C;
   --accent:#FF6B35; --accent-soft:#FFE3D4; --on-accent:#FFFFFF;
-  --d1:#E8551F; --good:#2BB673; --stop:#E63946;
+  --d1:#E8551F; --head:#C2410C; --good:#2BB673; --stop:#E63946;
   --good-soft:#DCF3E6; --stop-soft:#FBDEE0;
   --mark:#FFD666; --mark-ink:#3A2400;
   --shadow:0 1px 2px rgba(46,32,19,.08), 0 1px 8px rgba(46,32,19,.05);
@@ -35,7 +35,7 @@
     --ink:#FBEEDA; --ink-2:#D9C2A0; --muted:#9C8A6C;
     --line:#4A3A22; --line-2:#5E4A2A;
     --accent:#FF7F52; --accent-soft:#3D2415; --on-accent:#1F1409;
-    --d1:#F0793D; --good:#4FC98B; --stop:#F1786B;
+    --d1:#F0793D; --head:#FF8A5C; --good:#4FC98B; --stop:#F1786B;
     --mark:#B8860B; --mark-ink:#2A1D06;
     --good-soft:#1C3B2A; --stop-soft:#3E1E19;
     --shadow:0 1px 2px rgba(0,0,0,.4);
@@ -46,7 +46,7 @@
   --ink:#FBEEDA; --ink-2:#D9C2A0; --muted:#9C8A6C;
   --line:#4A3A22; --line-2:#5E4A2A;
   --accent:#FF7F52; --accent-soft:#3D2415; --on-accent:#1F1409;
-  --d1:#F0793D; --good:#4FC98B; --stop:#F1786B;
+  --d1:#F0793D; --head:#FF8A5C; --good:#4FC98B; --stop:#F1786B;
   --mark:#B8860B; --mark-ink:#2A1D06;
   --good-soft:#1C3B2A; --stop-soft:#3E1E19;
   --shadow:0 1px 2px rgba(0,0,0,.4);
@@ -98,11 +98,12 @@ header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom
 /* ── sections ───────────────────────────────────────────── */
 section.blk{border-top:1px solid var(--line);padding-top:18px;margin-top:26px}
 .blk > h2,.tlsection > summary h2{
-  font-family:"Manrope",sans-serif;font-size:10.5px;font-weight:600;
-  letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  font-family:"Manrope",sans-serif;font-size:13px;font-weight:800;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--head);
   margin:0 0 14px;display:flex;align-items:center;gap:10px;
 }
-.blk > h2 .count,.tlsection > summary h2 .count{color:var(--ink-2);letter-spacing:.02em}
+.blk > h2::before,.tlsection > summary h2::before{content:"";width:4px;height:1.1em;border-radius:2px;background:var(--head);flex:none}
+.blk > h2 .count,.tlsection > summary h2 .count{color:var(--ink-2);letter-spacing:.02em;font-weight:600}
 .blk > h2 .spring{flex:1}
 
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px 20px;box-shadow:var(--shadow)}
@@ -477,15 +478,15 @@ label.fld > span{
 .learning .yourtextbody{margin-top:8px;max-height:360px;overflow:auto;font-size:14px;line-height:1.55;color:var(--ink-2)}
 .learning .yourtextbody p{margin:0 0 10px}
 .learning{
-  --accent:#1E5A43; --accent-soft:#DCEEE3; --on-accent:#FFFFFF; --d1:#174935;
+  --accent:#1E5A43; --accent-soft:#DCEEE3; --on-accent:#FFFFFF; --d1:#174935; --head:#1E5A43;
 }
 @media (prefers-color-scheme:dark){
   :root:not([data-theme="light"]) .learning{
-    --accent:#4FAE86; --accent-soft:#173226; --on-accent:#0D1712; --d1:#3C9070;
+    --accent:#4FAE86; --accent-soft:#173226; --on-accent:#0D1712; --d1:#3C9070; --head:#4FAE86;
   }
 }
 :root[data-theme="dark"] .learning{
-  --accent:#4FAE86; --accent-soft:#173226; --on-accent:#0D1712; --d1:#3C9070;
+  --accent:#4FAE86; --accent-soft:#173226; --on-accent:#0D1712; --d1:#3C9070; --head:#4FAE86;
 }
 
 .sub{color:var(--muted);font-size:14px}
@@ -500,7 +501,7 @@ button.stat{font:inherit;color:inherit;text-align:left;width:100%}
    same treatment those already have, scoped to .learning so nothing else
    changes. */
 .learning h1{font-family:"Literata",Georgia,serif;font-weight:500;font-size:clamp(26px,5vw,34px);line-height:1.15;margin:0;letter-spacing:-.01em}
-.learning h2{font-family:"Manrope",sans-serif;font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:24px 0 12px;padding-top:16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.learning h2{font-family:"Manrope",sans-serif;font-size:13px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--head);margin:24px 0 12px;padding-top:16px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px}
 .learning h2 .count{color:var(--ink-2);letter-spacing:.02em;font-weight:500;text-transform:none;font-size:13px}
 .err{color:var(--stop);font-size:14px;margin-top:8px}
 .sticky{position:sticky;bottom:0;background:var(--ground);padding:12px 0 calc(8px + env(safe-area-inset-bottom,0px));margin-top:18px;border-top:1px solid var(--line)}
