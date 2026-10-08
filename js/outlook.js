@@ -168,9 +168,10 @@ export async function parseOutlookFile(file) {
 export function pillarFromCategories(cats) {
   const c = String(cats || "").toLowerCase();
   if (/financ|bills?\b|invest|tax|insurance|real estate|trust\b|claim|lien/.test(c)) return "finances";
-  if (/career|network|linkedin|sponsor|role guide/.test(c)) return "careerWork";
-  if (/business|retail/.test(c)) return "business";
+  if (/business|retail/.test(c)) return "business"; // before career: "Business - Network Lead Generation"
+  if (/career|network|linkedin|sponsor|role guide/.test(c)) return "career";
   if (/learning|study|\bai\b|certific|power automate|tech stack/.test(c)) return "mindGrowth";
+  if (/\bwork\b|ccrs/.test(c)) return "work";
   if (/family|relationship|friends/.test(c)) return "relationships";
   if (/health|fitness|vitality|gym|meditat/.test(c)) return "vitality";
   if (/home|personal|garden|gazebo|paint/.test(c)) return "personal";

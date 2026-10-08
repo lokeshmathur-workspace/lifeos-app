@@ -13,7 +13,8 @@ import { PyFloat } from "./compact.js";
 
 export const PILLARS = [
   "finances",
-  "careerWork",
+  "work",
+  "career",
   "business",
   "personal",
   "vitality",
