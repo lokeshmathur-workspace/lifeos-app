@@ -452,6 +452,8 @@ label.fld > span{
 .rvrow b{display:block;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:3px}
 .rvrow p{margin:0;font-size:14px;line-height:1.5}
 .pickrow .pl{font-family:"Manrope",sans-serif;font-size:9.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+#flashes{position:sticky;top:env(safe-area-inset-top,0px);z-index:50}
+#flashes .banner{box-shadow:0 6px 18px rgba(0,0,0,.25)}
 .banner{background:var(--accent-soft);border:1px solid var(--accent);color:var(--ink);padding:11px 14px;border-radius:9px;font-size:13.5px;margin-bottom:18px}
 .banner.err{background:var(--stop-soft);border-color:var(--stop)}
 /* modal */
@@ -765,7 +767,7 @@ body.family .seg button:not([data-v="navya"]){display:none}
 .nv-drop{display:flex;flex-direction:column;align-items:center;gap:6px;border:2px dashed var(--violet);border-radius:18px;padding:22px 14px;text-align:center;background:rgba(139,92,246,.08);cursor:pointer}
 .nv-drop.over{background:rgba(139,92,246,.2)}
 .nv-drop .ic{font-size:30px}
-.nv-drop b{font-size:16px;color:var(--ink,#fff)}
+.nv-drop b{font-size:16px;color:#F6F1FF}
 .nv-drop .sub{font-weight:400}
 .nv-thumbs{display:grid;grid-template-columns:repeat(auto-fill,minmax(84px,1fr));gap:8px;margin-top:12px}
 .nv-thumbs .th{position:relative;border-radius:10px;overflow:hidden;border:1px solid var(--nline);aspect-ratio:4/3;max-width:100%}

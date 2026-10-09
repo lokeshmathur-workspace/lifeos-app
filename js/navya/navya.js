@@ -426,7 +426,7 @@ const after = {
     box.innerHTML = `<ul class="nv-plain">${rows.map((r) => `<li><b>${esc(r.id)}</b> · ${r.batch ? `${r.batch.files.length} file${r.batch.files.length > 1 ? "s" : ""} · ` : ""}${
       r.batch?.status === "needs_review" ? `<button class="nv-btn sm pri" data-act="review" data-id="${esc(r.id)}">Check &amp; save</button>`
       : r.batch?.status === "pending" ? (activeRun()?.id === r.id ? "being read…" : `waiting to be read · <button class="nv-btn sm" data-act="readnow" data-id="${esc(r.id)}">Read now</button>`)
-      : esc(r.batch?.status || "unknown")}</li>`).join("")}</ul>`;
+      : esc(r.batch?.status || "unknown")}${ctx.S.navya.batchNote?.id === r.id ? `<div class="nv-flags" role="alert" style="margin-top:8px">${esc(ctx.S.navya.batchNote.msg)}</div>` : ""}</li>`).join("")}</ul>`;
   },
 };
 function commChart(C) {
@@ -473,7 +473,7 @@ function wire(root, D, C) {
       else if (act === "clearstage") { N.staged.forEach((f) => f.url && URL.revokeObjectURL(f.url)); N.staged = []; N.dupNote = ""; draw(); }
       else if (act === "upload") await uploadStaged(t);
       else if (act === "review") await openReview(t.dataset.id);
-      else if (act === "readnow") { t.disabled = true; await startRun("batch", t.dataset.id); }
+      else if (act === "readnow") { t.disabled = true; t.textContent = "Starting…"; await startRun("batch", t.dataset.id); }
       else if (act === "closereview") { N.review = null; draw(); }
       else if (act === "savebatch") await saveBatch(root, t);
       else if (act === "discardbatch") { t.disabled = true; await ctx.store.clearBatch(N.review.batchId); N.review = null; flash("Batch cleared."); draw(); }
@@ -568,14 +568,18 @@ async function uploadStaged(btn) {
 }
 
 async function startRun(kind, id) {
-  if (activeRun()) return flash("Claude is already working on something. It'll finish in a few minutes.");
+  if (activeRun()) { if (kind === "batch") { ctx.S.navya.batchNote = { id, msg: "Claude is already reading another batch. Try again when it finishes (a few minutes)." }; draw(); } return flash("Claude is already working on something. It'll finish in a few minutes."); }
   let fired;
   try { fired = await fireRoutine(kind === "batch" ? `navya process ${id}` : `navya coach ${id}`); }
   catch (e) {
-    if (kind === "batch") flash(`Uploaded, but couldn't start reading: ${e.message} The batch is saved; it'll be read on the next run.`, true);
+    if (kind === "batch") {
+      ctx.S.navya.batchNote = { id, msg: `Couldn't start reading: ${e.message} The files are saved, so nothing is lost.` };
+      flash(`Uploaded, but couldn't start reading: ${e.message} The batch is saved; it'll be read on the next run.`, true);
+    }
     else flash(e instanceof RoutineError ? e.message : "Couldn't start the draft.", true);
     draw(); return;
   }
+  ctx.S.navya.batchNote = null;
   ls.set(RUN_KEY, { kind, id, firedAt: Date.now(), sessionUrl: fired.sessionUrl });
   flash(kind === "batch" ? "Reading your screenshots. Usually 2–4 minutes; you can leave this page." : "Drafting this week's coach's read. Usually 2–4 minutes.");
   draw(); startPolling();
