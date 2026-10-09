@@ -19,7 +19,7 @@ export const FILES = {
   codes: ["school/codes.json", null], goals: ["goals.json", null], classes: ["academics/classes.json", []],
   grades: ["academics/grades.json", []], assignments: ["academics/assignments.json", []],
   attendance: ["academics/attendance.json", null], gpa: ["academics/gpa.json", null],
-  screentime: ["phone/screentime.json", []], vb: ["navya_data.json", {}], computed: ["computed.json", null],
+  screentime: ["phone/screentime.json", []], documents: ["school/documents.json", []], vb: ["navya_data.json", {}], computed: ["computed.json", null],
 };
 
 export class NavyaStore {
@@ -118,9 +118,9 @@ export class NavyaStore {
     const done = [];
     try {
       for (let i = 0; i < files.length; i++) {
-        const f = files[i], ext = f.type === "image/png" ? "png" : "jpg", name = `${String(i + 1).padStart(2, "0")}.${ext}`;
+        const f = files[i], ext = f.ext || (f.type === "image/png" ? "png" : "jpg"), name = `${String(i + 1).padStart(2, "0")}.${ext}`;
         await this.gh.putBinaryFile(`inbox/${batchId}/${name}`, f.blob, null, `navya: snip ${batchId}/${name}`);
-        done.push({ name, sha256: f.sha256 });
+        done.push({ name, sha256: f.sha256, ...(f.name ? { original: f.name } : {}) });
       }
       const batch = { id: batchId, createdAt: new Date().toISOString(), by: by || "", files: done, status: "pending" };
       await this.gh.putFile(`inbox/${batchId}/batch.json`, batch, null, `navya: new batch ${batchId}`);

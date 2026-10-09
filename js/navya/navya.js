@@ -225,7 +225,18 @@ function acad(D, C) {
       ${A.totals ? `<p>Year so far: <b>${A.totals.absent}</b> days absent (${A.totals.excused} excused, ${A.totals.unexcused} unexcused) · <b>${A.totals.tardy}</b> tardies${A.daysSinceIssue != null ? ` · ${A.daysSinceIssue} days since the last tardy or unexcused` : ""}</p>` : ""}
       <div class="tw"><table><tr><th>Date</th><th>Period</th><th>What</th></tr>${A.events.map((e) => `<tr><td>${dow(e.date)} ${fmtD(e.date)}</td><td>${e.periods.length >= 6 ? "all day" : e.periods.join(", ")}${A.unknownPeriods.includes(String(e.periods[0])) ? " ❓" : ""}</td><td><span class="nv-chip ${e.group === "unexcused" ? "bad" : e.group === "tardy" ? "warn" : ""}">${esc(e.label)}</span>${e.comment ? " 💬" : ""}</td></tr>`).join("")}</table></div>
       ${A.unknownPeriods.length ? `<p class="sub">❓ Period ${A.unknownPeriods.join(", ")} isn't on her schedule (probably homeroom). 💬 = Skyward has a comment on it.</p>` : ""}</div>
+    ${docsTile(D)}
   </div>`;
+}
+
+// Letters, reports and emails read from uploaded files (parents only; hidden in Navya view).
+function docsTile(D) {
+  const rows = [...(D.documents || [])].sort((a, b) => ((b.date || b.added || "") > (a.date || a.added || "") ? 1 : -1)).slice(0, 8);
+  if (!rows.length) return "";
+  return `<div class="nv-tile s4 parent-only"><h3>📄 From school documents</h3><ul class="nv-plain">${rows.map((d) => `<li><b>${esc(d.title)}</b>${d.date ? ` · ${fmtD(d.date)}` : ""}${d.from ? ` · ${esc(d.from)}` : ""}${d.summary ? `<br><span class="sub">${esc(d.summary)}</span>` : ""}${
+    d.keyDates?.length ? `<br>${d.keyDates.map((k) => `<span class="nv-chip">${fmtD(k.date)} · ${esc(k.what)}</span>`).join(" ")}` : ""}${
+    d.todo?.length ? `<br><span class="sub">To do: ${d.todo.map(esc).join(" · ")}</span>` : ""}</li>`).join("")}</ul>
+    <p class="sub">Only you see this; it's hidden in Navya view.</p></div>`;
 }
 
 function classCard(c) {
@@ -327,13 +338,13 @@ function snip() {
   if (N.review) return reviewScreen();
   const staged = N.staged;
   return `<div class="nv-bento">
-    <div class="nv-tile s2"><h3>📸 Add screenshots</h3>
-      <label class="nv-drop" id="nvdrop"><input type="file" accept="image/*" multiple data-act="files" hidden>
-        <span class="ic">📸</span><b>Paste, drop, or tap to pick</b><span class="sub">Skyward grades, class pop-ups, assignments, attendance; iPhone Screen Time week, apps, pickups, day view. Send a whole week's set at once.</span></label>
-      ${staged.length ? `<div class="nv-thumbs">${staged.map((f, i) => `<div class="th"><img src="${f.url}" alt=""><button class="nv-x" data-act="unstage" data-i="${i}" aria-label="Remove">×</button></div>`).join("")}</div>
-        <div class="nv-btnrow"><button class="nv-btn pri" data-act="upload" ${run ? "disabled" : ""}>Read these ${staged.length} screenshot${staged.length > 1 ? "s" : ""}</button><button class="nv-btn" data-act="clearstage">Clear</button></div>` : ""}
+    <div class="nv-tile s2"><h3>📸 Add screenshots &amp; files</h3>
+      <label class="nv-drop" id="nvdrop"><input type="file" accept="${ACCEPT}" multiple data-act="files" hidden>
+        <span class="ic">📸</span><b>Paste, drop, or tap to pick</b><span class="sub">Screenshots, or files: PDF, Word, Excel/CSV, text or a saved email (.eml). Skyward grades, class pop-ups, assignments, attendance; iPhone Screen Time; report cards, progress reports, school letters and emails. Send a whole week's set at once.</span></label>
+      ${staged.length ? `<div class="nv-thumbs">${staged.map((f, i) => `<div class="th${f.url ? "" : " doc"}">${f.url ? `<img src="${f.url}" alt="">` : `<span class="dic">${fileIcon(f.ext)}</span><span class="dnm">${esc(f.name)}</span>`}<button class="nv-x" data-act="unstage" data-i="${i}" aria-label="Remove">×</button></div>`).join("")}</div>
+        <div class="nv-btnrow"><button class="nv-btn pri" data-act="upload" ${run ? "disabled" : ""}>Read ${staged.length === 1 ? "this file" : `these ${staged.length} files`}</button><button class="nv-btn" data-act="clearstage">Clear</button></div>` : ""}
       ${N.dupNote ? `<p class="sub">${esc(N.dupNote)}</p>` : ""}
-      <p class="sub">Screenshots are deleted as soon as they're read; only the rows are kept. Never send her student number or address: they're skipped if a screen shows them.</p></div>
+      <p class="sub">Files are deleted as soon as they're read; only the rows (or, for a letter or report, a short summary) are kept. Never send her student number or address: they're skipped if a file shows them.</p></div>
     <div class="nv-tile s2"><h3>🗂️ Batches</h3><div id="nvbatches"><p class="sub">Checking…</p></div>${run?.kind === "batch" ? runLine(run) : ""}</div>
     <div class="nv-tile s4"><h3>🗓️ The weekly set (about 10 screenshots, Saturday night or Sunday)</h3><ul class="nv-plain">
       <li><b>Skyward → Grades</b> page, then tap each grade letter and screenshot the pop-up (6 classes)</li>
@@ -410,7 +421,7 @@ const after = {
     if (!ids.length) { box.innerHTML = `<p class="sub">No batches waiting.</p>`; return; }
     const rows = await Promise.all(ids.map(async (id) => { try { return { id, ...(await ctx.store.getBatch(id)) }; } catch { return { id, batch: null }; } }));
     if (!$("#nvbatches")) return;
-    box.innerHTML = `<ul class="nv-plain">${rows.map((r) => `<li><b>${esc(r.id)}</b> · ${r.batch ? `${r.batch.files.length} screenshot${r.batch.files.length > 1 ? "s" : ""} · ` : ""}${
+    box.innerHTML = `<ul class="nv-plain">${rows.map((r) => `<li><b>${esc(r.id)}</b> · ${r.batch ? `${r.batch.files.length} file${r.batch.files.length > 1 ? "s" : ""} · ` : ""}${
       r.batch?.status === "needs_review" ? `<button class="nv-btn sm pri" data-act="review" data-id="${esc(r.id)}">Check &amp; save</button>`
       : r.batch?.status === "pending" ? (activeRun()?.id === r.id ? "being read…" : `waiting to be read · <button class="nv-btn sm" data-act="readnow" data-id="${esc(r.id)}">Read now</button>`)
       : esc(r.batch?.status || "unknown")}</li>`).join("")}</ul>`;
@@ -456,8 +467,8 @@ function wire(root, D, C) {
       }
       else if (act === "check") await updateGoals((g) => { const c = g.checklist.find((x) => x.id === t.dataset.id); c.done = !c.done; if (c.done) c.doneAt = todayISO(); else delete c.doneAt; return g; });
       else if (act === "delextra") await updateGoals((g) => { g.extracurriculars.splice(+t.dataset.i, 1); return g; });
-      else if (act === "unstage") { URL.revokeObjectURL(N.staged[+t.dataset.i].url); N.staged.splice(+t.dataset.i, 1); draw(); }
-      else if (act === "clearstage") { N.staged.forEach((f) => URL.revokeObjectURL(f.url)); N.staged = []; N.dupNote = ""; draw(); }
+      else if (act === "unstage") { if (N.staged[+t.dataset.i].url) URL.revokeObjectURL(N.staged[+t.dataset.i].url); N.staged.splice(+t.dataset.i, 1); draw(); }
+      else if (act === "clearstage") { N.staged.forEach((f) => f.url && URL.revokeObjectURL(f.url)); N.staged = []; N.dupNote = ""; draw(); }
       else if (act === "upload") await uploadStaged(t);
       else if (act === "review") await openReview(t.dataset.id);
       else if (act === "readnow") { t.disabled = true; await startRun("batch", t.dataset.id); }
@@ -495,23 +506,41 @@ function wire(root, D, C) {
 
 document.addEventListener("paste", (e) => {
   if (!ctx || ctx.S.view !== "navya" || ctx.S.navya?.tab !== "snip" || ctx.S.navya.review) return;
-  const files = [...(e.clipboardData?.files || [])].filter((f) => f.type.startsWith("image/"));
+  const files = [...(e.clipboardData?.files || [])].filter(accepted);
   if (files.length) { e.preventDefault(); stageFiles(files); }
 });
 
 /* ── actions ────────────────────────────────────────────── */
 async function sha256(buf) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", buf))].map((b) => b.toString(16).padStart(2, "0")).join(""); }
 
+// Screenshots plus documents the routine can open. Images are kept as images; everything else
+// is uploaded as-is under its own extension.
+const DOC_EXT = ["pdf", "doc", "docx", "rtf", "odt", "txt", "csv", "xls", "xlsx", "eml", "htm", "html"];
+const ACCEPT = "image/*," + DOC_EXT.map((x) => "." + x).join(",");
+const MAX_MB = 20;
+const extOf = (f) => (String(f.name || "").match(/\.([a-z0-9]+)$/i)?.[1] || "").toLowerCase();
+const accepted = (f) => f.type.startsWith("image/") || DOC_EXT.includes(extOf(f));
+const fileIcon = (x) => ({ pdf: "📕", doc: "📘", docx: "📘", rtf: "📘", odt: "📘", xls: "📗", xlsx: "📗", csv: "📗", eml: "✉️" })[x] || "📄";
+
 async function stageFiles(files) {
   const N = ctx.S.navya, seen = new Set(N.staged.map((f) => f.sha256));
   let dups = 0;
-  for (const f of files.filter((x) => x.type.startsWith("image/"))) {
-    const blob = await shrink(f), hash = await sha256(await blob.arrayBuffer());
+  const skipped = [], big = [];
+  for (const f of files) {
+    if (!accepted(f)) { skipped.push(f.name || "a file"); continue; }
+    if (f.size > MAX_MB * 1e6) { big.push(f.name); continue; }
+    const isImg = f.type.startsWith("image/");
+    const blob = isImg ? await shrink(f) : f, hash = await sha256(await blob.arrayBuffer());
     if (seen.has(hash)) { dups++; continue; }
     seen.add(hash);
-    N.staged.push({ blob, type: blob.type, sha256: hash, url: URL.createObjectURL(blob) });
+    N.staged.push(isImg ? { blob, type: blob.type, sha256: hash, url: URL.createObjectURL(blob) }
+      : { blob, type: f.type || "application/octet-stream", ext: extOf(f), name: f.name, sha256: hash, url: null });
   }
-  N.dupNote = dups ? `${dups} of these ${dups === 1 ? "was the same screenshot as another" : "were the same screenshot as others"}, so ${dups === 1 ? "it was" : "they were"} left out. Your photo picker may have re-attached an earlier image.` : "";
+  N.dupNote = [
+    dups ? `${dups} of these ${dups === 1 ? "was the same as another file" : "were the same as other files"}, so ${dups === 1 ? "it was" : "they were"} left out. Your picker may have re-attached an earlier one.` : "",
+    skipped.length ? `Can't read ${skipped.join(", ")}: send a screenshot, PDF, Word, Excel/CSV, text or .eml file instead.` : "",
+    big.length ? `${big.join(", ")} ${big.length === 1 ? "is" : "are"} over ${MAX_MB} MB; save just the pages you need, or screenshot them.` : "",
+  ].filter(Boolean).join(" ");
   draw();
 }
 
@@ -590,7 +619,7 @@ async function saveBatch(root, btn) {
   const N = ctx.S.navya, R = N.review, store = ctx.store;
   btn.disabled = true; btn.textContent = "Saving…";
   const { touched } = applyChanges(data(), R.changes, R.picked, R.edits);
-  const DFLT = { grades: [], assignments: [], screentime: [], classes: [], attendance: { events: [] }, gpa: null, codes: null };
+  const DFLT = { grades: [], assignments: [], screentime: [], classes: [], attendance: { events: [] }, gpa: null, codes: null, documents: [] };
   for (const key of touched) {
     // re-apply on whatever is current in the repo, so a concurrent save isn't overwritten
     await store.update(FILE_PATHS[key], DFLT[key], (cur) => applyChanges({ ...data(), [key]: cur }, R.changes, R.picked, R.edits).docs[key], `navya: save batch ${R.batchId} (${key})`);

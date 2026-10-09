@@ -169,6 +169,22 @@ export function buildChanges(data, result, asOf) {
       },
     });
   }
+  // ── letters, reports and emails that aren't a Skyward screen: kept as a short summary
+  for (const s of snips.filter((x) => x.kind === "school.document")) {
+    if (!s.title) continue;
+    const dup = (data.documents || []).some((d) => sameName(d.title, s.title) && (d.date || "") === (s.date || ""));
+    if (dup) continue;
+    add({
+      key: `doc:${norm(s.title)}:${s.date || ""}`, area: "School documents", file: "documents",
+      title: `${s.title}${s.date ? ` (${s.date})` : ""}`, detail: [s.from, s.summary].filter(Boolean).join(" · ") || "new",
+      fields: [{ k: "title", label: "Title", value: s.title }],
+      apply(docs, v) {
+        const rows = (docs.documents = docs.documents || []);
+        rows.push({ title: v.title || s.title, date: s.date || null, from: s.from || "", type: s.type || "other", summary: s.summary || "",
+          keyDates: (s.keyDates || []).filter((k) => k && k.date && k.what), todo: (s.todo || []).filter(Boolean), added: asOf });
+      },
+    });
+  }
   return changes;
 }
 
@@ -230,7 +246,7 @@ const fmtMin = (m) => (m == null ? "?" : m >= 60 ? `${Math.floor(m / 60)}h ${Str
 // which files changed, so the caller writes only those.
 export function applyChanges(data, changes, picked, edits) {
   const docs = structuredClone({ classes: data.classes, grades: data.grades, assignments: data.assignments, attendance: data.attendance,
-    gpa: data.gpa, screentime: data.screentime, codes: data.codes });
+    gpa: data.gpa, screentime: data.screentime, codes: data.codes, documents: data.documents });
   docs.classes = docs.classes || [];
   const touched = new Set();
   // classes first, so grade/assignment rows for a newly added class can find it on the next batch
@@ -245,4 +261,4 @@ export function applyChanges(data, changes, picked, edits) {
 }
 
 export const FILE_PATHS = { classes: "academics/classes.json", grades: "academics/grades.json", assignments: "academics/assignments.json",
-  attendance: "academics/attendance.json", gpa: "academics/gpa.json", screentime: "phone/screentime.json", codes: "school/codes.json" };
+  attendance: "academics/attendance.json", gpa: "academics/gpa.json", screentime: "phone/screentime.json", codes: "school/codes.json", documents: "school/documents.json" };
