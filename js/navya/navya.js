@@ -12,6 +12,8 @@ import { flash } from "../flash.js";
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const hm = (m) => (m == null ? "–" : m >= 60 ? `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m` : `${m}m`);
+// "3.7+" for a floor, "4.0" for a straight-A goal (nothing above 4.0 unweighted).
+const gpaGoal = (t) => (t == null ? "–" : +t >= 4 ? "4.0" : `${(+t).toFixed(1)}+`);
 const fmtD = (iso, o = { month: "short", day: "numeric" }) => (iso ? new Date(iso.slice(0, 10) + "T12:00:00").toLocaleDateString("en-US", o) : "");
 const dow = (iso) => fmtD(iso, { weekday: "short" });
 const sundayOf = (iso) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10); };
@@ -92,7 +94,7 @@ function goalsStrip(D, C) {
   return `<section class="nv-goals" aria-label="Goals">
     <div class="nv-goalshead"><span class="nv-kicker">🎯 The goals · Road to D1 · Year 1 of 4 (9th grade)</span><button class="nv-link" data-tab="goals">See the full plan →</button></div>
     <div class="nv-goalgrid">
-      <div class="nv-goal"><span class="gh">📚 Academics</span><b>GPA ${g.gpaTarget ?? "3.7"}+ unweighted</b>
+      <div class="nv-goal"><span class="gh">📚 Academics</span><b>GPA ${gpaGoal(g.gpaTarget)} unweighted</b>
         <span class="now">${gp.termProjected != null ? `this term so far ${gp.termProjected.toFixed(2)} · <span class="${gp.termProjected >= g.gpaTarget ? "good" : "warn"}">${gp.termProjected >= g.gpaTarget ? "on goal" : (g.gpaTarget - gp.termProjected).toFixed(2) + " to go"}</span>` : "no grades yet"}</span>
         <div class="nv-meter"><i style="width:${gpaPct}%"></i></div></div>
       <div class="nv-goal"><span class="gh">🌱 Character</span><b>${(g.traits || []).map((t) => t.label.toLowerCase()).join(" · ")}</b>
@@ -121,7 +123,7 @@ function hq(D, C) {
   const run = activeRun();
   const cards = [
     ["acad", "📚 Academics", C.cards.academics, C.gpa.termProjected != null ? `GPA ${C.gpa.termProjected.toFixed(2)}` : "–",
-      C.lowestClass ? `goal ${D.goals?.gpaTarget} · lowest: ${C.lowestClass.name} ${C.lowestClass.letter}${C.lowestClass.pct != null ? ` ${C.lowestClass.pct}%` : ""}` : ""],
+      C.lowestClass ? `goal ${gpaGoal(D.goals?.gpaTarget)} · lowest: ${C.lowestClass.name} ${C.lowestClass.letter}${C.lowestClass.pct != null ? ` ${C.lowestClass.pct}%` : ""}` : ""],
     ["char", "🌱 Character", C.cards.character, C.character.latest ? `${C.character.latest.shown} of ${C.character.traits.length} traits` : "Not rated yet", C.character.latest ? `rated ${fmtD(C.character.latest.date)}` : "Sunday check-in"],
     ["vb", "🏐 Volleyball", C.cards.volleyball, C.volleyball.games.length ? `${C.volleyball.games.length} games` : "No games", C.volleyball.commLast4 != null ? `calls ${C.volleyball.commLast4}% (last 4)` : ""],
     ["phone", "📱 Phone & time", C.cards.phone, C.phone.latest ? `Social ${hm(C.phone.latest.socialPerDay)}` : "No snip yet", C.phone.latest ? `limit ${hm(C.phone.limit)} · short-form ${hm(C.phone.latest.shortFormPerDay)}` : ""],
@@ -213,7 +215,7 @@ function acad(D, C) {
   const trend = gp.trend.filter(([, v]) => v != null);
   return `<div class="nv-bento">
     <div class="nv-tile s2 glow"><h3>🎓 GPA</h3>
-      <div class="nv-big3">${tri(gp.termProjected?.toFixed(2), "this term if it ended today")}${tri(gp.cumulative?.toFixed(2) ?? "–", "cumulative (official)")}${tri(D.goals?.gpaTarget, "goal (unweighted)")}</div>
+      <div class="nv-big3">${tri(gp.termProjected?.toFixed(2), "this term if it ended today")}${tri(gp.cumulative?.toFixed(2) ?? "–", "cumulative (official)")}${tri(D.goals?.gpaTarget != null ? Number(D.goals.gpaTarget).toFixed(1) : "–", "goal (unweighted)")}</div>
       ${gp.s1Projected != null && gp.s1Projected !== gp.termProjected ? `<p class="sub">Semester-1 view: ${gp.s1Projected.toFixed(2)}${C.classes.some((c) => c.s1?.letter === "N") ? " (PE shows N there)" : ""}. Skyward's GPA is unweighted, so AP gets no bonus.</p>` : ""}
       ${trend.length > 1 ? `<div class="nv-chart" data-chart="gpa"></div>` : `<p class="sub">The GPA line starts with the next Skyward update.</p>`}
       ${gp.lifts.length ? `<h4>Closest letter bumps</h4><ul class="nv-plain">${gp.lifts.slice(0, 3).map((l) => `<li>${esc(l.name)} → ${l.to} needs +${l.gap} pts → term GPA ${l.gpa.toFixed(2)}</li>`).join("")}</ul>` : ""}</div>
@@ -406,7 +408,7 @@ function checkin(D) {
 const after = {
   acad(D, C) {
     const box = $('[data-chart="gpa"]');
-    if (box) { const t = C.gpa.trend.filter(([, v]) => v != null); box.innerHTML = lineChart({ series: [{ name: "GPA", color: "#FF4FB8", points: t.map(([d, v]) => [fmtD(d), v]) }], width: box.clientWidth, yMin: 2, yMax: 4, yTicks: [2, 2.5, 3, 3.5, 4], yFmt: (v) => v.toFixed(2), label: "Term GPA by Skyward update", marks: D.goals?.gpaTarget ? [{ y: D.goals.gpaTarget, label: "goal " + D.goals.gpaTarget }] : [] }); }
+    if (box) { const t = C.gpa.trend.filter(([, v]) => v != null); box.innerHTML = lineChart({ series: [{ name: "GPA", color: "#FF4FB8", points: t.map(([d, v]) => [fmtD(d), v]) }], width: box.clientWidth, yMin: 2, yMax: 4, yTicks: [2, 2.5, 3, 3.5, 4], yFmt: (v) => v.toFixed(2), label: "Term GPA by Skyward update", marks: D.goals?.gpaTarget ? [{ y: D.goals.gpaTarget, label: "goal " + Number(D.goals.gpaTarget).toFixed(1) }] : [] }); }
   },
   char(D, C) { commChart(C); },
   vb(D, C) { commChart(C); },

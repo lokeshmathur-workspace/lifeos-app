@@ -15,7 +15,7 @@ export function lineChart({ series, width, height = 190, yMin = 0, yMax, yTicks,
   for (const v of yTicks) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(v)}" y2="${Y(v)}" stroke="#2A2247"/><text x="${m.l - 6}" y="${Y(v) + 4}" text-anchor="end" font-size="11" fill="#8F83B3">${esc(tickFmt(v))}</text>`;
   const every = Math.ceil(xs.length / 6);
   xs.forEach((x, i) => { if (i % every === 0 || i === xs.length - 1) s += `<text x="${X(i)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="#8F83B3">${esc(x)}</text>`; });
-  for (const mk of marks) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(mk.y)}" y2="${Y(mk.y)}" stroke="#F6F1FF" stroke-width="1.5" stroke-dasharray="5 4" opacity=".75"/><text x="${W - m.r - 4}" y="${Y(mk.y) - 5}" text-anchor="end" font-size="11" fill="#C9BEE6">${esc(mk.label)}</text>`;
+  for (const mk of marks) s += `<line x1="${m.l}" x2="${W - m.r}" y1="${Y(mk.y)}" y2="${Y(mk.y)}" stroke="#F6F1FF" stroke-width="1.5" stroke-dasharray="5 4" opacity=".75"/><text x="${W - m.r - 4}" y="${Y(mk.y) < m.t + 14 ? Y(mk.y) + 14 : Y(mk.y) - 5}" text-anchor="end" font-size="11" fill="#C9BEE6">${esc(mk.label)}</text>`;
   const labels = [];
   series.forEach((se) => {
     const pts = se.points.map((p, i) => [i, p[1]]).filter(([, v]) => v != null);
