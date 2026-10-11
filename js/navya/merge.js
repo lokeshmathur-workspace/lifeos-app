@@ -90,8 +90,8 @@ export function buildChanges(data, result, asOf) {
       fields: [{ k: "absent", label: "Absent", value: s.totals.absent }, { k: "tardy", label: "Tardy", value: s.totals.tardy }],
       apply(docs, v) { const a = (docs.attendance = docs.attendance || { events: [] }); a.totals = { ...s.totals, absent: num(v.absent), tardy: num(v.tardy) }; a.totalsAsOf = asOf; },
     });
-    for (const e of s.events || []) {
-      const periods = (e.periods || []).map((p) => (/^\d+$/.test(String(p)) ? +p : String(p)));
+    for (const e of attendanceEvents(s.events)) {
+      const periods = e.periods.map((p) => (/^\d+$/.test(String(p)) ? +p : String(p)));
       const key = (ps) => ps.map(String).join(",");
       const exists = (data.attendance?.events || []).some((x) => x.date === e.date && x.code === e.code && key(x.periods) === key(periods));
       if (exists) continue;
@@ -212,6 +212,21 @@ function assignmentChange(add, data, c, r, asOf) {
       row.earned = e; row.max = m; row.status = r.status; row.lastSeen = asOf;
       row.history = [...(row.history || []).filter(([d]) => d !== asOf), [asOf, e]];
     },
+  });
+}
+
+// Events as [{date, periods: [..], code}], one per code. Also accepts a reader's
+// {period: code} map ({"2": "L", "6": "W"} becomes an L event and a W event) or a single period.
+export function attendanceEvents(events) {
+  return (events || []).flatMap((e) => {
+    if (!e || !e.date) return [];
+    if (Array.isArray(e.periods)) return [{ ...e, periods: e.periods }];
+    if (e.periods && typeof e.periods === "object") {
+      const byCode = {};
+      for (const [p, code] of Object.entries(e.periods)) (byCode[code || e.code] = byCode[code || e.code] || []).push(p);
+      return Object.entries(byCode).map(([code, periods]) => ({ ...e, code, periods }));
+    }
+    return e.periods != null ? [{ ...e, periods: [e.periods] }] : [];
   });
 }
 
