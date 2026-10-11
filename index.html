@@ -659,6 +659,36 @@ body.family .seg button:not([data-v="navya"]){display:none}
 .nv-dots{display:flex;gap:4px;margin-top:4px}.nv-dots i{width:12px;height:12px;border-radius:4px;background:var(--panel-2);border:1px solid var(--nline)}.nv-dots i.on{background:#B9A2FF;border-color:#B9A2FF}
 .nv-limitline{margin:10px 0 0;font-size:13.5px;color:var(--nink-2)}
 .nv-tabs{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+/* decluttered layout: goal line, nav row with ＋ Add, area rows, collapsibles */
+.nv-goalline{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;width:100%;text-align:left;background:linear-gradient(135deg,rgba(255,79,184,.10),rgba(139,92,246,.08) 50%,rgba(34,211,238,.08));border:1px solid rgba(255,79,184,.28);border-radius:16px;padding:10px 14px;color:var(--nink-2);font-size:13.5px}
+.nv-goalline .k{font-weight:800;color:var(--nink)}.nv-goalline b{color:var(--nink)}.nv-goalline b.bad{color:var(--red)}.nv-goalline b.good{color:var(--lime)}
+.nv-goalline .go{margin-left:auto;color:var(--cyan);font-weight:700}
+.nv-navrow{display:flex;align-items:flex-start;gap:8px}.nv-navrow .nv-tabs{flex:1;min-width:0}
+.nv-addmenu{position:relative;flex:none}
+.nv-addmenu>summary{list-style:none;cursor:pointer;border:1px dashed var(--nink-2);border-radius:999px;padding:8px 14px;font-weight:800;font-size:13.5px;color:var(--nink)}
+.nv-addmenu>summary::-webkit-details-marker{display:none}
+.nv-addmenu[data-on]>summary{background:var(--panel-2)}
+.nv-addmenu .menu{position:absolute;right:0;top:calc(100% + 6px);z-index:20;display:flex;flex-direction:column;gap:4px;background:var(--panel);border:1px solid var(--nline);border-radius:14px;padding:6px;min-width:220px;box-shadow:0 10px 30px rgba(0,0,0,.4)}
+.nv-addmenu .menu button{border:0;background:none;text-align:left;padding:10px 12px;border-radius:10px;font-weight:700;color:var(--nink)}
+.nv-addmenu .menu button:hover,.nv-addmenu .menu button[aria-pressed="true"]{background:var(--panel-2)}
+.nv-rows{display:flex;flex-direction:column}
+.nv-row{display:grid;grid-template-columns:minmax(120px,1.1fr) auto minmax(90px,1fr) minmax(0,1.6fr) auto;align-items:center;gap:10px;border:0;border-top:1px solid var(--nline);background:none;padding:10px 4px;text-align:left;color:var(--nink)}
+.nv-row:first-child{border-top:0}.nv-row:hover{background:var(--panel-2)}
+.nv-row .nm{font-weight:700;color:var(--nink-2)}.nv-row b{font-family:"Bricolage Grotesque",sans-serif;font-size:16px}.nv-row .go{color:var(--cyan);font-weight:800}
+@media (max-width:640px){.nv-row{grid-template-columns:1fr auto;row-gap:2px}.nv-row .nm{grid-column:1}.nv-row .nv-status{grid-column:2;justify-self:end}.nv-row b{grid-column:1}.nv-row .sub{grid-column:1/-1}.nv-row .go{display:none}}
+.nv-info{margin-top:8px}.nv-info>summary,.nv-more>summary{cursor:pointer;color:var(--nmuted);font-size:12.5px;font-weight:700;list-style:none}
+.nv-info>summary::-webkit-details-marker,.nv-more>summary::-webkit-details-marker{display:none}
+.nv-more>summary::before{content:"▸ ";}.nv-more[open]>summary::before{content:"▾ ";}
+.nv-more>summary h3{display:inline}.nv-more>summary:has(h3)::before{color:var(--nink-2)}
+.nv-info>div{margin-top:6px;color:var(--nink-2);font-size:13px;line-height:1.5}.nv-more>:not(summary){margin-top:10px}
+.nv-talk{margin-top:12px}.nv-talk ol{margin:6px 0 0;padding-left:20px;color:var(--nink-2);line-height:1.5}
+.nv-classlist{display:flex;flex-direction:column}
+.nv-classrow{border-top:1px solid var(--nline)}.nv-classrow:first-child{border-top:0}
+.nv-classrow>summary{display:grid;grid-template-columns:minmax(110px,1fr) auto minmax(0,2.2fr);align-items:center;gap:10px;padding:10px 4px;cursor:pointer;list-style:none}
+.nv-classrow>summary::-webkit-details-marker{display:none}
+.nv-classrow>summary .nm{font-weight:700;color:var(--nink)}.nv-classrow[open]>summary{background:var(--panel-2);border-radius:10px}
+@media (max-width:640px){.nv-classrow>summary{grid-template-columns:1fr auto}.nv-classrow>summary .key{grid-column:1/-1}}
+.nv-classdetail{padding:6px 4px 12px}.nv-classdetail p{margin:6px 0}
 @media (min-width:900px){.nv-tabs{flex-wrap:wrap;overflow:visible}}
 .nv-tabs button{flex:none;border:1px solid var(--nline);background:var(--panel);border-radius:999px;padding:8px 14px;font-weight:700;font-size:13.5px;color:var(--nink-2)}
 .nv-tabs button[aria-pressed="true"]{background:linear-gradient(135deg,#FF4FB8,#8B5CF6 50%,#22D3EE);border-color:transparent;color:#fff}

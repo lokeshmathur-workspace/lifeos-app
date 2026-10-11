@@ -1,5 +1,6 @@
-// The Navya tab: HQ (coach's read + scorecards), Goals & D1 plan, Academics, Character,
-// Volleyball, Phone & time, Fuel & sleep, plus the parent-only Add snips and Check-in screens.
+// The Navya tab: HQ (coach's read + area rows), School, Phone, Sport & health (volleyball,
+// character, fuel & sleep), Goals, plus the parent-only ＋ Add menu (files, check-in).
+// Short first, details on tap: a tab or tile with no data yet stays hidden.
 // Every number comes from computeNavya(); the AI only reads screenshots and drafts the coach's
 // read (both through the processing routine), and parents approve before Navya sees it.
 import { APP_VERSION } from "../version.js";
@@ -21,8 +22,9 @@ const sundayOf = (iso) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.g
 const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }, del(k) { try { localStorage.removeItem(k); } catch {} } };
 
-const TABS = [["hq", "🏠 HQ"], ["goals", "🎯 Goals & D1"], ["acad", "📚 Academics"], ["char", "🌱 Character"], ["vb", "🏐 Volleyball"],
-  ["phone", "📱 Phone & time"], ["fuel", "🍎 Fuel & sleep"], ["snip", "📸 Add snips"], ["checkin", "✍️ Check-in"]];
+const TABS = [["hq", "🏠 HQ"], ["acad", "📚 School"], ["phone", "📱 Phone"], ["sport", "🏐 Sport & health"], ["goals", "🎯 Goals"]];
+// Old tab names (links, saved state) land on the merged tab.
+const TAB_ALIAS = { char: "sport", vb: "sport", fuel: "sport" };
 const PARENT_ONLY = new Set(["snip", "checkin"]);
 const RUN_KEY = "navya.run", RUN_TTL = 20 * 60 * 1000;
 
@@ -33,6 +35,7 @@ export async function renderNavyaView(store, S, renderApp) {
   ctx = { store, S, renderApp };
   const N = (S.navya = S.navya || { tab: "hq", kid: ls.get("navya.kidView", false), loaded: false, staged: [], review: null, coachEdit: false });
   if (N.kid && PARENT_ONLY.has(N.tab)) N.tab = "hq";
+  N.tab = TAB_ALIAS[N.tab] || N.tab;
   document.body.classList.add("navya-mode");
   const main = $("#main");
   if (!N.loaded) {
@@ -56,16 +59,19 @@ function data() { return ctx.store.data(); }
 function draw() {
   const { S } = ctx, N = S.navya;
   const D = data(), C = computeNavya(D, todayISO());
-  const tabs = TABS.filter(([k]) => !(N.kid && PARENT_ONLY.has(k)));
-  const body = { hq, goals, acad, char, vb, phone, fuel, snip, checkin }[N.tab] || hq;
+  N.tab = TAB_ALIAS[N.tab] || N.tab;
+  const has = hasData(D, C);
+  const tabs = TABS.filter(([k]) => k === "hq" || k === "goals" || has[k] || N.tab === k);
+  const body = { hq, goals, acad, sport, phone, snip, checkin }[N.tab] || hq;
   const main = $("#main");
   main.innerHTML = `<div class="navya${N.kid ? " kid" : ""}">
     <div class="nv-top">
       <div class="nv-hello"><h1>hey <span>Navya</span> ✨</h1><p>${esc(weekLine())}</p></div>
       <div class="nv-toggle">👀 Navya view <button class="nv-sw" data-act="kid" aria-pressed="${N.kid}" aria-label="Navya view hides parent-only notes"></button></div>
     </div>
-    ${goalsStrip(D, C)}
-    <nav class="nv-tabs" aria-label="Navya screens">${tabs.map(([k, l]) => `<button data-tab="${k}" aria-pressed="${N.tab === k}">${l}</button>`).join("")}</nav>
+    ${N.tab === "goals" ? "" : goalLine(D, C)}
+    <div class="nv-navrow"><nav class="nv-tabs" aria-label="Navya screens">${tabs.map(([k, l]) => `<button data-tab="${k}" aria-pressed="${N.tab === k}">${l}</button>`).join("")}</nav>
+      ${N.kid ? "" : `<details class="nv-addmenu"${PARENT_ONLY.has(N.tab) ? " data-on" : ""}><summary>＋ Add</summary><div class="menu"><button data-tab="snip" aria-pressed="${N.tab === "snip"}">📸 Screenshots &amp; files</button><button data-tab="checkin" aria-pressed="${N.tab === "checkin"}">✍️ Check-in</button></div></details>`}</div>
     <div id="nvbody">${body(D, C)}</div>
     <p class="nv-fresh">${freshLine(C)} · <button class="nv-link" data-act="reload">Refresh</button> · app ${APP_VERSION}</p>
   </div>`;
@@ -87,30 +93,28 @@ function freshLine(C) {
   return "Data: " + bits.join(" · ");
 }
 
-/* ── goals strip (every screen) ─────────────────────────── */
-function goalsStrip(D, C) {
-  const g = D.goals || {}, gp = C.gpa, lt = C.phone.latest, v = C.volleyball, ch = C.character.latest;
-  const nTraits = (g.traits || []).length;
-  const gpaPct = gp.termProjected != null && g.gpaTarget ? Math.min(100, (gp.termProjected / g.gpaTarget) * 100) : 0;
-  return `<section class="nv-goals" aria-label="Goals">
-    <div class="nv-goalshead"><span class="nv-kicker">🎯 The goals · Road to D1 · Year 1 of 4 (9th grade)</span><button class="nv-link" data-tab="goals">See the full plan →</button></div>
-    <div class="nv-goalgrid">
-      <div class="nv-goal"><span class="gh">📚 Academics</span><b>GPA ${gpaGoal(g.gpaTarget)} unweighted</b>
-        <span class="now">${gp.termProjected != null ? `this term so far ${gp.termProjected.toFixed(2)} · <span class="${gp.termProjected >= g.gpaTarget ? "good" : "warn"}">${gp.termProjected >= g.gpaTarget ? "on goal" : (g.gpaTarget - gp.termProjected).toFixed(2) + " to go"}</span>` : "no grades yet"}</span>
-        <div class="nv-meter"><i style="width:${gpaPct}%"></i></div></div>
-      <div class="nv-goal"><span class="gh">🌱 Character</span><b>${(g.traits || []).map((t) => t.label.toLowerCase()).join(" · ")}</b>
-        <span class="now">${ch ? `${ch.shown} of ${nTraits} showed up (${fmtD(ch.date)})` : "first Sunday check-in starts this"}</span>
-        <div class="nv-dots">${(g.traits || []).map((t) => `<i class="${ch && (ch.ratings[t.id] || 0) >= 2 ? "on" : ""}"></i>`).join("")}</div></div>
-      <div class="nv-goal"><span class="gh">🏐 Volleyball</span><b>A-team club spot · call every ball</b>
-        <span class="now">${v.commLast4 != null ? `calls made: ${v.commLast4}% last 4 games (was ${v.commFirst3}%)` : "no games logged yet"}</span>
-        <div class="nv-meter"><i style="width:${v.commLast4 || 0}%"></i></div></div>
-      <div class="nv-goal${(g.extracurriculars || []).length ? "" : " todo"}"><span class="gh">🎭 Extracurriculars</span>
-        <b>${(g.extracurriculars || []).length ? esc(g.extracurriculars.map((e) => e.name).join(" · ")) : "Just started 🌱"}</b>
-        <span class="now">${(g.extracurriculars || []).length ? esc(g.extracurriculars.map((e) => e.goal).filter(Boolean).join(" · ")) : "goals added as she settles in"}</span></div>
-    </div>
-    ${lt ? `<p class="nv-limitline">📱 Social media ${hm(lt.socialPerDay)}/day vs her ${hm(lt.limit)} limit${lt.socialPerDay > lt.limit ? ` <span class="bad">(${lt.timesLimit}×)</span>` : ` <span class="good">✓</span>`}</p>` : ""}
-  </section>`;
+/* ── goal line (every screen but Goals) ──────────────────── */
+// One tappable line instead of a panel: where she is against each goal.
+function goalLine(D, C) {
+  const g = D.goals || {}, gp = C.gpa, lt = C.phone.latest, v = C.volleyball;
+  const bits = [];
+  if (gp.termProjected != null) bits.push(`📚 GPA <b>${gp.termProjected.toFixed(2)}</b> → ${gpaGoal(g.gpaTarget)}`);
+  if (lt) bits.push(`📱 social <b class="${lt.socialPerDay > lt.limit ? "bad" : "good"}">${hm(lt.socialPerDay)}</b>/day vs ${hm(lt.limit)}`);
+  if (v.commLast4 != null) bits.push(`🏐 calls <b>${v.commLast4}%</b>`);
+  return `<button class="nv-goalline" data-tab="goals" aria-label="Goals: open the full plan"><span class="k">🎯 Goals</span>${bits.map((b) => `<span>${b}</span>`).join("")}<span class="go">plan →</span></button>`;
 }
+
+// Which tabs have anything to show yet.
+function hasData(D, C) {
+  return {
+    acad: C.classes.some((c) => c.letter) || !!C.attendance.totals,
+    phone: !!C.phone.latest,
+    sport: C.volleyball.games.length > 0 || !!C.character.latest || C.daily.logged > 0 || !!C.volleyball.reps7,
+  };
+}
+
+// A collapsed "how this is worked out" note, so explanations don't crowd the numbers.
+const info = (html, label = "How this is worked out") => `<details class="nv-info"><summary>ⓘ ${esc(label)}</summary><div>${html}</div></details>`;
 
 /* ── HQ ─────────────────────────────────────────────────── */
 function latestCoach(D, approvedOnly) {
@@ -122,23 +126,24 @@ function hq(D, C) {
   const N = ctx.S.navya, kid = N.kid;
   const co = latestCoach(D, kid);
   const run = activeRun();
-  const cards = [
-    ["acad", "📚 Academics", C.cards.academics, C.gpa.termProjected != null ? `GPA ${C.gpa.termProjected.toFixed(2)}` : "–",
-      C.lowestClass ? `goal ${gpaGoal(D.goals?.gpaTarget)} · lowest: ${C.lowestClass.name} ${C.lowestClass.letter}${C.lowestClass.pct != null ? ` ${C.lowestClass.pct}%` : ""}` : ""],
-    ["char", "🌱 Character", C.cards.character, C.character.latest ? `${C.character.latest.shown} of ${C.character.traits.length} traits` : "Not rated yet", C.character.latest ? `rated ${fmtD(C.character.latest.date)}` : "Sunday check-in"],
-    ["vb", "🏐 Volleyball", C.cards.volleyball, C.volleyball.games.length ? `${C.volleyball.games.length} games` : "No games", C.volleyball.commLast4 != null ? `calls ${C.volleyball.commLast4}% (last 4)` : ""],
-    ["phone", "📱 Phone & time", C.cards.phone, C.phone.latest ? `Social ${hm(C.phone.latest.socialPerDay)}` : "No snip yet", C.phone.latest ? `limit ${hm(C.phone.limit)} · short-form ${hm(C.phone.latest.shortFormPerDay)}` : ""],
-    ["fuel", "🍎 Fuel & sleep", C.cards.fuel, C.daily.sleepAvg != null ? `Sleep ${C.daily.sleepAvg}h` : "No logs this week", C.daily.sleepAvg != null ? `goal ${D.goals?.daily?.sleepHours}h · breakfast ${C.daily.breakfastSolid} of ${C.daily.logged}` : "daily check-in"],
-    ["goals", "🎭 Extracurriculars", C.cards.extracurriculars, (D.goals?.extracurriculars || []).length ? `${D.goals.extracurriculars.length} activities` : "Settling in", "goals added as she goes"],
+  const rows = [
+    ["acad", "📚 School", C.cards.academics, C.gpa.termProjected != null ? `GPA ${C.gpa.termProjected.toFixed(2)}` : null,
+      C.lowestClass ? `lowest: ${C.lowestClass.name} ${C.lowestClass.letter}${C.lowestClass.pct != null ? ` ${C.lowestClass.pct}%` : ""}` : ""],
+    ["phone", "📱 Phone", C.cards.phone, C.phone.latest ? `social ${hm(C.phone.latest.socialPerDay)}/day` : null, C.phone.latest ? `limit ${hm(C.phone.limit)}` : ""],
+    ["sport", "🏐 Volleyball", C.cards.volleyball, C.volleyball.games.length ? `${C.volleyball.games.length} games` : null, C.volleyball.commLast4 != null ? `calls ${C.volleyball.commLast4}% (last 4)` : ""],
+    ["sport", "🌱 Character", C.cards.character, C.character.latest ? `${C.character.latest.shown} of ${C.character.traits.length} traits` : null, C.character.latest ? `rated ${fmtD(C.character.latest.date)}` : ""],
+    ["sport", "🍎 Fuel & sleep", C.cards.fuel, C.daily.sleepAvg != null ? `sleep ${C.daily.sleepAvg}h` : null, C.daily.sleepAvg != null ? `goal ${D.goals?.daily?.sleepHours}h` : ""],
+    ["goals", "🎭 Extracurriculars", C.cards.extracurriculars, (D.goals?.extracurriculars || []).length ? `${D.goals.extracurriculars.length} activities` : null, ""],
   ];
+  const live = rows.filter((r) => r[3] != null), waiting = rows.filter((r) => r[3] == null).map((r) => r[1].replace(/^\S+\s/, ""));
   const wins = autoWins(D, C);
   return `<div class="nv-bento">
     ${coachCard(co, kid, run)}
-    <div class="nv-cards s4" role="group" aria-label="Areas">${cards.map(([t, title, st, big, sub]) => `
-      <button class="nv-card" data-tab="${t}"><span class="ch">${title}</span><span class="nv-status ${st}">● ${STATUS[st]}</span><b>${esc(big)}</b><span class="sub">${esc(sub)}</span><span class="dive">Dive in →</span></button>`).join("")}</div>
-    ${co?.talk?.length ? `<div class="nv-tile s2 talk"><h3>💬 Let's talk about…</h3><ol>${co.talk.map((t) => `<li>${esc(t)}</li>`).join("")}</ol><p class="sub">Conversation starters, not a report card.</p></div>` : ""}
-    ${!kid && co?.parentChecks?.length ? `<div class="nv-tile s2 parent"><h3>🔒 For you to check</h3><ul class="nv-check">${co.parentChecks.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>` : ""}
-    <div class="nv-tile s2"><h3>🏆 Wins wall</h3><div class="nv-wins">${wins.map((w) => `<span class="sticker">${esc(w)}</span>`).join("") || `<span class="sub">Wins from check-ins and grades show up here.</span>`}</div></div>
+    <div class="nv-tile s4"><h3>How each area is going</h3><div class="nv-rows">${live.map(([t, title, st, big, sub]) => `
+      <button class="nv-row" data-tab="${t}"><span class="nm">${title}</span><span class="nv-status ${st}">● ${STATUS[st]}</span><b>${esc(big)}</b><span class="sub">${esc(sub)}</span><span class="go">→</span></button>`).join("")}</div>
+      ${waiting.length ? `<p class="sub" style="margin-top:8px">Not started yet: ${esc(waiting.join(" · "))}${kid ? "" : " (they fill in from ✍️ Check-in and the goals page)"}.</p>` : ""}</div>
+    ${!kid && co?.parentChecks?.length ? `<div class="nv-tile s4 parent"><details class="nv-more"><summary><h3>🔒 For you to check <span class="nv-chip">${co.parentChecks.length}</span></h3></summary><ul class="nv-check">${co.parentChecks.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></details></div>` : ""}
+    ${wins.length ? `<div class="nv-tile s4"><h3>🏆 Wins</h3><div class="nv-wins">${wins.map((w) => `<span class="sticker">${esc(w)}</span>`).join("")}</div></div>` : ""}
   </div>`;
 }
 
@@ -163,10 +168,12 @@ function coachCard(co, kid, run) {
     <div class="nv-rowsplit"><span class="nv-kicker">🧢 Coach's read · week of ${fmtD(co.weekStart)}</span>
       ${co.status === "draft" ? `<span class="nv-chip warn">draft · only parents see this</span>` : `<span class="nv-chip">approved ${fmtD(co.approvedAt)}</span>`}</div>
     <h2 class="nv-headline">${esc(co.headline)}</h2>
-    <div class="nv-cols3"><div><h4>🔥 What's working</h4><ul>${list(co.working)}</ul></div>
-      <div><h4>🎯 What needs work</h4><ul>${list(co.needsWork)}</ul></div>
-      <div><h4>🔗 How it connects</h4><p>${esc(co.connection)}</p></div></div>
     <div class="nv-focus"><span class="nv-kicker">🎯 This week's one focus</span><b>${esc(co.focus)}</b></div>
+    ${co.talk?.length ? `<div class="nv-talk"><span class="nv-kicker">💬 Let's talk about</span><ol>${co.talk.map((t) => `<li>${esc(t)}</li>`).join("")}</ol></div>` : ""}
+    <details class="nv-more"><summary>The full read: what's working, what needs work, how it connects</summary>
+      <div class="nv-cols3"><div><h4>🔥 What's working</h4><ul>${list(co.working)}</ul></div>
+      <div><h4>🎯 What needs work</h4><ul>${list(co.needsWork)}</ul></div>
+      <div><h4>🔗 How it connects</h4><p>${esc(co.connection)}</p></div></div></details>
     ${kid ? "" : `<div class="nv-btnrow">${co.status === "draft" ? `<button class="nv-btn pri" data-act="approvecoach">Approve for Navya</button>` : ""}
       <button class="nv-btn" data-act="editcoach">Edit</button>
       ${drafting ? "" : `<button class="nv-btn" data-act="draftcoach">${co.weekStart === sundayOf(todayISO()) ? "Redraft" : "Draft this week's read"}</button>`}</div>${drafting ? runLine(run) : ""}`}
@@ -186,13 +193,12 @@ function goals(D) {
   const g = D.goals || {}, kid = ctx.S.navya.kid;
   return `<div class="nv-bento">
     <div class="nv-tile s4"><h3>🏆 The road to D1</h3><div class="nv-road">${(g.road || []).map((r) => `<div class="stop${r.now ? " now" : ""}${/sign/i.test(r.year) ? " end" : ""}"><span class="yr">${esc(r.year)}${r.now ? " · now" : ""}</span><b>${esc(r.title)}</b><span class="sub">${esc(r.text)}</span></div>`).join("")}</div>
-      <p class="sub">From her D1 Volleyball Blueprint. The goals at the top of every screen are this year's slice of it.</p></div>
+      <p class="sub">This year's goals: ${esc(g.pillars?.academics || "")}; ${esc(g.pillars?.volleyball || "")}. From her D1 Volleyball Blueprint.</p></div>
     <div class="nv-tile s2"><h3>⚡ Next 8 weeks</h3><ul class="nv-plain">${(g.next8 || []).map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>
     <div class="nv-tile s2"><h3>✅ Year 1 checklist</h3><ul class="nv-todo">${(g.checklist || []).map((c) => `<li><button class="box${c.done ? " done" : ""}" data-act="check" data-id="${esc(c.id)}" ${kid ? "disabled" : ""} aria-pressed="${!!c.done}">${c.done ? "✓" : ""}</button><span>${esc(c.text)}</span></li>`).join("")}</ul></div>
-    <div class="nv-tile s2"><h3>🎯 The four pillars</h3><div class="tw"><table>${Object.entries(g.pillars || {}).map(([k, v]) => `<tr><td><b>${esc({ academics: "📚 Academics", character: "🌱 Character", volleyball: "🏐 Volleyball", extracurriculars: "🎭 Extracurriculars" }[k] || k)}</b></td><td>${esc(v)}</td></tr>`).join("")}</table></div></div>
     <div class="nv-tile s2"><h3>🌱 Her values</h3><ul class="nv-plain">${(g.traits || []).map((t) => `<li><b>${t.emoji} ${esc(t.label)}</b>: ${esc(t.looksLike)}</li>`).join("")}</ul></div>
-    <div class="nv-tile s2"><h3>🎭 Extracurriculars</h3>${(g.extracurriculars || []).length ? `<ul class="nv-plain">${g.extracurriculars.map((e, i) => `<li><b>${esc(e.name)}</b>${e.goal ? `: ${esc(e.goal)}` : ""} ${kid ? "" : `<button class="nv-x" data-act="delextra" data-i="${i}" aria-label="Remove">×</button>`}</li>`).join("")}</ul>` : `<p class="sub">She's just started. Add each activity with one goal as she settles in.</p>`}
-      ${kid ? "" : `<form class="nv-inline" data-act="addextra"><input name="name" placeholder="Activity (e.g. Spanish club)" required><input name="goal" placeholder="One goal (optional)"><button class="nv-btn">Add</button></form>`}</div>
+    ${kid && !(g.extracurriculars || []).length ? "" : `<div class="nv-tile s2"><h3>🎭 Extracurriculars</h3>${(g.extracurriculars || []).length ? `<ul class="nv-plain">${g.extracurriculars.map((e, i) => `<li><b>${esc(e.name)}</b>${e.goal ? `: ${esc(e.goal)}` : ""} ${kid ? "" : `<button class="nv-x" data-act="delextra" data-i="${i}" aria-label="Remove">×</button>`}</li>`).join("")}</ul>` : `<p class="sub">She's just started. Add each activity with one goal as she settles in.</p>`}
+      ${kid ? "" : `<form class="nv-inline" data-act="addextra"><input name="name" placeholder="Activity (e.g. Spanish club)" required><input name="goal" placeholder="One goal (optional)"><button class="nv-btn">Add</button></form>`}</div>`}
     <div class="nv-tile s2"><h3>📏 Daily targets</h3><div class="tw"><table>
       <tr><td>Sleep</td><td class="n">${D.goals?.daily?.sleepHours}h</td></tr><tr><td>Study block (school nights)</td><td class="n">${D.goals?.daily?.studyMin} min</td></tr>
       <tr><td>Own volleyball work</td><td class="n">${D.goals?.daily?.ownPracticeMin} min</td></tr><tr><td>Conditioning</td><td class="n">${D.goals?.daily?.conditioningMin} min</td></tr>
@@ -204,30 +210,31 @@ function goals(D) {
 /* ── Academics ──────────────────────────────────────────── */
 const gradeColor = (pct) => (pct >= 87 ? "#2E9E5B" : pct >= 77 ? "#0E9FBF" : pct >= 70 ? "#D17A22" : "#E8399E");
 function acad(D, C) {
-  if (!C.classes.some((c) => c.letter)) return emptyState("No grades yet", "Add a Skyward Grades screenshot and one class pop-up per class in 📸 Add snips.");
+  if (!C.classes.some((c) => c.letter)) return emptyState("No grades yet", "Add a Skyward Grades screenshot and one class pop-up per class with ＋ Add → Screenshots & files.");
   const gp = C.gpa, lo = 50, X = (v) => ((Math.max(lo, v) - lo) / (100 - lo)) * 100, cuts = (D.codes?.scale || []).map((s) => s[1]).filter((v) => v >= lo && v < 100);
   const strip = C.classes.filter((c) => c.letter).map((c) => {
     const pct = c.pct ?? (c.display ? 100 : null);
     const s1 = c.s1 && c.s1.pct != null ? `<div class="dot hollow" title="Semester view ${c.s1.pct}%" style="left:${X(c.s1.pct)}%"></div>` : "";
     return `<div class="srow"><span>${esc(c.name)}</span><div class="track">${cuts.map((v) => `<div class="band" style="left:${X(v)}%"></div>`).join("")}${s1}${pct != null ? `<div class="dot" style="left:${X(pct)}%;background:${gradeColor(pct)}"></div>` : ""}</div><span class="val">${esc(c.letter)}${c.pct != null ? ` · ${c.pct}%` : c.display ? " · all pts" : ""}</span></div>`;
   }).join("");
-  const cards = [...C.classes].filter((c) => c.letter).sort((a, b) => (a.pct ?? 101) - (b.pct ?? 101)).map(classCard).join("");
+  const classRows = [...C.classes].filter((c) => c.letter).sort((a, b) => (a.pct ?? 101) - (b.pct ?? 101)).map(classRow).join("");
   const A = C.attendance;
   const trend = gp.trend.filter(([, v]) => v != null);
   return `<div class="nv-bento">
     <div class="nv-tile s2 glow"><h3>🎓 GPA</h3>
       <div class="nv-big3">${tri(gp.termProjected?.toFixed(2), "this term if it ended today")}${tri(gp.cumulative?.toFixed(2) ?? "–", "cumulative (official)")}${tri(D.goals?.gpaTarget != null ? Number(D.goals.gpaTarget).toFixed(1) : "–", "goal (unweighted)")}</div>
-      ${gp.s1Projected != null && gp.s1Projected !== gp.termProjected ? `<p class="sub">Semester-1 view: ${gp.s1Projected.toFixed(2)}${C.classes.some((c) => c.s1?.letter === "N") ? " (PE shows N there)" : ""}. Skyward's GPA is unweighted, so AP gets no bonus.</p>` : ""}
-      ${trend.length > 1 ? `<div class="nv-chart" data-chart="gpa"></div>` : `<p class="sub">The GPA line starts with the next Skyward update.</p>`}
-      ${gp.lifts.length ? `<h4>Closest letter bumps</h4><ul class="nv-plain">${gp.lifts.slice(0, 3).map((l) => `<li>${esc(l.name)} → ${l.to} needs +${l.gap} pts → term GPA ${l.gpa.toFixed(2)}</li>`).join("")}</ul>` : ""}</div>
+      ${gp.lifts.length ? `<h4>Closest letter bumps</h4><ul class="nv-plain">${gp.lifts.slice(0, 3).map((l) => `<li>${esc(l.name)} → ${l.to} needs +${l.gap} pts → term GPA ${l.gpa.toFixed(2)}</li>`).join("")}</ul>` : ""}
+      ${trend.length > 1 ? `<div class="nv-chart" data-chart="gpa"></div>` : ""}
+      ${info(`${gp.s1Projected != null && gp.s1Projected !== gp.termProjected ? `Semester-1 view: ${gp.s1Projected.toFixed(2)}${C.classes.some((c) => c.s1?.letter === "N") ? " (PE shows N there)" : ""}. ` : ""}Skyward's GPA is unweighted, so AP gets no bonus.${trend.length > 1 ? "" : " A GPA line appears after the next Skyward update."}`, "About these numbers")}</div>
     <div class="nv-tile s2"><h3>📊 Term ${esc(C.term || "")} grades</h3><div class="nv-strip">${strip}</div>
       <div class="nv-axis">${[50, 60, 70, 80, 90, 100].map((v) => `<span style="left:${X(v)}%">${v}%</span>`).join("")}</div>
-      <p class="sub">Dashed lines: the school's cut-offs. ${C.classes.some((c) => c.s1?.pct != null) ? "Hollow dot: semester view." : ""}</p></div>
-    ${cards}
+      ${info(`Dashed lines are the school's cut-offs.${C.classes.some((c) => c.s1?.pct != null) ? " A hollow dot is the semester view." : ""}`, "Reading the chart")}</div>
+    <div class="nv-tile s4"><h3>📘 Classes <span class="sub">lowest first · tap one for the detail</span></h3><div class="nv-classlist">${classRows}</div></div>
     <div class="nv-tile s4"><h3>🚪 Attendance</h3>
-      ${A.totals ? `<p>Year so far: <b>${A.totals.absent}</b> days absent (${A.totals.excused} excused, ${A.totals.unexcused} unexcused) · <b>${A.totals.tardy}</b> tardies${A.daysSinceIssue != null ? ` · ${A.daysSinceIssue} days since the last tardy or unexcused` : ""}</p>` : ""}
-      <div class="tw"><table><tr><th>Date</th><th>Period</th><th>What</th></tr>${A.events.map((e) => `<tr><td>${dow(e.date)} ${fmtD(e.date)}</td><td>${e.periods.length >= 6 ? "all day" : e.periods.join(", ")}${A.unknownPeriods.includes(String(e.periods[0])) ? " ❓" : ""}</td><td><span class="nv-chip ${e.group === "unexcused" ? "bad" : e.group === "tardy" ? "warn" : ""}">${esc(e.label)}</span>${e.comment ? " 💬" : ""}</td></tr>`).join("")}</table></div>
-      ${A.unknownPeriods.length ? `<p class="sub">❓ Period ${A.unknownPeriods.join(", ")} isn't on her schedule (probably homeroom). 💬 = Skyward has a comment on it.</p>` : ""}</div>
+      ${A.totals ? `<p>Year so far: <b>${A.totals.absent}</b> days absent (${A.totals.unexcused} unexcused) · <b>${A.totals.tardy}</b> tardies${A.daysSinceIssue != null ? ` · ${A.daysSinceIssue} days since the last one` : ""}</p>` : ""}
+      ${attTable(A, A.events.slice(0, 3))}
+      ${A.events.length > 3 ? `<details class="nv-more"><summary>Show all ${A.events.length}</summary>${attTable(A, A.events.slice(3))}</details>` : ""}
+      ${A.unknownPeriods.length || A.events.some((e) => e.comment) ? info(`${A.unknownPeriods.length ? `❓ Period ${A.unknownPeriods.join(", ")} isn't on her schedule (probably homeroom). ` : ""}💬 = Skyward has a comment on it.`, "Symbols") : ""}</div>
     ${docsTile(D)}
   </div>`;
 }
@@ -242,7 +249,22 @@ function docsTile(D) {
     <p class="sub">Only you see this; it's hidden in Navya view.</p></div>`;
 }
 
-function classCard(c) {
+function attTable(A, events) {
+  return `<div class="tw"><table>${events.map((e) => `<tr><td>${dow(e.date)} ${fmtD(e.date)}</td><td>${e.periods.length >= 6 ? "all day" : "period " + e.periods.join(", ")}${A.unknownPeriods.includes(String(e.periods[0])) ? " ❓" : ""}</td><td><span class="nv-chip ${e.group === "unexcused" ? "bad" : e.group === "tardy" ? "warn" : ""}">${esc(e.label)}</span>${e.comment ? " 💬" : ""}</td></tr>`).join("")}</table></div>`;
+}
+
+// One line per class (the single most useful fact), the full breakdown on tap.
+function classRow(c) {
+  const cls = c.pct == null ? "good" : c.pct < 80 ? "bad" : c.pct < 87 ? "warn" : "good";
+  const key = c.whatIf && c.whatIf.letters[0] !== c.whatIf.letters[1] ? `${c.ungraded.length} ungraded item${c.ungraded.length === 1 ? "" : "s"}: ${c.whatIf.letters[0]} to ${c.whatIf.letters[1]} depending on them`
+    : c.ungraded.some((u) => u.status === "missing") ? "has missing work"
+    : c.next && c.next.gap <= 2 ? `${c.next.gap} pts from ${c.next.letter}`
+    : c.catSpread >= 15 && c.cats.length === 2 ? `${[...c.cats].sort((x, y) => y.pct - x.pct)[0].name} strong, ${[...c.cats].sort((x, y) => x.pct - y.pct)[0].name} lower`
+    : c.upcoming.length ? `next: ${c.upcoming[0].name} (${fmtD(c.upcoming[0].due)})` : "";
+  return `<details class="nv-classrow"><summary><span class="nm">${esc(c.name)}</span><span class="nv-chip ${cls}">${esc(c.letter)}${c.pct != null ? ` · ${c.pct}%` : ""}</span><span class="sub key">${esc(key)}</span></summary>${classCard(c, true)}</details>`;
+}
+
+function classCard(c, bare) {
   const cls = c.pct == null ? "good" : c.pct < 80 ? "bad" : c.pct < 87 ? "warn" : "good";
   const cats = c.cats.map((k) => `${esc(k.name)} ${k.pct}% (${k.earned}/${k.max})${c.weights?.[k.name] && c.cats.length > 1 ? ` · ~${Math.round(c.weights[k.name] * 100)}% of grade` : ""}`).join("<br>");
   const lines = [];
@@ -253,85 +275,72 @@ function classCard(c) {
   if (c.whatIf && c.whatIf.letters[0] !== c.whatIf.letters[1]) lines.push(`If those come in at full marks: <b>~${Math.round(c.whatIf.allFull)}% (${c.whatIf.letters[1]})</b>; if not: <b>~${Math.round(c.whatIf.allZero)}% (${c.whatIf.letters[0]})</b>.`);
   if (c.upcoming.length) lines.push(`Coming up: ${c.upcoming.map((u) => `${esc(u.name)} (${fmtD(u.due)})`).join(" · ")}`);
   if (c.s1 && c.s1.letter !== c.letter) lines.push(`Semester view: <b>${esc(c.s1.letter)}${c.s1.pct != null ? ` ${c.s1.pct}%` : ""}</b>.`);
-  return `<div class="nv-tile s2 nv-class"><h3><span>${esc(c.fullName)}</span><span class="nv-chip ${cls}">${esc(c.letter)}${c.pct != null ? ` · ${c.pct}%` : ""}</span></h3>
-    <p class="sub">${esc(c.teacher || "")}${c.level ? ` · ${esc(c.level)}` : ""} · period ${esc(c.period)}</p><p class="sub">${cats}</p>${lines.map((l) => `<p>${l}</p>`).join("")}</div>`;
+  const inner = `<p class="sub">${esc(c.fullName)} · ${esc(c.teacher || "")}${c.level ? ` · ${esc(c.level)}` : ""} · period ${esc(c.period)}</p><p class="sub">${cats}</p>${lines.map((l) => `<p>${l}</p>`).join("")}`;
+  if (bare) return `<div class="nv-classdetail">${inner}</div>`;
+  return `<div class="nv-tile s2 nv-class"><h3><span>${esc(c.fullName)}</span><span class="nv-chip ${cls}">${esc(c.letter)}${c.pct != null ? ` · ${c.pct}%` : ""}</span></h3>${inner}</div>`;
 }
 
 const tri = (big, label) => `<div><b>${esc(big ?? "–")}</b><span>${esc(label)}</span></div>`;
 const emptyState = (title, text) => `<div class="nv-tile"><h3>${esc(title)}</h3><p class="sub">${esc(text)}</p></div>`;
 
-/* ── Character ──────────────────────────────────────────── */
-function char(D, C) {
-  const ch = C.character, LV = { 1: ["🌱 growing", "l1"], 2: ["✅ showed it", "l2"], 3: ["🌟 standout", "l3"] };
-  const weeks = [...new Set(ch.traits.flatMap((t) => t.ratings.map((r) => r[0])))].slice(-8);
+/* ── Sport & health: volleyball, then character and fuel & sleep once logged ── */
+function sport(D, C) {
+  const v = C.volleyball, r = v.reps7, ch = C.character, d = C.daily, kid = ctx.S.navya.kid;
+  const LV = { 1: ["🌱 growing", "l1"], 2: ["✅ showed it", "l2"], 3: ["🌟 standout", "l3"] };
+  const meal = { green: "🟢", yellow: "🟡", red: "🔴" };
+  const games = [...v.games].reverse();
+  const gameRows = (list) => `<div class="tw"><table><tr><th>Date</th><th>Opponent</th><th class="n">Sets</th><th class="n">Assists</th><th class="n">Set err</th><th class="n">Calls</th></tr>
+      ${list.map((g) => `<tr><td class="nw">${fmtD(g.date)}</td><td>${esc(g.opponent)}</td><td class="n">${g.wins}/${g.sets}</td><td class="n">${g.assists}</td><td class="n">${g.setErrors}</td><td class="n">${g.commPct ?? "–"}%</td></tr>`).join("")}</table></div>`;
+  const notYet = [!ch.latest && "character ratings (Sunday check-in)", !d.logged && "fuel & sleep (daily check-in)", !r && "practice reps (her daily tracker)"].filter(Boolean);
   return `<div class="nv-bento">
-    <div class="nv-tile s2"><h3>🌱 This week</h3>${ch.latest ? `<div class="nv-traits">${ch.traits.map((t) => { const v = ch.latest.ratings[t.id]; return `<div class="trait"><span>${t.emoji} ${esc(t.label)}</span>${v ? `<span class="lvl ${LV[v][1]}">${LV[v][0]}</span>` : `<span class="sub">–</span>`}<span class="sub">${esc(t.looksLike)}</span></div>`; }).join("")}</div>
-      ${ch.latest.moment ? `<p>✨ ${esc(ch.latest.moment)}</p>` : ""}` : `<p class="sub">No ratings yet. The Sunday part of ✍️ Check-in rates each trait in one tap.</p>`}</div>
-    <div class="nv-tile s2"><h3>📅 Week by week</h3>${weeks.length ? `<div class="nv-heat" style="grid-template-columns:minmax(90px,1.4fr) repeat(${weeks.length},minmax(26px,1fr))"><span></span>${weeks.map((w) => `<span class="hd">${fmtD(w)}</span>`).join("")}
-      ${ch.traits.map((t) => `<span>${t.emoji} ${esc(t.label)}</span>${weeks.map((w) => { const r = t.ratings.find((x) => x[0] === w); return `<i class="h${r?.[1] || 0}" title="${esc(t.label)} ${fmtD(w)}: ${r?.[1] ? LV[r[1]][0] : "not rated"}"></i>`; }).join("")}`).join("")}</div>
-      <div class="nv-legend"><span><i class="h1"></i>🌱 growing</span><span><i class="h2"></i>✅ showed it</span><span><i class="h3"></i>🌟 standout</span></div>` : `<p class="sub">Fills in after a couple of Sundays.</p>`}</div>
-    <div class="nv-tile s4"><h3>🏐 On the court</h3><p class="sub">From her game logger: share of calls made per game (the blueprint's "call every ball").</p>${C.volleyball.games.length ? `<div class="nv-chart" data-chart="comm"></div>` : `<p class="sub">No games logged yet.</p>`}</div>
-  </div>`;
-}
-
-/* ── Volleyball ─────────────────────────────────────────── */
-function vb(D, C) {
-  const v = C.volleyball, r = v.reps7;
-  return `<div class="nv-bento">
-    <div class="nv-tile s2"><h3>📣 Calling the ball</h3>${v.games.length ? `<div class="nv-chart" data-chart="comm"></div><p class="sub">Good calls ÷ (good + missed), per game. Last 4 games ${v.commLast4}% vs first 3 ${v.commFirst3}%.</p>` : `<p class="sub">No games logged yet.</p>`}</div>
-    <div class="nv-tile s2"><h3>🎯 Daily reps vs the blueprint</h3>${r ? hbars([["Wall sets", r.setting, r.targets.setting], ["Footwork", r.footwork, r.targets.footwork], ["Serves", r.serve, r.targets.serve]].map(([l, val, t]) => ({ label: l, value: (val / t) * 100, text: `${val} of ${t}`, color: SERIES[1], mark: 100 })), 100, [0, 50, 100], (x) => x + "%") + `<p class="sub">Average of ${r.days} logged day(s) this week, as a share of each target.</p>`
-      : `<p class="sub">No practice logged this week${v.dailyLogsLatest ? ` (last log ${fmtD(v.dailyLogsLatest)})` : ""}. She logs reps in her daily tracker.</p>`}
-      <p class="sub"><a href="navya/navya_tracker.html" target="_blank" rel="noopener">Daily tracker</a> · <a href="navya/game_logger.html" target="_blank" rel="noopener">Game logger</a> · <a href="navya/dashboard.html" target="_blank" rel="noopener">Season dashboard</a></p></div>
-    <div class="nv-tile s4"><h3>📋 Games</h3><div class="tw"><table><tr><th>Date</th><th>Opponent</th><th class="n">Sets won</th><th class="n">Assists</th><th class="n">Set err</th><th class="n">Aces</th><th class="n">Serve err</th><th class="n">Calls</th></tr>
-      ${[...v.games].reverse().map((g) => `<tr><td class="nw">${fmtD(g.date)}</td><td>${esc(g.opponent)}</td><td class="n">${g.wins}/${g.sets}</td><td class="n">${g.assists}</td><td class="n">${g.setErrors}</td><td class="n">${g.aces}</td><td class="n">${g.serveErrors}</td><td class="n">${g.commPct ?? "–"}%</td></tr>`).join("")}</table></div>
-      <p class="sub">Games saved twice in the tracker are counted once.</p></div>
+    ${v.games.length ? `<div class="nv-tile s2"><h3>📣 Calling the ball</h3><div class="nv-chart" data-chart="comm"></div><p class="sub">Last 4 games ${v.commLast4}% vs first 3 ${v.commFirst3}%.</p>
+      ${info("Good calls ÷ (good + missed), per game, from her game logger.")}</div>
+    <div class="nv-tile s2"><h3>📋 Recent games</h3>${gameRows(games.slice(0, 4))}${games.length > 4 ? `<details class="nv-more"><summary>All ${games.length} games</summary>${gameRows(games.slice(4))}</details>` : ""}
+      <p class="sub"><a href="navya/navya_tracker.html" target="_blank" rel="noopener">Daily tracker</a> · <a href="navya/game_logger.html" target="_blank" rel="noopener">Game logger</a> · <a href="navya/dashboard.html" target="_blank" rel="noopener">Season dashboard</a></p></div>` : ""}
+    ${r ? `<div class="nv-tile s2"><h3>🎯 Daily reps vs the blueprint</h3>${hbars([["Wall sets", r.setting, r.targets.setting], ["Footwork", r.footwork, r.targets.footwork], ["Serves", r.serve, r.targets.serve]].map(([l, val, t]) => ({ label: l, value: (val / t) * 100, text: `${val} of ${t}`, color: SERIES[1], mark: 100 })), 100, [0, 50, 100], (x) => x + "%")}
+      <p class="sub">Average of ${r.days} logged day(s) this week.</p></div>` : ""}
+    ${ch.latest ? `<div class="nv-tile s2"><h3>🌱 Character this week</h3><div class="nv-traits">${ch.traits.map((t) => { const val = ch.latest.ratings[t.id]; return `<div class="trait"><span>${t.emoji} ${esc(t.label)}</span>${val ? `<span class="lvl ${LV[val][1]}">${LV[val][0]}</span>` : `<span class="sub">–</span>`}</div>`; }).join("")}</div>
+      ${ch.latest.moment ? `<p>✨ ${esc(ch.latest.moment)}</p>` : ""}</div>` : ""}
+    ${d.logged ? `<div class="nv-tile s2"><h3>🍎 Fuel &amp; 😴 sleep · last 7 days</h3><div class="nv-big3">${tri(d.sleepAvg != null ? d.sleepAvg + "h" : "–", `avg sleep · goal ${D.goals?.daily?.sleepHours}h`)}${tri(`${d.breakfastSolid}/${d.logged}`, "solid breakfasts")}${tri(d.energyAvg ?? "–", "energy (1–5)")}</div>
+      <details class="nv-more"><summary>Day by day</summary><div class="tw"><table><tr><th>Day</th><th class="n">Sleep</th><th>Meals</th><th class="n">Energy</th><th>Mood</th></tr>${d.days.map((x) => `<tr><td class="nw">${dow(x.date)} ${fmtD(x.date)}</td><td class="n">${x.sleepHrs ?? "–"}</td><td>${["breakfast", "lunch", "dinner"].map((k) => meal[x[k]] || "▫️").join("")}</td><td class="n">${x.energy ?? "–"}</td><td>${esc(x.mood || "")}</td></tr>`).join("")}</table></div></details></div>` : ""}
+    ${notYet.length ? `<div class="nv-tile s4"><p class="sub" style="margin:0">Not logged yet: ${esc(notYet.join(" · "))}. Each shows up here once there's data.</p>
+      ${info(`<ul class="nv-plain"><li>Breakfast every day: protein + carbs + fruit</li><li>Pre-practice: banana + PB or a granola bar, 30–60 min before</li><li>Within 30 min after: chocolate milk or yogurt + fruit</li><li>Water 2–2.5 L a day, more on game days</li><li>Sleep 9 hours. It's training, not laziness.</li></ul>`, "Blueprint fuel basics")}</div>` : ""}
   </div>`;
 }
 
 /* ── Phone & time ───────────────────────────────────────── */
 function phone(D, C) {
   const lt = C.phone.latest;
-  if (!lt) return emptyState("No Screen Time yet", "Add her iPhone's Screen Time Week view, the Most Used list and Pickups in 📸 Add snips.");
+  if (!lt) return emptyState("No Screen Time yet", "Add her iPhone's Screen Time Week view, the Most Used list and Pickups with ＋ Add → Screenshots & files.");
   const kc = { short: "#E8399E", social: "#8B5CF6", msg: "#2E9E5B", other: "#D17A22" };
-  const appsMax = Math.max(60, Math.ceil(Math.max(...lt.apps.map((a) => a.perDay)) / 30) * 30);
+  const apps = lt.apps.filter((a) => a.perDay >= 1 && a.name !== "Settings");
+  const top = apps.slice(0, 5), rest = apps.slice(5);
+  if (rest.length) top.push({ name: `Other (${rest.length} apps)`, perDay: rest.reduce((t, a) => t + a.perDay, 0), kind: "other" });
+  const appsMax = Math.max(60, Math.ceil(Math.max(...top.map((a) => a.perDay)) / 30) * 30);
   const dayMax = Math.max(lt.limit * 2, ...lt.days.map((d) => d.socialMin || 0));
   const late = D.screentime?.find((w) => w.weekStart === lt.weekStart)?.lateNight;
   const st = (D.goals?.daily || {});
   const ci = C.daily;
+  const logged = [ci.studyAvg, ci.practiceAvg, ci.conditioningAvg].some((v) => v != null);
   return `<div class="nv-bento">
     <div class="nv-tile s4 glow"><div class="nv-rowsplit"><h3>📱 Where the phone time goes</h3><span class="nv-chip">per day · week of ${fmtD(lt.weekStart)}${lt.partial ? ` · ${lt.daysCovered} days so far` : ""}</span></div>
       <div class="nv-big3">${tri(hm(lt.totalPerDay), "on the phone")}${tri(hm(lt.socialPerDay), `social media · limit ${hm(lt.limit)}`)}${tri(hm(lt.shortFormPerDay), "short-form video")}</div>
-      ${hbars(lt.apps.filter((a) => a.perDay >= 1 && a.name !== "Settings").map((a) => ({ label: a.name, value: a.perDay, text: hm(a.perDay), color: kc[a.kind] })), appsMax, [0, appsMax / 4, appsMax / 2, (3 * appsMax) / 4, appsMax], (m) => (!m ? "0" : m % 60 === 0 ? m / 60 + "h" : Math.round(m) + "m"))}
+      ${hbars(top.map((a) => ({ label: a.name, value: a.perDay, text: hm(a.perDay), color: kc[a.kind] })), appsMax, [0, appsMax / 4, appsMax / 2, (3 * appsMax) / 4, appsMax], (m) => (!m ? "0" : m % 60 === 0 ? m / 60 + "h" : Math.round(m) + "m"))}
       <div class="nv-legend"><span><i style="background:#E8399E"></i>Short-form video</span><span><i style="background:#8B5CF6"></i>Social / chat</span><span><i style="background:#2E9E5B"></i>Messaging (not counted)</span><span><i style="background:#D17A22"></i>Other</span></div>
-      <p class="sub">Week totals ÷ days covered. Her limit counts ${esc((D.goals?.limits?.socialApps || []).join(", "))}; messaging is shown on its own line (${hm(lt.messagingPerDay)}/day). Screen Time shows apps, not what's watched inside them, so Snapchat's Spotlight isn't counted as short-form.</p></div>
+      ${info(`Week totals ÷ days covered. Her limit counts ${esc((D.goals?.limits?.socialApps || []).join(", "))}; messaging isn't counted (${hm(lt.messagingPerDay)}/day). Screen Time shows apps, not what's watched inside them, so Snapchat's Spotlight isn't counted as short-form.`)}
+      ${info(`<ol><li><b>No stopping point.</b> The next clip plays on its own, so 10 minutes easily becomes 60.</li><li><b>Fast switching.</b> Heavy use is linked to weaker focus on long tasks like homework and film study.</li><li><b>Later bedtimes.</b> Scrolling in bed pushes sleep back, and sleep is when athletes recover.</li></ol><p class="sub">Research on teens is still developing; these are the links most studies point to.</p>`, "Why short-form video gets its own number")}</div>
     ${lt.days.length ? `<div class="nv-tile s2"><h3>⏱️ Social media each day vs the limit</h3>${columns(lt.days.map((d) => ({ label: dow(d.date), value: d.socialMin || 0, text: hm(d.socialMin), color: d.overLimit ? "#E8399E" : "#0E9FBF" })), dayMax, lt.limit, `limit ${hm(lt.limit)}`)}
-      <p class="sub">Read off Screen Time's bar chart, so each day is an estimate.${lt.fullDays ? ` Over the limit ${lt.fullDaysOverLimit} of ${lt.fullDays} full days.` : ""}</p></div>` : ""}
+      ${lt.fullDays ? `<p class="sub">Over the limit ${lt.fullDaysOverLimit} of ${lt.fullDays} full days. Each day is read off Screen Time's chart, so it's an estimate.</p>` : ""}</div>` : ""}
     ${lt.pickups ? `<div class="nv-tile s2"><h3>👆 Pickups</h3>${lt.pickups.days?.length ? columns(lt.pickups.days.map(([d, n]) => ({ label: dow(d), value: n, text: String(n), color: "#0E9FBF" })), Math.max(...lt.pickups.days.map((x) => x[1])) * 1.1, null) : ""}
       <p class="sub">${lt.pickups.dailyAvg} a day, about every ${lt.pickups.everyMin} minutes she's awake.${lt.pickups.topFirst ? ` ${esc(lt.pickups.topFirst[0])} is opened first after ${lt.pickups.topFirstShare}% of pickups.` : ""}</p></div>` : ""}
     ${C.phone.weeks.length > 1 ? `<div class="nv-tile s2"><h3>📈 Week by week</h3><div class="nv-chart" data-chart="phoneweeks"></div></div>` : ""}
-    <div class="nv-tile s2"><h3>⚖️ Time balance (per day)</h3>${hbars([
+    ${logged ? `<div class="nv-tile s2"><h3>⚖️ Time balance (per day)</h3>${hbars([
       { label: "📱 Social", value: lt.socialPerDay, text: hm(lt.socialPerDay), color: "#E8399E", mark: lt.limit },
-      { label: "📚 Study", value: ci.studyAvg || 0, text: ci.studyAvg == null ? "not logged" : hm(ci.studyAvg), color: "#0E9FBF", mark: st.studyMin },
-      { label: "🏐 Own practice", value: ci.practiceAvg || 0, text: ci.practiceAvg == null ? "not logged" : hm(ci.practiceAvg), color: "#0E9FBF", mark: st.ownPracticeMin },
-      { label: "💪 Conditioning", value: ci.conditioningAvg || 0, text: ci.conditioningAvg == null ? "not logged" : hm(ci.conditioningAvg), color: "#0E9FBF", mark: st.conditioningMin }], 210, [0, 60, 120, 180], (m) => (m ? m / 60 + "h" : "0"))}
-      <p class="sub">White tick = her limit (phone) or the blueprint's daily goal. Study and practice come from the daily check-in.</p></div>
-    <div class="nv-tile s2"><h3>🌙 Phone at night</h3>${late && Object.keys(late).length ? `<p>${Object.entries(late).map(([d, m]) => `${dow(d)} ${fmtD(d)}: <b>${hm(m)}</b> after 9 pm`).join("<br>")}</p>` : `<p class="sub">Add a Screen Time <b>day</b> view (it shows hour by hour) to see late-night use.</p>`}
-      <p class="sub">Blueprint: phone away by ${esc(st.phoneAwayBy || "20:45")}, lights out 9:15. Check-ins logged "phone away" ${ci.phoneAway} of ${ci.logged} days.</p></div>
-    <div class="nv-tile s2 talk"><h3>🧠 Why short-form gets its own line</h3><ol><li><b>No stopping point.</b> The next clip plays on its own, so 10 minutes easily becomes 60.</li><li><b>Fast switching.</b> Heavy use is linked to weaker focus on long tasks like homework and film study.</li><li><b>Later bedtimes.</b> Scrolling in bed pushes sleep back, and sleep is when athletes recover.</li></ol><p class="sub">Research on teens is still developing; these are the links most studies point to.</p></div>
-  </div>`;
-}
-
-/* ── Fuel & sleep ───────────────────────────────────────── */
-function fuel(D, C) {
-  const d = C.daily, meal = { green: "🟢", yellow: "🟡", red: "🔴" };
-  const stale = C.volleyball.parentLogsLatest;
-  return `<div class="nv-bento">
-    <div class="nv-tile s4"><h3>🍎 Fuel &amp; 😴 sleep · last 7 days</h3>
-      ${d.days.length ? `<div class="nv-big3">${tri(d.sleepAvg != null ? d.sleepAvg + "h" : "–", `avg sleep · goal ${D.goals?.daily?.sleepHours}h`)}${tri(`${d.breakfastSolid}/${d.logged}`, "solid breakfasts")}${tri(d.energyAvg ?? "–", "energy (1–5)")}</div>
-      <div class="tw"><table><tr><th>Day</th><th class="n">Sleep</th><th>Meals</th><th class="n">Study</th><th class="n">Practice</th><th class="n">Energy</th><th>Mood</th></tr>${d.days.map((x) => `<tr><td class="nw">${dow(x.date)} ${fmtD(x.date)}</td><td class="n">${x.sleepHrs ?? "–"}</td><td>${["breakfast", "lunch", "dinner"].map((k) => meal[x[k]] || "▫️").join("")}</td><td class="n">${x.studyMin ?? "–"}</td><td class="n">${x.ownPracticeMin ?? "–"}</td><td class="n">${x.energy ?? "–"}</td><td>${esc(x.mood || "")}</td></tr>`).join("")}</table></div>`
-      : `<p class="sub">Nothing logged in the last 7 days. ✍️ Check-in takes about 30 seconds.${stale ? ` Her tracker's sleep and meal logs stop on ${fmtD(stale)}.` : ""}</p>`}</div>
-    <div class="nv-tile s2"><h3>🥗 Blueprint fuel basics</h3><ul class="nv-plain"><li>Breakfast every day: protein + carbs + fruit</li><li>Pre-practice: banana + PB or a granola bar, 30–60 min before</li><li>Within 30 min after: chocolate milk or yogurt + fruit</li><li>Water 2–2.5 L a day, more on game days</li><li>Sleep 9 hours. It's training, not laziness.</li></ul></div>
-    <div class="nv-tile s2"><h3>⭐ Wins logged</h3>${d.wins.length ? `<div class="nv-wins">${d.wins.map((w) => `<span class="sticker">${esc(w.text)}</span>`).join("")}</div>` : `<p class="sub">Wins from check-ins show up here.</p>`}</div>
+      ...[["📚 Study", ci.studyAvg, st.studyMin], ["🏐 Own practice", ci.practiceAvg, st.ownPracticeMin], ["💪 Conditioning", ci.conditioningAvg, st.conditioningMin]]
+        .filter(([, v]) => v != null).map(([label, v, mark]) => ({ label, value: v, text: hm(v), color: "#0E9FBF", mark }))], 210, [0, 60, 120, 180], (m) => (m ? m / 60 + "h" : "0"))}
+      ${info("White tick = her limit (phone) or the blueprint's daily goal. Study and practice come from the daily check-in.", "Reading the chart")}</div>` : ""}
+    ${late && Object.keys(late).length ? `<div class="nv-tile s2"><h3>🌙 Phone at night</h3><p>${Object.entries(late).map(([d, m]) => `${dow(d)} ${fmtD(d)}: <b>${hm(m)}</b> after 9 pm`).join("<br>")}</p>
+      <p class="sub">Blueprint: phone away by ${esc(st.phoneAwayBy || "20:45")}.</p></div>` : ""}
   </div>`;
 }
 
@@ -343,16 +352,16 @@ function snip() {
   return `<div class="nv-bento">
     <div class="nv-tile s2"><h3>📸 Add screenshots &amp; files</h3>
       <label class="nv-drop" id="nvdrop"><input type="file" accept="${ACCEPT}" multiple data-act="files" hidden>
-        <span class="ic">📸</span><b>Paste, drop, or tap to pick</b><span class="sub">Screenshots, or files: PDF, Word, Excel/CSV, text or a saved email (.eml). Skyward grades, class pop-ups, assignments, attendance; iPhone Screen Time; report cards, progress reports, school letters and emails. Send a whole week's set at once.</span></label>
+        <span class="ic">📸</span><b>Paste, drop, or tap to pick</b><span class="sub">Screenshots, or PDF, Word, Excel/CSV, text and .eml files</span></label>
       ${staged.length ? `<div class="nv-thumbs">${staged.map((f, i) => `<div class="th${f.url ? "" : " doc"}">${f.url ? `<img src="${f.url}" alt="">` : `<span class="dic">${fileIcon(f.ext)}</span><span class="dnm">${esc(f.name)}</span>`}<button class="nv-x" data-act="unstage" data-i="${i}" aria-label="Remove">×</button></div>`).join("")}</div>
         <div class="nv-btnrow"><button class="nv-btn pri" data-act="upload" ${run ? "disabled" : ""}>Read ${staged.length === 1 ? "this file" : `these ${staged.length} files`}</button><button class="nv-btn" data-act="clearstage">Clear</button></div>` : ""}
       ${N.dupNote ? `<p class="sub">${esc(N.dupNote)}</p>` : ""}
-      <p class="sub">Files are deleted as soon as they're read; only the rows (or, for a letter or report, a short summary) are kept. Never send her student number or address: they're skipped if a file shows them.</p></div>
+      ${info("Files are deleted as soon as they're read; only the rows (or, for a letter or report, a short summary) are kept. Never send her student number or address: they're skipped if a file shows them.", "Privacy")}</div>
     <div class="nv-tile s2"><h3>🗂️ Batches</h3><div id="nvbatches"><p class="sub">Checking…</p></div>${run?.kind === "batch" ? runLine(run) : ""}</div>
-    <div class="nv-tile s4"><h3>🗓️ The weekly set (about 10 screenshots, Saturday night or Sunday)</h3><ul class="nv-plain">
+    <div class="nv-tile s4"><details class="nv-more"><summary>🗓️ What to send each week (about 10 screenshots, Saturday night or Sunday)</summary><ul class="nv-plain">
       <li><b>Skyward → Grades</b> page, then tap each grade letter and screenshot the pop-up (6 classes)</li>
       <li><b>Skyward → Assignments</b>: the Upcoming and Missing tabs</li><li><b>Skyward → Attendance</b></li>
-      <li><b>Her iPhone → Settings → Screen Time → See All App &amp; Website Activity → Week</b>: the top, the Most Used list, and Pickups (plus one Day view for late-night use)</li></ul></div>
+      <li><b>Her iPhone → Settings → Screen Time → See All App &amp; Website Activity → Week</b>: the top, the Most Used list, and Pickups (plus one Day view for late-night use)</li></ul></details></div>
   </div>`;
 }
 
@@ -411,8 +420,7 @@ const after = {
     const box = $('[data-chart="gpa"]');
     if (box) { const t = C.gpa.trend.filter(([, v]) => v != null); box.innerHTML = lineChart({ series: [{ name: "GPA", color: "#FF4FB8", points: t.map(([d, v]) => [fmtD(d), v]) }], width: box.clientWidth, yMin: 2, yMax: 4, yTicks: [2, 2.5, 3, 3.5, 4], yFmt: (v) => v.toFixed(2), label: "Term GPA by Skyward update", marks: D.goals?.gpaTarget ? [{ y: D.goals.gpaTarget, label: "goal " + Number(D.goals.gpaTarget).toFixed(1) }] : [] }); }
   },
-  char(D, C) { commChart(C); },
-  vb(D, C) { commChart(C); },
+  sport(D, C) { commChart(C); },
   phone(D, C) {
     const box = $('[data-chart="phoneweeks"]');
     if (box) { const W = C.phone.weeks; const top = Math.ceil(Math.max(240, ...W.map((w) => w.totalPerDay)) / 60) * 60; box.innerHTML = lineChart({ series: [["Social", "#E8399E", "socialPerDay"], ["Short-form", "#8B5CF6", "shortFormPerDay"], ["Total", "#0E9FBF", "totalPerDay"]].map(([n, c, k]) => ({ name: n, color: c, points: W.map((w) => [fmtD(w.weekStart), w[k]]) })), width: box.clientWidth, yMax: top, yTicks: Array.from({ length: top / 60 + 1 }, (_, i) => i * 60), yFmt: (m) => hm(m), tickFmt: (m) => (m ? m / 60 + "h" : "0"), label: "Minutes per day by week", marks: [{ y: C.phone.limit, label: "social limit" }] }); }
@@ -589,7 +597,7 @@ async function startRun(kind, id) {
 function activeRun() {
   const r = ls.get(RUN_KEY, null);
   if (!r) return null;
-  if (Date.now() - r.firedAt > RUN_TTL) { ls.del(RUN_KEY); flash(r.kind === "batch" ? "The last screenshot run didn't finish. Open 📸 Add snips to check it." : "The coach's read draft didn't finish. You can try again.", true); return null; }
+  if (Date.now() - r.firedAt > RUN_TTL) { ls.del(RUN_KEY); flash(r.kind === "batch" ? "The last screenshot run didn't finish. Open ＋ Add → Screenshots & files to check it." : "The coach's read draft didn't finish. You can try again.", true); return null; }
   return r;
 }
 const runLine = (r) => `<p class="nv-run"><span class="pulse"></span>${r.kind === "batch" ? "Reading screenshots" : "Drafting the coach's read"}… usually 2–4 minutes; this updates on its own.${r.sessionUrl ? ` <a href="${esc(r.sessionUrl)}" target="_blank" rel="noopener">View run</a>` : ""}</p>`;
@@ -606,7 +614,7 @@ function startPolling() {
       if (!done) return;
       ls.del(RUN_KEY); clearInterval(pollTimer); pollTimer = null;
       await ctx.store.loadAll();
-      flash(r.kind === "batch" ? "Screenshots read. Check & save them in 📸 Add snips." : "This week's coach's read is drafted. Review and approve it on HQ.");
+      flash(r.kind === "batch" ? "Screenshots read. Check & save them with ＋ Add → Screenshots & files." : "This week's coach's read is drafted. Review and approve it on HQ.");
       if (ctx.S.view === "navya") { if (r.kind === "batch") { ctx.S.navya.tab = "snip"; await openReview(r.id); } else draw(); }
     } catch { /* keep polling */ }
   }, 8000);
