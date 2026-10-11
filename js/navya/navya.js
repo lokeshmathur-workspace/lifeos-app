@@ -2,6 +2,7 @@
 // Volleyball, Phone & time, Fuel & sleep, plus the parent-only Add snips and Check-in screens.
 // Every number comes from computeNavya(); the AI only reads screenshots and drafts the coach's
 // read (both through the processing routine), and parents approve before Navya sees it.
+import { APP_VERSION } from "../version.js";
 import { computeNavya, STATUS, addDays } from "./compute.js";
 import { buildChanges, applyChanges, FILE_PATHS } from "./merge.js";
 import { lineChart, hbars, columns, SERIES } from "./charts.js";
@@ -66,7 +67,7 @@ function draw() {
     ${goalsStrip(D, C)}
     <nav class="nv-tabs" aria-label="Navya screens">${tabs.map(([k, l]) => `<button data-tab="${k}" aria-pressed="${N.tab === k}">${l}</button>`).join("")}</nav>
     <div id="nvbody">${body(D, C)}</div>
-    <p class="nv-fresh">${freshLine(C)} · <button class="nv-link" data-act="reload">Refresh</button></p>
+    <p class="nv-fresh">${freshLine(C)} · <button class="nv-link" data-act="reload">Refresh</button> · app ${APP_VERSION}</p>
   </div>`;
   wire(main.firstElementChild, D, C);
   after[N.tab]?.(D, C);

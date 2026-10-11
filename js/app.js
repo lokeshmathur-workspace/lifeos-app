@@ -1,3 +1,4 @@
+import { APP_VERSION, liveVersion, watchForUpdates } from "./version.js";
 import { Store, loadConfig, saveConfig, clearConfig, loadPinHash, savePinHash, clearPin, sha256Hex } from "./store.js";
 import { readQuote, readImproveTomorrow, writeReflections, writeMorningQuote } from "./migrate.js";
 import { PILLARS, BIZ, VIT, VIT_EVENING_CHECKIN, HPH, CYCLE } from "./constants.js";
@@ -40,6 +41,7 @@ const S = {
 /* ═══ boot / auth / pin ═══════════════════════════════════ */
 
 export async function boot() {
+  watchForUpdates();
   const cfg = loadConfig();
   if (!cfg) return renderSetup();
   S.store = new Store(cfg, flash);
@@ -218,6 +220,7 @@ function openSettings() {
   back.innerHTML = `
     <div class="modal">
       <h2 style="margin-top:0">Settings</h2>
+      <p class="savenote" id="appversion">App version <b class="mono">${APP_VERSION}</b> · checking for a newer one…</p>
       <p class="savenote">Connected to <span class="mono">${esc(cfg?.repo || "")}</span> as <span class="mono">${esc(mask(cfg?.token))}</span>. Stored only in this browser. Covers both Life OS and Learning — one token for both since the merge.</p>
       <div class="btnrow"><button class="btn" id="forgettoken">Forget token &amp; sign out</button></div>
       <div class="btnrow" style="margin-top:18px">
@@ -249,6 +252,14 @@ function openSettings() {
       <div class="btnrow" style="margin-top:18px"><button class="btn pri" id="closesettings">Close</button></div>
     </div>`;
   document.body.appendChild(back);
+  liveVersion().then((v) => {
+    const el = back.querySelector("#appversion");
+    if (!el) return;
+    el.innerHTML = !v ? `App version <b class="mono">${APP_VERSION}</b> · couldn't check for a newer one`
+      : v === APP_VERSION ? `App version <b class="mono">${APP_VERSION}</b> · ✓ latest`
+      : `App version <b class="mono">${APP_VERSION}</b> · a newer one (${esc(v)}) is out: <button class="btn sm" id="setreload">Reload now</button>`;
+    el.querySelector("#setreload")?.addEventListener("click", () => location.reload());
+  });
   back.addEventListener("click", (e) => {
     if (e.target === back) back.remove();
   });

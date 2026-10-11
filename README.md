@@ -50,3 +50,9 @@ worker/          Cloudflare Worker AI proxy — see worker/README.md to deploy
 The source of truth for what this app is meant to do lives in the private
 `Claude` repo, under `lifeos-rebuild/` (`REQUIREMENTS.md`, `DESIGN-SYSTEM.md`,
 `DATA-MODEL.md`) and `life-os/docs/DATA_PROTOCOL.md`.
+
+## Releasing a change
+
+Bump `APP_VERSION` in `js/version.js` (format `YYYY-MM-DD.N`) in the same commit as any change
+to the app. Open copies compare it with the published `js/version.js` and offer **Reload now**;
+Settings shows the running version and whether it's the latest.
