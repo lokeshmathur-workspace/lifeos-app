@@ -1032,9 +1032,62 @@ async function saveGame() {
       buildHistory();showScr("scr-history");renderEditFooter();
     }, 1200);
   } else {
-    btn.textContent = "❌ Save failed — retry";
+    btn.textContent = "❌ No connection — retry, or 📱 Save Locally";
     btn.disabled = false;
   }
+}
+
+// ── Save on this device (no signal at the gym), upload later ──────────────
+var LOCAL_KEY = "nvb_local_games";
+function getLocalGames() { try { var a = JSON.parse(localStorage.getItem(LOCAL_KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } }
+function setLocalGames(a) { try { localStorage.setItem(LOCAL_KEY, JSON.stringify(a)); return true; } catch (e) { return false; } }
+function esc(t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]; }); }
+
+function renderPending() {
+  var locals = getLocalGames(), panel = document.getElementById("pending-panel");
+  if (!panel) return;
+  panel.style.display = locals.length ? "block" : "none";
+  document.getElementById("pending-count").textContent = locals.length;
+  document.getElementById("pending-list").innerHTML = locals.map(function(p){
+    return "<div style='padding:4px 0;color:#c9d1d9'>vs " + esc(p.opponent) + " · " + esc(p.date) + " · " + (p.sets||[]).length + " sets <span style='color:#4a5568'>(" + esc(p._savedAt || "") + ")</span></div>";
+  }).join("");
+}
+
+function saveLocally() {
+  var cf = document.getElementById("coach-feedback"), fa = document.getElementById("focus-area");
+  if (cf) postGame.coach_feedback = cf.value;
+  if (fa) postGame.focus_area = fa.value;
+  var payload = buildGamePayload(false);
+  payload._localId = "game_" + game.date + "_" + Date.now();
+  payload._savedAt = new Date().toLocaleString();
+  if (game.draftKey) payload._draftKey = game.draftKey;
+  var locals = getLocalGames(); locals.push(payload);
+  if (!setLocalGames(locals)) { showToast("❌ Couldn't save on this device"); return; }
+  clearDraft();
+  showToast("Saved on this device 📱 — upload when you have signal");
+  editMode = false; editGameId = null;
+  buildHistory(); renderPending(); showScr("scr-history"); renderEditFooter();
+}
+
+// Uploads every game saved on this device in one write, removing their draft copies too.
+async function uploadLocalGames() {
+  var locals = getLocalGames();
+  if (!locals.length) { showToast("Nothing to upload"); return; }
+  var btn = document.getElementById("upload-pending-btn"); if (btn) { btn.disabled = true; btn.textContent = "Uploading…"; }
+  showToast("Uploading " + locals.length + " game(s)…");
+  var clean = locals.map(function(p){
+    var g = {}; Object.keys(p).forEach(function(k){ if (k.charAt(0) !== "_") g[k] = p[k]; });
+    return { id: p._localId || ("game_" + p.date + "_" + Date.now()), g: g, draftKey: p._draftKey };
+  });
+  var res = await ghUpdate(function(d){
+    clean.forEach(function(c){ d.game_logs[c.id] = c.g; dropDrafts(d.game_logs, { date: c.g.date, opponent: c.g.opponent, draftKey: c.draftKey }, c.id); });
+  }, "Game(s) uploaded from device: " + clean.map(function(c){ return c.g.date + " vs " + c.g.opponent; }).join(", "));
+  if (btn) { btn.disabled = false; btn.textContent = "☁ Upload All to Cloud"; }
+  if (!res.ok) { showToast("❌ Upload failed — still saved on this device"); return; }
+  setLocalGames([]);
+  clean.forEach(function(c){ allGames[c.id] = c.g; dropDrafts(allGames, { date: c.g.date, opponent: c.g.opponent, draftKey: c.draftKey }, c.id); });
+  buildHistory(); renderPending();
+  showToast("Uploaded ✅");
 }
 
 // ── Toast ──────────────────────────────────────────────────────────────────
@@ -1056,6 +1109,7 @@ async function init() {
   var st = document.getElementById("history-status");
   if(st) st.style.display="none";
   buildHistory();
+  renderPending();
   checkDraft();
 }
 if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",init);}else{init();}
