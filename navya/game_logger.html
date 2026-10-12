@@ -368,7 +368,7 @@ input:focus,textarea:focus{border-color:var(--gold)}
 </div>
 <div class="toast" id="tst"></div>
 
-<script>var _O="lokeshmathur-workspace",_R="Navya",_F="navya_data.json";function _T(){return localStorage.getItem("nvb_gh_token")||"";}function _em(){return {daily_logs:{},parent_logs:{},game_logs:{}};}async function ghRead(){  var tok=_T();if(!tok){showTokenSetup("");return{data:_em(),sha:null,notoken:true};}  try{    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json"}});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected — please re-enter");return{data:_em(),sha:null,autherror:true};}    if(r.status===404)return{data:_em(),sha:null};    var j=await r.json();    var data=JSON.parse(atob(j.content.replace(/\s/g,"")));    localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));    return{data:data,sha:j.sha};  }catch(e){    try{var c=localStorage.getItem("nvb_cache");if(c){var p=JSON.parse(c);return{data:p.data,sha:null,cached:true};}}catch(_){}    return{data:_em(),sha:null,cached:true};  }}async function ghWrite(data,sha,msg){  var tok=_T();if(!tok)return{ok:false,notoken:true};  localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));  try{    var content=btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2))));    var body={message:msg||"Update",content:content};if(sha)body.sha=sha;    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {method:"PUT",headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json","Content-Type":"application/json"},body:JSON.stringify(body)});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected");return{ok:false};}    var j=await r.json();return{ok:r.ok,sha:j.content&&j.content.sha};  }catch(e){return{ok:false};}}async function ghMerge(section,key,value,msg){  for(var i=0;i<3;i++){var rd=await ghRead();if(rd.notoken||rd.autherror)return{ok:false};    if(!rd.data[section])rd.data[section]={};rd.data[section][key]=value;    var res=await ghWrite(rd.data,rd.sha,msg);if(res.ok)return res;}  return{ok:false};}function showTokenSetup(msg){var ov=document.getElementById("token-overlay");if(ov)ov.style.display="flex";  var em=document.getElementById("token-error");if(em&&msg){em.textContent=msg;em.style.display="block";}}function saveToken(){var t=document.getElementById("token-input").value.trim();  if(!t||t.length<10){alert("Please paste a valid GitHub token");return;}  localStorage.setItem("nvb_gh_token",t);  var ov=document.getElementById("token-overlay");if(ov)ov.style.display="none";  if(typeof init==="function")init();}function checkToken(){if(!_T())showTokenSetup();}</script>
+<script>var _O="lokeshmathur-workspace",_R="Navya",_F="navya_data.json";function _T(){return localStorage.getItem("nvb_gh_token")||"";}function _em(){return {daily_logs:{},parent_logs:{},game_logs:{}};}async function ghRead(){  var tok=_T();if(!tok){showTokenSetup("");return{data:_em(),sha:null,notoken:true};}  try{    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {cache:"no-store",headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json"}});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected — please re-enter");return{data:_em(),sha:null,autherror:true};}    if(r.status===404)return{data:_em(),sha:null};    var j=await r.json();    var data=JSON.parse(atob(j.content.replace(/\s/g,"")));    localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));    return{data:data,sha:j.sha};  }catch(e){    try{var c=localStorage.getItem("nvb_cache");if(c){var p=JSON.parse(c);return{data:p.data,sha:null,cached:true};}}catch(_){}    return{data:_em(),sha:null,cached:true};  }}async function ghWrite(data,sha,msg){  var tok=_T();if(!tok)return{ok:false,notoken:true};  localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));  try{    var content=btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2))));    var body={message:msg||"Update",content:content};if(sha)body.sha=sha;    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {method:"PUT",headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json","Content-Type":"application/json"},body:JSON.stringify(body)});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected");return{ok:false};}    var j=await r.json();return{ok:r.ok,sha:j.content&&j.content.sha};  }catch(e){return{ok:false};}}async function ghMerge(section,key,value,msg){  for(var i=0;i<3;i++){var rd=await ghRead();if(rd.notoken||rd.autherror)return{ok:false};    if(!rd.data[section])rd.data[section]={};rd.data[section][key]=value;    var res=await ghWrite(rd.data,rd.sha,msg);if(res.ok)return res;}  return{ok:false};}async function ghUpdate(mutate,msg){  for(var i=0;i<3;i++){var rd=await ghRead();if(rd.notoken||rd.autherror||(!rd.sha&&rd.cached))return{ok:false};    if(!rd.data.game_logs)rd.data.game_logs={};mutate(rd.data);    var res=await ghWrite(rd.data,rd.sha,msg);if(res.ok)return res;}  return{ok:false};}function _nm(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}function dropDrafts(logs,g,keepId){  Object.keys(logs).forEach(function(k){if(k===keepId)return;var v=logs[k]||{};    var isDraft=k.indexOf("draft_")===0||v.in_progress;    if(isDraft&&(k===g.draftKey||(v.date===g.date&&_nm(v.opponent)===_nm(g.opponent))))delete logs[k];});}function showTokenSetup(msg){var ov=document.getElementById("token-overlay");if(ov)ov.style.display="flex";  var em=document.getElementById("token-error");if(em&&msg){em.textContent=msg;em.style.display="block";}}function saveToken(){var t=document.getElementById("token-input").value.trim();  if(!t||t.length<10){alert("Please paste a valid GitHub token");return;}  localStorage.setItem("nvb_gh_token",t);  var ov=document.getElementById("token-overlay");if(ov)ov.style.display="none";  if(typeof init==="function")init();}function checkToken(){if(!_T())showTokenSetup();}</script>
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 var game = {opponent:"", type:"", date:"", sets:[]};
@@ -502,7 +502,9 @@ function buildHistory() {
   var entries = [];
   Object.keys(allGames).forEach(function(id) {
     var g = allGames[id];
-    if (g && typeof g === "object" && (g.sets || g.opponent || g.date)) {
+    var superseded = g && (id.indexOf("draft_")===0 || g.in_progress) && Object.keys(allGames).some(function(k){
+      var o = allGames[k]; return k!==id && o && !o.in_progress && k.indexOf("draft_")!==0 && o.date===g.date && _nm(o.opponent)===_nm(g.opponent); });
+    if (g && typeof g === "object" && !superseded && (g.sets || g.opponent || g.date)) {
       entries.push({id:id, g:g});
     }
   });
@@ -731,10 +733,13 @@ async function saveAndGoToHistory(){
   showToast("Saving game...");
   var gameId = "game_" + game.date + "_" + Date.now();
   var payload = buildGamePayload(false);
-  var res = await ghMerge("game_logs", gameId, payload, "Game: " + game.date + " vs " + game.opponent);
+  // One write: add the finished game and remove this game's draft copies, so a draft
+  // can't be left behind as a second "game" (it used to be a separate, silently failing write).
+  var res = await ghUpdate(function(d){ d.game_logs[gameId] = payload; dropDrafts(d.game_logs, game, gameId); },
+    "Game: " + game.date + " vs " + game.opponent);
   if (res.ok) {
     clearDraft();
-    allGames[gameId] = payload;
+    allGames[gameId] = payload; dropDrafts(allGames, game, gameId);
     showToast("Game saved ✅");
   } else {
     // Fall back to local save
@@ -887,6 +892,7 @@ function renderCounts() {
 async function saveProgress() {
   showToast("Saving...");
   var gameId = "draft_" + game.date + "_" + game.opponent.replace(/\s/g,"_").slice(0,10);
+  game.draftKey = gameId;
   var payload = buildGamePayload(true);
   var res = await ghMerge("game_logs", gameId, payload, "Draft: " + game.opponent);
   showToast(res.ok ? "☁ Saved to cloud!" : "❌ Save failed — check connection");
@@ -1013,22 +1019,18 @@ async function saveGame() {
   postGame.focus_area = document.getElementById("focus-area").value;
   var gameId = "game_" + game.date + "_" + Date.now();
   var payload = buildGamePayload(false);
-  var res = await ghMerge("game_logs", gameId, payload, "Game: " + game.date + " vs " + game.opponent);
+  // One write: add the finished game and remove this game's draft copies, so a draft
+  // can't be left behind as a second "game" (it used to be a separate, silently failing write).
+  var res = await ghUpdate(function(d){ d.game_logs[gameId] = payload; dropDrafts(d.game_logs, game, gameId); },
+    "Game: " + game.date + " vs " + game.opponent);
   if (res.ok) {
     clearDraft();
-    allGames[gameId] = payload;
+    allGames[gameId] = payload; dropDrafts(allGames, game, gameId);
     showToast("Game saved ✅");
     setTimeout(function(){
       editMode=false;editGameId=null;
       buildHistory();showScr("scr-history");renderEditFooter();
     }, 1200);
-    // Remove any draft entry
-    var rd = await ghRead();
-    var draftKey = "draft_" + game.date + "_" + game.opponent.replace(/\s/g,"_").slice(0,10);
-    if (rd.data.game_logs && rd.data.game_logs[draftKey]) {
-      delete rd.data.game_logs[draftKey];
-      await ghWrite(rd.data, rd.sha, "Remove draft for " + game.opponent);
-    }
   } else {
     btn.textContent = "❌ Save failed — retry";
     btn.disabled = false;
