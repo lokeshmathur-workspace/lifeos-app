@@ -313,6 +313,7 @@ input:focus,textarea:focus{border-color:var(--gold)}
     <div style="font-size:12px;color:var(--dim)" id="pg-summary-hdr"></div>
   </div>
   <div class="pg-body">
+    <button class="btn" onclick="backToGame()" style="background:none;border:0;color:var(--dim);font-size:12px;padding:0 0 10px;cursor:pointer;font-family:inherit">← Back to the game (add another set)</button>
     <div class="sub" style="margin-bottom:8px">Set Summary <span style="color:var(--muted);font-size:10px">(tap 🗑 to delete a set)</span></div>
     <div id="sets-summary"></div>
     <div class="card" style="margin-bottom:12px">
@@ -368,7 +369,7 @@ input:focus,textarea:focus{border-color:var(--gold)}
 </div>
 <div class="toast" id="tst"></div>
 
-<script>var _O="lokeshmathur-workspace",_R="Navya",_F="navya_data.json";function _T(){return localStorage.getItem("nvb_gh_token")||"";}function _em(){return {daily_logs:{},parent_logs:{},game_logs:{}};}async function ghRead(){  var tok=_T();if(!tok){showTokenSetup("");return{data:_em(),sha:null,notoken:true};}  try{    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {cache:"no-store",headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json"}});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected — please re-enter");return{data:_em(),sha:null,autherror:true};}    if(r.status===404)return{data:_em(),sha:null};    var j=await r.json();    var data=JSON.parse(atob(j.content.replace(/\s/g,"")));    localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));    return{data:data,sha:j.sha};  }catch(e){    try{var c=localStorage.getItem("nvb_cache");if(c){var p=JSON.parse(c);return{data:p.data,sha:null,cached:true};}}catch(_){}    return{data:_em(),sha:null,cached:true};  }}async function ghWrite(data,sha,msg){  var tok=_T();if(!tok)return{ok:false,notoken:true};  localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));  try{    var content=btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2))));    var body={message:msg||"Update",content:content};if(sha)body.sha=sha;    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {method:"PUT",headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json","Content-Type":"application/json"},body:JSON.stringify(body)});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected");return{ok:false};}    var j=await r.json();return{ok:r.ok,sha:j.content&&j.content.sha};  }catch(e){return{ok:false};}}async function ghMerge(section,key,value,msg){  for(var i=0;i<3;i++){var rd=await ghRead();if(rd.notoken||rd.autherror)return{ok:false};    if(!rd.data[section])rd.data[section]={};rd.data[section][key]=value;    var res=await ghWrite(rd.data,rd.sha,msg);if(res.ok)return res;}  return{ok:false};}async function ghUpdate(mutate,msg){  for(var i=0;i<3;i++){var rd=await ghRead();if(rd.notoken||rd.autherror||(!rd.sha&&rd.cached))return{ok:false};    if(!rd.data.game_logs)rd.data.game_logs={};mutate(rd.data);    var res=await ghWrite(rd.data,rd.sha,msg);if(res.ok)return res;}  return{ok:false};}function _nm(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}function dropDrafts(logs,g,keepId){  Object.keys(logs).forEach(function(k){if(k===keepId)return;var v=logs[k]||{};    var isDraft=k.indexOf("draft_")===0||v.in_progress;    if(isDraft&&(k===g.draftKey||(v.date===g.date&&_nm(v.opponent)===_nm(g.opponent))))delete logs[k];});}function showTokenSetup(msg){var ov=document.getElementById("token-overlay");if(ov)ov.style.display="flex";  var em=document.getElementById("token-error");if(em&&msg){em.textContent=msg;em.style.display="block";}}function saveToken(){var t=document.getElementById("token-input").value.trim();  if(!t||t.length<10){alert("Please paste a valid GitHub token");return;}  localStorage.setItem("nvb_gh_token",t);  var ov=document.getElementById("token-overlay");if(ov)ov.style.display="none";  if(typeof init==="function")init();}function checkToken(){if(!_T())showTokenSetup();}</script>
+<script>var _O="lokeshmathur-workspace",_R="Navya",_F="navya_data.json";function _T(){return localStorage.getItem("nvb_gh_token")||"";}function _em(){return {daily_logs:{},parent_logs:{},game_logs:{}};}async function ghRead(){  var tok=_T();if(!tok){showTokenSetup("");return{data:_em(),sha:null,notoken:true};}  try{    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {cache:"no-store",headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json"}});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected — please re-enter");return{data:_em(),sha:null,autherror:true};}    if(r.status===404)return{data:_em(),sha:null};    var j=await r.json();    var data=JSON.parse(atob(j.content.replace(/\s/g,"")));    localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));    return{data:data,sha:j.sha};  }catch(e){    try{var c=localStorage.getItem("nvb_cache");if(c){var p=JSON.parse(c);return{data:p.data,sha:null,cached:true};}}catch(_){}    return{data:_em(),sha:null,cached:true};  }}async function ghWrite(data,sha,msg){  var tok=_T();if(!tok)return{ok:false,notoken:true};  localStorage.setItem("nvb_cache",JSON.stringify({data:data,ts:Date.now()}));  try{    var content=btoa(unescape(encodeURIComponent(JSON.stringify(data,null,2))));    var body={message:msg||"Update",content:content};if(sha)body.sha=sha;    var r=await fetch("https://api.github.com/repos/"+_O+"/"+_R+"/contents/"+_F,      {method:"PUT",headers:{"Authorization":"Bearer "+tok,"Accept":"application/vnd.github+json","Content-Type":"application/json"},body:JSON.stringify(body)});    if(r.status===401){localStorage.removeItem("nvb_gh_token");showTokenSetup("Token rejected");return{ok:false};}    var j=await r.json();return{ok:r.ok,sha:j.content&&j.content.sha};  }catch(e){return{ok:false};}}async function ghMerge(section,key,value,msg){  for(var i=0;i<3;i++){var rd=await ghRead();if(rd.notoken||rd.autherror)return{ok:false};    if(!rd.data[section])rd.data[section]={};rd.data[section][key]=value;    var res=await ghWrite(rd.data,rd.sha,msg);if(res.ok)return res;}  return{ok:false};}async function ghUpdate(mutate,msg){  for(var i=0;i<3;i++){var rd=await ghRead();if(rd.notoken||rd.autherror||(!rd.sha&&rd.cached))return{ok:false};    if(!rd.data.game_logs)rd.data.game_logs={};mutate(rd.data);    var res=await ghWrite(rd.data,rd.sha,msg);if(res.ok)return res;}  return{ok:false};}function _nm(s){return String(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();}function dropDrafts(logs,g,keepId){  Object.keys(logs).forEach(function(k){if(k===keepId)return;var v=logs[k]||{};    var isDraft=k.indexOf("draft_")===0||v.in_progress;    if(!isDraft)return;    if(g.draftKey?k===g.draftKey:false){delete logs[k];return;}    var legacy=!/^draft_\d{4}-\d\d-\d\d_\d{10,}$/.test(k);    if(legacy&&v.date===g.date&&_nm(v.opponent)===_nm(g.opponent))delete logs[k];});}function showTokenSetup(msg){var ov=document.getElementById("token-overlay");if(ov)ov.style.display="flex";  var em=document.getElementById("token-error");if(em&&msg){em.textContent=msg;em.style.display="block";}}function saveToken(){var t=document.getElementById("token-input").value.trim();  if(!t||t.length<10){alert("Please paste a valid GitHub token");return;}  localStorage.setItem("nvb_gh_token",t);  var ov=document.getElementById("token-overlay");if(ov)ov.style.display="none";  if(typeof init==="function")init();}function checkToken(){if(!_T())showTokenSetup();}</script>
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 var game = {opponent:"", type:"", date:"", sets:[]};
@@ -400,7 +401,8 @@ function losses() { return game.sets.filter(function(s){return s.result==="L";})
 
 // ── Draft ──────────────────────────────────────────────────────────────────
 function saveDraft() {
-  localStorage.setItem(DRAFT_KEY, JSON.stringify({game:game, curIdx:curIdx, tapHistory:tapHistory}));
+  if (editMode) return; // edits to a saved game live only until Save Changes; never offer them as "Resume Game"
+  try { localStorage.setItem(DRAFT_KEY, JSON.stringify({game:game, curIdx:curIdx, tapHistory:tapHistory, postGame:postGame})); } catch (e) {}
 }
 function clearDraft() { localStorage.removeItem(DRAFT_KEY); }
 
@@ -412,7 +414,7 @@ function checkDraft() {
     if (!draft.game || !draft.game.opponent) return false;
     var setCount = draft.game.sets.length;
     document.getElementById("resume-info").textContent =
-      "vs " + draft.game.opponent + " · " + draft.game.type + " · " + draft.game.date;
+      "vs " + draft.game.opponent + " · " + draft.game.type + " · " + draft.game.date + (draft.game.stage === "post" ? " · post-game entry" : "");
     document.getElementById("resume-sub").textContent =
       setCount + " set(s) logged · tap Resume to continue from Set " +
       (draft.game.sets.filter(function(s){return s.finalized;}).length + 1);
@@ -426,9 +428,13 @@ function resumeDraft() {
   if (!d) return;
   var draft = JSON.parse(d);
   game = draft.game;
-  curIdx = draft.curIdx || (game.sets.length - 1);
+  if (!game.gid) game.gid = String(Date.now());
+  curIdx = (draft.curIdx != null && draft.curIdx < game.sets.length) ? draft.curIdx : (game.sets.length - 1);
   tapHistory = draft.tapHistory || [];
+  editMode = false; editGameId = null;
   document.getElementById("modal-resume").classList.remove("show");
+  renderEditFooter();
+  if (game.stage === "post") { openPostGame(draft.postGame); return; }
   showLive();
 }
 
@@ -455,7 +461,12 @@ function startGame() {
   game.type = selectedType;
   game.date = document.getElementById("game-date").value || new Date().toISOString().split("T")[0];
   game.sets = [newSet(1)];
+  game.gid = String(Date.now()); // one id per game: its draft and its final save use it, so re-saves overwrite instead of duplicating
+  game.stage = "live";
   curIdx = 0; tapHistory = [];
+  resetPostGame();
+  editMode = false; editGameId = null; renderEditFooter();
+  saveDraft();
   showLive();
 }
 
@@ -542,17 +553,17 @@ function buildHistory() {
     var opp = g.opponent || "Unknown";
     var typ = g.type || "";
     var dt  = g.date || "";
-    var setRows = sets.filter(function(s){return s.result || s.score_us!=null;}).map(function(s) {
+    var setRows = sets.filter(function(s){return s.result || s.score_us!=null || s.live;}).map(function(s) {
       var rc = s.result==="W" ? "#4ecba0" : "#ff6b5b";
       var ast = s.assists != null ? s.assists : (s.setting ? s.setting.g : 0);
       var err = s.set_errors != null ? s.set_errors : (s.setting ? s.setting.r : 0);
       var ace = s.aces != null ? s.aces : (s.serving ? s.serving.g : 0);
-      return "Set "+(s.set_num||"?")+(s.result?" <span style='color:"+rc+"'>"+s.result+"</span>":"")
+      return "Set "+(s.set_num||"?")+(s.live?" <span style='color:#f0c040'>live</span>":"")+(s.result?" <span style='color:"+rc+"'>"+s.result+"</span>":"")
         +(s.score_us!=null ? " "+s.score_us+"-"+s.score_them : "")+" | Ast:"+ast+" Err:"+err+" Ace:"+ace;
     }).join("<br>");
     return "<div class='game-card'>"
       +"<div class='game-card-top'>"
-      +"<div><div class='game-opp'>"+opp+"</div>"
+      +"<div><div class='game-opp'>"+esc(opp)+(g.in_progress?" <span style='font-size:10px;font-weight:700;color:#f0c040;border:1px solid rgba(240,192,64,.4);border-radius:6px;padding:1px 6px;vertical-align:middle'>IN PROGRESS</span>":"")+"</div>"
       +"<div class='game-meta'>"+(typ?typ+" &middot; ":"")+dt+" &middot; "+sets.length+" set"+(sets.length!==1?"s":"")+"</div></div>"
       +"<div class='game-wl' style='color:"+col+"'>"+w+"W&nbsp;"+l+"L</div>"
       +"</div>"
@@ -571,6 +582,8 @@ function editGame(gameId) {
   editMode = true;
   editGameId = gameId;
   hasChanges = false;
+  postGame = Object.assign({energy_start:0, energy_end:0, composure:0, coach_feedback:"", focus_area:""}, g.post_game || {});
+  game.gid = null; game.draftKey = null; game.stage = "edit";
   game.opponent = g.opponent || "";
   game.type = g.type || "";
   game.date = g.date || "";
@@ -615,7 +628,7 @@ function editGame(gameId) {
       set_num: s.set_num || i + 1,
       setting: setting, dump: dump, blocks: blocks,
       digs: digs, serving: serving, comm: comm,
-      score_us: s.score_us || 0, score_them: s.score_them || 0,
+      score_us: s.score_us != null ? s.score_us : null, score_them: s.score_them != null ? s.score_them : null,
       result: s.result || "", communication: s.communication || "",
       body_language: s.body_language || "", finalized: true
     };
@@ -692,8 +705,9 @@ async function saveEditedGame() {
   if (!hasChanges) { showToast("No changes to save"); return; }
   if (!confirm("Save changes to " + game.opponent + "?")) return;
   showToast("Saving...");
-  var payload = buildGamePayload(false);
   var gid = editGameId;
+  // keep everything the game already had (post-game answers, older fields); replace only what the editor owns
+  var payload = Object.assign({}, allGames[gid] || {}, buildGamePayload(false), { post_game: (allGames[gid] || {}).post_game || buildGamePayload(false).post_game });
   var res = await ghMerge("game_logs", gid, payload, "Edit: " + game.opponent + " " + game.date);
   if (res.ok) {
     // Re-read from GitHub to ensure allGames has fresh data
@@ -729,34 +743,6 @@ async function deleteGameEntry(gameId) {
   }
 }
 
-async function saveAndGoToHistory(){
-  showToast("Saving game...");
-  var gameId = "game_" + game.date + "_" + Date.now();
-  var payload = buildGamePayload(false);
-  // One write: add the finished game and remove this game's draft copies, so a draft
-  // can't be left behind as a second "game" (it used to be a separate, silently failing write).
-  var res = await ghUpdate(function(d){ d.game_logs[gameId] = payload; dropDrafts(d.game_logs, game, gameId); },
-    "Game: " + game.date + " vs " + game.opponent);
-  if (res.ok) {
-    clearDraft();
-    allGames[gameId] = payload; dropDrafts(allGames, game, gameId);
-    showToast("Game saved ✅");
-  } else {
-    // Fall back to local save
-    payload._localId = gameId;
-    payload._savedAt = new Date().toLocaleString();
-    var locals = getLocalGames();
-    locals.push(payload);
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(locals));
-    clearDraft();
-    showToast("No internet — saved locally 📱");
-  }
-  editMode = false; editGameId = null;
-  buildHistory();
-  showScr("scr-history");
-  renderEditFooter();
-}
-
 function updateSetScore() {
   var s = curSet();
   var us = parseInt(document.getElementById("edit-score-us").value);
@@ -787,8 +773,8 @@ function showEditScoreSection() {
   ess.style.display = editMode ? "block" : "none";
   if (editMode) {
     var s = curSet();
-    document.getElementById("edit-score-us").value = s.score_us || 0;
-    document.getElementById("edit-score-them").value = s.score_them || 0;
+    document.getElementById("edit-score-us").value = s.score_us != null ? s.score_us : "";
+    document.getElementById("edit-score-them").value = s.score_them != null ? s.score_them : "";
     updateEditResultBtns();
   }
 }
@@ -891,7 +877,8 @@ function renderCounts() {
 // ── Save Progress mid-game ─────────────────────────────────────────────────
 async function saveProgress() {
   showToast("Saving...");
-  var gameId = "draft_" + game.date + "_" + game.opponent.replace(/\s/g,"_").slice(0,10);
+  if (!game.gid) game.gid = String(Date.now());
+  var gameId = "draft_" + game.date + "_" + game.gid;
   game.draftKey = gameId;
   var payload = buildGamePayload(true);
   var res = await ghMerge("game_logs", gameId, payload, "Draft: " + game.opponent);
@@ -916,16 +903,18 @@ function selBL(v){modalBL=v;["dropped","steady","strong"].forEach(function(x){do
 
 function confirmEndSet(endGame) {
   var s = curSet();
-  s.score_us = parseInt(document.getElementById("score-us").value) || 0;
-  s.score_them = parseInt(document.getElementById("score-them").value) || 0;
-  s.result = modalWL || "?";
+  if (!modalWL) { showToast("Pick ✅ Win or ❌ Loss for this set"); return; }
+  var us = parseInt(document.getElementById("score-us").value), them = parseInt(document.getElementById("score-them").value);
+  s.score_us = isNaN(us) ? null : us;
+  s.score_them = isNaN(them) ? null : them;
+  s.result = modalWL;
   s.communication = modalComm || "";
   s.body_language = modalBL || "";
   s.finalized = true;
   document.getElementById("modal-endset").classList.remove("show");
   saveDraft();
   if (endGame) {
-    saveAndGoToHistory();
+    openPostGame();
   } else {
     // Add new set and navigate to it
     game.sets.push(newSet(game.sets.length + 1));
@@ -938,6 +927,46 @@ function confirmEndSet(endGame) {
 }
 
 // ── Post Game ──────────────────────────────────────────────────────────────
+function resetPostGame() {
+  postGame = {energy_start:0, energy_end:0, composure:0, coach_feedback:"", focus_area:""};
+  var cf = document.getElementById("coach-feedback"), fa = document.getElementById("focus-area");
+  if (cf) cf.value = ""; if (fa) fa.value = "";
+  document.querySelectorAll("#scr-postgame .f5btn").forEach(function(b){ b.classList.remove("sel"); });
+  setSaveButtons(false);
+}
+// Opens Post-Game Entry for the game just ended (or resumed), restoring any answers already given.
+function openPostGame(saved) {
+  game.stage = "post";
+  if (saved) postGame = Object.assign({energy_start:0, energy_end:0, composure:0, coach_feedback:"", focus_area:""}, saved);
+  document.getElementById("coach-feedback").value = postGame.coach_feedback || "";
+  document.getElementById("focus-area").value = postGame.focus_area || "";
+  ["start","end","composure"].forEach(function(t){ if (postGame[pgKey(t)]) setEn(t, postGame[pgKey(t)]); else document.querySelectorAll("#" + {start:"energy-start-grid", end:"energy-end-grid", composure:"composure-grid"}[t] + " .f5btn").forEach(function(b){ b.classList.remove("sel"); }); });
+  setSaveButtons(false);
+  buildPostGameSummary();
+  saveDraft();
+  showScr("scr-postgame");
+  renderPending();
+}
+function backToGame() {
+  game.stage = "live";
+  readPostGameText();
+  curIdx = game.sets.length - 1;
+  saveDraft();
+  showLive();
+  showToast("Back in the game — ▶ adds another set");
+}
+function readPostGameText() {
+  var cf = document.getElementById("coach-feedback"), fa = document.getElementById("focus-area");
+  if (cf) postGame.coach_feedback = cf.value;
+  if (fa) postGame.focus_area = fa.value;
+}
+// Both save buttons are disabled while one is working, and stay disabled once the game is saved.
+function setSaveButtons(busy, label) {
+  var c = document.getElementById("save-game-btn"), l = document.getElementById("save-local-btn");
+  if (c) { c.disabled = busy; c.textContent = busy && label ? label : "☁ Save to Cloud"; }
+  if (l) { l.disabled = busy; l.textContent = "📱 Save Locally"; }
+}
+
 function buildPostGameSummary() {
   document.getElementById("pg-summary-hdr").textContent =
     game.opponent + " · " + game.type + " · " + wins() + "-" + losses();
@@ -952,7 +981,7 @@ function renderSetSummary() {
     var bc = s.body_language==="Strong"?"#4ecba0":s.body_language==="Steady"?"#f0c040":"#ff6b5b";
     return "<div class='set-summary-row'>"
       + "<div><strong>Set " + s.set_num + " " + (s.result==="W"?"<span style='color:#4ecba0'>W</span>":"<span style='color:#ff6b5b'>L</span>") + "</strong>"
-      + " (" + s.score_us + "-" + s.score_them + ")"
+      + (s.score_us != null ? " (" + s.score_us + "-" + s.score_them + ")" : " (no score)")
       + " · Ast: <strong>" + s.setting.g + "</strong>"
       + " Err: <strong>" + s.setting.r + "</strong>"
       + " Ace: <strong>" + s.serving.g + "</strong><br>"
@@ -976,12 +1005,16 @@ function deleteSet(displayIdx) {
   saveDraft();
 }
 
+// composure is stored as postGame.composure (it used to land in energy_composure and never reach the save)
+function pgKey(type) { return type === "composure" ? "composure" : "energy_" + type; }
 function setEn(type, n) {
-  postGame["energy_" + type] = n;
+  postGame[pgKey(type)] = n;
+  saveDraft();
   var grids = {start:"energy-start-grid", end:"energy-end-grid", composure:"composure-grid"};
   document.querySelectorAll("#" + grids[type] + " .f5btn").forEach(function(b,i){b.classList.toggle("sel",i+1===n);});
 }
 
+function sumTaps(s) { return ["setting","dump","blocks","digs","serving"].reduce(function(t,k){ return t + s[k].r + s[k].y + s[k].g; }, 0) + s.comm.pos + s.comm.neg; }
 function buildGamePayload(inProgress) {
   var payload = {
     opponent: game.opponent, type: game.type, date: game.date,
@@ -991,12 +1024,13 @@ function buildGamePayload(inProgress) {
       energy_start: postGame.energy_start || 0,
       energy_end: postGame.energy_end || 0,
       composure: postGame.composure || 0,
-      coach_feedback: document.getElementById("coach-feedback") ? document.getElementById("coach-feedback").value : "",
-      focus_area: document.getElementById("focus-area") ? document.getElementById("focus-area").value : ""
+      coach_feedback: postGame.coach_feedback || "",
+      focus_area: postGame.focus_area || ""
     },
-    sets: game.sets.filter(function(s){return s.finalized;}).map(function(s) {
+    // a draft also carries the set being played (marked live) so Save Progress really saves progress
+    sets: game.sets.filter(function(s){return s.finalized || (inProgress && !s.finalized && (sumTaps(s) > 0));}).map(function(s) {
       return {
-        set_num: s.set_num, result: s.result,
+        set_num: s.set_num, result: s.result, live: !s.finalized || undefined,
         score_us: s.score_us, score_them: s.score_them,
         communication: s.communication, body_language: s.body_language,
         setting: s.setting, dump: s.dump, blocks: s.blocks,
@@ -1013,17 +1047,17 @@ function buildGamePayload(inProgress) {
 }
 
 async function saveGame() {
-  var btn = document.getElementById("save-game-btn");
-  btn.textContent = "Saving..."; btn.disabled = true;
-  postGame.coach_feedback = document.getElementById("coach-feedback").value;
-  postGame.focus_area = document.getElementById("focus-area").value;
-  var gameId = "game_" + game.date + "_" + Date.now();
+  if (game.stage === "saved") return;
+  readPostGameText();
+  setSaveButtons(true, "Saving...");
+  if (!game.gid) game.gid = String(Date.now());
+  var gameId = "game_" + game.date + "_" + game.gid; // same id on every retry: a re-save overwrites, never duplicates
   var payload = buildGamePayload(false);
-  // One write: add the finished game and remove this game's draft copies, so a draft
-  // can't be left behind as a second "game" (it used to be a separate, silently failing write).
+  // One write: add the finished game and remove this game's draft copies.
   var res = await ghUpdate(function(d){ d.game_logs[gameId] = payload; dropDrafts(d.game_logs, game, gameId); },
     "Game: " + game.date + " vs " + game.opponent);
   if (res.ok) {
+    game.stage = "saved";
     clearDraft();
     allGames[gameId] = payload; dropDrafts(allGames, game, gameId);
     showToast("Game saved ✅");
@@ -1032,8 +1066,8 @@ async function saveGame() {
       buildHistory();showScr("scr-history");renderEditFooter();
     }, 1200);
   } else {
-    btn.textContent = "❌ No connection — retry, or 📱 Save Locally";
-    btn.disabled = false;
+    setSaveButtons(false);
+    document.getElementById("save-game-btn").textContent = "❌ No connection — retry, or 📱 Save Locally";
   }
 }
 
@@ -1054,15 +1088,16 @@ function renderPending() {
 }
 
 function saveLocally() {
-  var cf = document.getElementById("coach-feedback"), fa = document.getElementById("focus-area");
-  if (cf) postGame.coach_feedback = cf.value;
-  if (fa) postGame.focus_area = fa.value;
+  if (game.stage === "saved") return;
+  readPostGameText();
+  if (!game.gid) game.gid = String(Date.now());
   var payload = buildGamePayload(false);
-  payload._localId = "game_" + game.date + "_" + Date.now();
+  payload._localId = "game_" + game.date + "_" + game.gid;
   payload._savedAt = new Date().toLocaleString();
   if (game.draftKey) payload._draftKey = game.draftKey;
-  var locals = getLocalGames(); locals.push(payload);
+  var locals = getLocalGames().filter(function(p){ return p._localId !== payload._localId; }); locals.push(payload);
   if (!setLocalGames(locals)) { showToast("❌ Couldn't save on this device"); return; }
+  game.stage = "saved"; setSaveButtons(true);
   clearDraft();
   showToast("Saved on this device 📱 — upload when you have signal");
   editMode = false; editGameId = null;

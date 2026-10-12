@@ -121,9 +121,11 @@ export function computeNavya(f, today) {
 
   // ── volleyball (tracker as-is; a game saved twice keeps its longest copy) ──
   const games = {};
-  for (const g of Object.values(vb?.game_logs || {})) {
-    const k = g.date + "|" + (g.opponent || "").trim();
-    if (!games[k] || (g.sets || []).length > games[k].sets.length) games[k] = g;
+  for (const g0 of Object.values(vb?.game_logs || {})) {
+    const g = { ...g0, sets: (g0.sets || []).filter((s) => !s.live) }; // a set still being played isn't counted
+    const k = g.date + "|" + (g.opponent || "").trim(), cur = games[k];
+    // a finished save beats a draft; otherwise the copy with more sets
+    if (!cur || (cur.in_progress && !g.in_progress) || (!!cur.in_progress === !!g.in_progress && g.sets.length > cur.sets.length)) games[k] = g;
   }
   out.volleyball = {
     games: Object.values(games).sort((a, b) => (a.date < b.date ? -1 : 1)).map((g) => {
