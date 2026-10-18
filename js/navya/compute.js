@@ -24,22 +24,35 @@ export function computeNavya(f, today) {
   const snap = snaps.at(-1) || { classes: {} };
   out.academicsAsOf = snap.asOf || null;
   out.term = snap.term || null;
+  // When was a class's term % last read, and its semester (S1) %? A snapshot copies forward
+  // what wasn't re-read, so the date is the first snapshot from which the value stayed the same.
+  const sinceSame = (id, pick) => { let d = null; const cur = pick(snap.classes[id]);
+    for (let i = snaps.length - 1; i >= 0; i--) { if (JSON.stringify(pick(snaps[i].classes[id])) !== JSON.stringify(cur)) break; d = snaps[i].asOf; } return d; };
   out.classes = classes.map((c) => {
-    const g = snap.classes[c.id];
+    const g0 = snap.classes[c.id];
+    // Show whichever reading is newer: the term grade or the semester (S1) pop-up.
+    const tAsOf = g0 ? sinceSame(c.id, (x) => x && [x.letter, x.pct]) : null;
+    const sAsOf = g0?.s1?.pct != null ? sinceSame(c.id, (x) => x?.s1 && [x.s1.letter, x.s1.pct]) : null;
+    const useS1 = !!(sAsOf && tAsOf && sAsOf > tAsOf);
+    const g = useS1 ? { ...g0, letter: g0.s1.letter, pct: g0.s1.pct, cats: g0.s1.cats || null } : g0;
     if (!g) return { id: c.id, name: c.short, period: c.period, letter: null };
     const mine = assignments.filter((a) => a.cls === c.id);
     const graded = mine.filter((a) => a.earned != null && a.max);
     const ungraded = mine.filter((a) => a.status === "ungraded" || a.status === "missing");
     const cats = (g.cats || []).map(([name, earned, max]) => ({ name, earned, max, pct: max ? r2((earned / max) * 100) : null }));
+    // (an S1 reading saved before categories were kept for it has none: no weights or what-ifs then)
     const row = {
       id: c.id, name: c.short, fullName: c.name, period: c.period, teacher: c.teacher, level: c.level || null,
       letter: g.letter, pct: g.pct ?? null, display: g.display || null, gp: gpOf(g.letter), cats,
-      s1: g.s1 || null, next: g.pct != null ? nextUp(g.pct) : null,
+      view: useS1 ? "S1" : "term", asOf: useS1 ? sAsOf : tAsOf, termView: useS1 ? { letter: g0.letter, pct: g0.pct ?? null, asOf: tAsOf } : null,
+      s1: useS1 ? null : (g.s1 || null), next: g.pct != null ? nextUp(g.pct) : null,
       low: graded.map((a) => ({ name: a.name, due: a.due, cat: a.cat, earned: a.earned, max: a.max, pct: r1((a.earned / a.max) * 100) }))
         .filter((a) => a.pct < 80).sort((a, b) => a.pct - b.pct),
       ungraded: ungraded.map((a) => ({ name: a.name, due: a.due, cat: a.cat, max: a.max, status: a.status })),
       upcoming: mine.filter((a) => a.status === "upcoming").map((a) => ({ name: a.name, due: a.due, max: a.max })),
-      trend: snaps.filter((s) => s.classes[c.id]?.pct != null).map((s) => [s.asOf, s.classes[c.id].pct]),
+      // newest reading per snapshot, so a semester pop-up after a term grade continues the line
+      trend: snaps.map((s) => { const x = s.classes[c.id]; if (!x) return null;
+        const v = useS1 && s.asOf >= sAsOf ? x.s1?.pct : x.pct; return v != null ? [s.asOf, v] : null; }).filter(Boolean),
     };
     // Category weights aren't shown in Skyward's pop-up. With one or two categories they can be
     // solved from the term % (w·a + (1−w)·b = pct); with three or more they stay unknown.
@@ -199,8 +212,9 @@ export function computeNavya(f, today) {
     since, sinceDays: daysBetween(since, today), lastRead: prevRead ? { weekStart: prevRead.weekStart, focus: prevRead.focus || "", headline: prevRead.headline || "" } : null,
     gpa: { first: out.gpa.trend[0] || null, latest: out.gpa.trend.at(-1) || null, cumulative: out.gpa.cumulative },
     gradeSnapshots: { first: snaps[0]?.asOf || null, latest: snap.asOf || null, count: snaps.length,
-      // class percentages that haven't moved between snapshots (a stale grade page, not a real trend)
-      pctUnchangedSince: (() => { let d = null; for (let i = snaps.length - 1; i > 0; i--) { const same = Object.keys(snaps[i].classes).every((k) => snaps[i].classes[k]?.pct === snaps[i - 1].classes[k]?.pct); if (!same) break; d = snaps[i - 1].asOf; } return d; })() },
+      // classes whose newest reading (term or S1 pop-up) is over 2 weeks old: a stale page, not a trend
+      staleClasses: out.classes.filter((c) => c.pct != null && c.asOf && daysBetween(c.asOf, today) > 14).map((c) => ({ name: c.name, asOf: c.asOf })),
+      pctUnchangedSince: (() => { const old = out.classes.filter((c) => c.pct != null && c.asOf && daysBetween(c.asOf, today) > 14).map((c) => c.asOf).sort(); return old[0] || null; })() },
     classes: out.classes.filter((c) => c.letter).map((c) => {
       const graded = assignments.filter((a) => a.cls === c.id && a.earned != null && a.max && a.due <= today);
       const recent = graded.filter((a) => a.due >= recentFrom), earlier = graded.filter((a) => a.due < recentFrom);

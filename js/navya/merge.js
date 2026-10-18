@@ -44,7 +44,7 @@ export function buildChanges(data, result, asOf) {
       apply(docs, v) {
         const snap = snapshotFor(docs, asOf, s.term && !isS1 ? s.term : null);
         const row = (snap.classes[c.id] = snap.classes[c.id] || {});
-        if (isS1) { row.s1 = { letter: v.letter, pct: num(v.pct) }; if (!row.letter) row.letter = v.letter; }
+        if (isS1) { row.s1 = { letter: v.letter, pct: num(v.pct), ...(s.categories?.length ? { cats: s.categories.map((k) => [k.name, num(k.earned), num(k.possible)]) } : {}) }; if (!row.letter) row.letter = v.letter; }
         else {
           row.letter = v.letter; row.pct = num(v.pct);
           if (s.display) row.display = s.display; else delete row.display;

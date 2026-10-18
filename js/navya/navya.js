@@ -263,7 +263,8 @@ function classRow(c) {
     : c.next && c.next.gap <= 2 ? `${c.next.gap} pts from ${c.next.letter}`
     : c.catSpread >= 15 && c.cats.length === 2 ? `${[...c.cats].sort((x, y) => y.pct - x.pct)[0].name} strong, ${[...c.cats].sort((x, y) => x.pct - y.pct)[0].name} lower`
     : c.upcoming.length ? `next: ${c.upcoming[0].name} (${fmtD(c.upcoming[0].due)})` : "";
-  return `<details class="nv-classrow"><summary><span class="nm">${esc(c.name)}</span><span class="nv-chip ${cls}">${esc(c.letter)}${c.pct != null ? ` · ${c.pct}%` : ""}</span><span class="sub key">${esc(key)}</span></summary>${classCard(c, true)}</details>`;
+  const when = c.asOf ? `${c.view === "S1" ? "semester view" : "term grade"} · ${fmtD(c.asOf)}` : "";
+  return `<details class="nv-classrow"><summary><span class="nm">${esc(c.name)}</span><span class="nv-chip ${cls}" title="${esc(when)}">${esc(c.letter)}${c.pct != null ? ` · ${c.pct}%` : ""}</span><span class="sub key">${esc(key)}</span></summary>${c.termView ? `<p class="sub" style="margin:6px 4px 0">Newest reading: ${esc(when)}. Term grade page (${fmtD(c.termView.asOf)}) said ${esc(c.termView.letter)}${c.termView.pct != null ? ` ${c.termView.pct}%` : ""}.</p>` : ""}${classCard(c, true)}</details>`;
 }
 
 function classCard(c, bare) {
