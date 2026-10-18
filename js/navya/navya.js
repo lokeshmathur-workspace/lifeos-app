@@ -169,10 +169,10 @@ function coachCard(co, kid, run) {
       ${co.status === "draft" ? `<span class="nv-chip warn">draft · only parents see this</span>` : `<span class="nv-chip">approved ${fmtD(co.approvedAt)}</span>`}</div>
     <h2 class="nv-headline">${esc(co.headline)}</h2>
     <div class="nv-focus"><span class="nv-kicker">🎯 This week's one focus</span><b>${esc(co.focus)}</b></div>
-    ${co.sinceLast?.length ? `<div class="nv-talk"><span class="nv-kicker">📈 Since the last read</span><ul class="nv-plain">${co.sinceLast.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>` : ""}
-    ${co.talk?.length ? `<div class="nv-talk"><span class="nv-kicker">💬 Let's talk about</span><ol>${co.talk.map((t) => `<li>${esc(t)}</li>`).join("")}</ol></div>` : ""}
-    <details class="nv-more"><summary>The full read: over time, what's working, what needs work, how it connects</summary>
-      ${co.overTime?.length ? `<h4>🗓️ Over time</h4><ul class="nv-plain">${co.overTime.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
+    ${co.sinceLast?.length ? `<div class="nv-sec"><span class="nv-kicker">📈 Since last time</span>${changeCards(co.sinceLast)}</div>` : ""}
+    ${co.talk?.length ? `<div class="nv-sec"><span class="nv-kicker">💬 Let's talk</span><div class="nv-bubbles">${co.talk.map((t) => `<p class="bub">${esc(t)}</p>`).join("")}</div></div>` : ""}
+    <details class="nv-more"><summary>More: over the season, what's working, what to work on</summary>
+      ${co.overTime?.length ? `<h4>🗓️ Over the season</h4>${changeCards(co.overTime)}` : ""}
       <div class="nv-cols3"><div><h4>🔥 What's working</h4><ul>${list(co.working)}</ul></div>
       <div><h4>🎯 What needs work</h4><ul>${list(co.needsWork)}</ul></div>
       <div><h4>🔗 How it connects</h4><p>${esc(co.connection)}</p></div></div></details>
@@ -182,10 +182,25 @@ function coachCard(co, kid, run) {
   </div>`;
 }
 
+const AREAS = { school: ["📚", "School"], phone: ["📱", "Phone"], volleyball: ["🏐", "Volleyball"], health: ["🍎", "Health"], character: ["🌱", "Character"], life: ["✨", "Life"] };
+// dir is good/bad, not the number's direction: more social media is "worse"
+const DIRS = { better: ["▲ Better", "up"], worse: ["▼ Slipping", "down"], steady: ["● Steady", "flat"] };
+DIRS.up = DIRS.better; DIRS.down = DIRS.worse; DIRS.flat = DIRS.steady;
+function changeCards(items) {
+  return `<div class="nv-changes2">${(items || []).map((x) => {
+    if (typeof x === "string") return `<div class="chg2"><p class="det">${esc(x)}</p></div>`;
+    const [ic, nm] = AREAS[x.area] || ["•", x.area || ""], [ar, cls] = DIRS[x.dir] || ["", "flat"];
+    return `<div class="chg2 ${cls}"><div class="top"><span class="area">${ic} ${esc(nm)}</span>${ar ? `<span class="dir ${cls}">${ar}</span>` : ""}</div><b>${esc(x.title || "")}</b>${x.detail ? `<p class="det">${esc(x.detail)}</p>` : ""}</div>`;
+  }).join("")}</div>`;
+}
+// editor line format for a change card: "area | up/down/flat | title | detail"
+const cardToLine = (x) => (typeof x === "string" ? x : [x.area, x.dir, x.title, x.detail].map((v) => v || "").join(" | "));
+const lineToCard = (l) => { const p = l.split("|").map((v) => v.trim()); return p.length >= 3 ? { area: p[0], dir: p[1], title: p[2], detail: p.slice(3).join(" | ") } : l; };
+
 function coachEditor(co) {
   const ta = (k, label, v, rows = 3) => `<label class="nv-fld"><span>${label}</span><textarea data-co="${k}" rows="${rows}">${esc(Array.isArray(v) ? v.join("\n") : v || "")}</textarea></label>`;
   return `<div class="nv-tile s4 coach"><span class="nv-kicker">✏️ Edit the coach's read · one item per line</span>
-    ${ta("headline", "Headline", co.headline, 2)}${ta("sinceLast", "Since the last read", co.sinceLast, 4)}${ta("overTime", "Over time", co.overTime, 3)}${ta("working", "What's working", co.working, 4)}${ta("needsWork", "What needs work", co.needsWork, 4)}
+    ${ta("headline", "Headline", co.headline, 2)}${ta("sinceLast", "Since last time — one per line: area | better/worse/steady | title | detail (areas: school, phone, volleyball, health, character)", (co.sinceLast || []).map(cardToLine), 5)}${ta("overTime", "Over the season — same format", (co.overTime || []).map(cardToLine), 3)}${ta("working", "What's working", co.working, 4)}${ta("needsWork", "What needs work", co.needsWork, 4)}
     ${ta("connection", "How it connects", co.connection, 3)}${ta("focus", "This week's one focus", co.focus, 2)}${ta("talk", "Let's talk about (with Navya)", co.talk, 4)}${ta("parentChecks", "For you to check (parents only)", co.parentChecks, 3)}
     <div class="nv-btnrow"><button class="nv-btn pri" data-act="savecoach" data-approve="1">Save &amp; approve</button><button class="nv-btn" data-act="savecoach">Save as draft</button><button class="nv-btn" data-act="canceledit">Cancel</button></div></div>`;
 }
@@ -475,7 +490,7 @@ function wire(root, D, C) {
       else if (act === "canceledit") { N.coachEdit = false; draw(); }
       else if (act === "savecoach") {
         const co = latestCoach(D), patch = {};
-        root.querySelectorAll("[data-co]").forEach((ta) => { const k = ta.dataset.co, lines = ta.value.split("\n").map((s) => s.trim()).filter(Boolean); patch[k] = ["working", "needsWork", "talk", "parentChecks", "sinceLast", "overTime"].includes(k) ? lines : ta.value.trim(); });
+        root.querySelectorAll("[data-co]").forEach((ta) => { const k = ta.dataset.co, lines = ta.value.split("\n").map((s) => s.trim()).filter(Boolean); patch[k] = ["sinceLast", "overTime"].includes(k) ? lines.map(lineToCard) : ["working", "needsWork", "talk", "parentChecks"].includes(k) ? lines : ta.value.trim(); });
         if (t.dataset.approve) Object.assign(patch, { status: "approved", approvedAt: new Date().toISOString() });
         N.coachEdit = false; await saveCoach(co, patch);
       }
