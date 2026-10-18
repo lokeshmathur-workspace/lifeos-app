@@ -6,6 +6,8 @@
 // POST to Anthropic's routine-fire endpoint. Separate credential from the
 // shared GitHub token (Phase H decision: two apps' GitHub tokens merge into
 // one, but this routine token is unrelated and stays on its own).
+import { GitHubStore } from "../github.js";
+
 const ROUTINE_CONFIG_KEY = "learning.routine";
 const FIRE_BETA_HEADER = "experimental-cc-routine-2026-04-01";
 
@@ -26,6 +28,60 @@ export function clearRoutineConfig() {
   localStorage.removeItem(ROUTINE_CONFIG_KEY);
 }
 
+// ── Shared across devices ─────────────────────────────────────────────────
+// The routine URL + token also live in the private repos, so every device signed in with a
+// GitHub token picks them up: learning/routine.json in the Claude repo (Lokesh's devices) and
+// config/routine.json in the Navya repo (family devices can only see that one). The token can
+// only start this one routine.
+let shared = null; // { cfg, navyaRepo }
+export function setRoutineShare(cfg, navyaRepo) { shared = { cfg, navyaRepo }; }
+function shareTargets() {
+  if (!shared?.cfg?.token) return [];
+  const t = [];
+  if (!shared.cfg.family) t.push({ repo: shared.cfg.repo, path: "learning/routine.json" });
+  if (shared.navyaRepo && shared.navyaRepo !== shared.cfg.repo) t.push({ repo: shared.navyaRepo, path: "config/routine.json" });
+  else if (shared.cfg.family) t.push({ repo: shared.cfg.repo, path: "config/routine.json" });
+  return t.map((x) => ({ ...x, gh: new GitHubStore({ token: shared.cfg.token, repo: x.repo, branch: "main" }) }));
+}
+
+// Reads the shared copy (newest wins) into this device. If no repo has one yet but this device
+// does, publishes this device's copy, so setting it up once on any device sets up the rest.
+// Never throws; returns the config in use (or null).
+export async function syncRoutineConfig() {
+  const targets = shareTargets();
+  const found = [];
+  for (const t of targets) {
+    try { const { json, sha } = await t.gh.getFile(t.path); found.push({ t, json, sha }); } catch { /* no access to this repo */ }
+  }
+  const best = found.filter((f) => f.json?.url && f.json?.token).sort((a, b) => ((b.json.updatedAt || "") > (a.json.updatedAt || "") ? 1 : -1))[0];
+  const local = loadRoutineConfig();
+  if (best) {
+    if (!local || local.url !== best.json.url || local.token !== best.json.token) saveRoutineConfig({ url: best.json.url, token: best.json.token });
+    // keep every reachable copy the same
+    for (const f of found) if (f !== best && (f.json?.url !== best.json.url || f.json?.token !== best.json.token)) {
+      try { await f.t.gh.putFile(f.t.path, best.json, f.sha, "routine: sync settings"); } catch {}
+    }
+    return { url: best.json.url, token: best.json.token };
+  }
+  if (local?.url && local?.token && found.length) await publishRoutineConfig(local);
+  return local;
+}
+
+// Saves (or, with null, removes) the shared copy in every repo this device can reach.
+// Returns how many repos were updated and how many failed.
+export async function publishRoutineConfig(rc) {
+  let ok = 0, failed = 0;
+  for (const t of shareTargets()) {
+    try {
+      const { json, sha } = await t.gh.getFile(t.path);
+      if (rc) await t.gh.putFile(t.path, { url: rc.url, token: rc.token, updatedAt: new Date().toISOString() }, sha, "routine: save settings");
+      else if (sha && json) await t.gh.deleteFile(t.path, sha, "routine: remove settings");
+      ok++;
+    } catch { failed++; }
+  }
+  return { ok, failed };
+}
+
 export class RoutineError extends Error {
   constructor(message, code) {
     super(message);
@@ -38,7 +94,8 @@ export class RoutineError extends Error {
 //   "draft brief <id>" -> routine drafts a brief for that one source
 // Returns { sessionId, sessionUrl } on success.
 export async function fireRoutine(text) {
-  const cfg = loadRoutineConfig();
+  let cfg = loadRoutineConfig();
+  if (!cfg?.url || !cfg?.token) cfg = await syncRoutineConfig(); // first use on this device: fetch the shared copy
   if (!cfg?.url || !cfg?.token) {
     throw new RoutineError("Processing isn't set up yet — add the routine URL and token in Settings.", "not_granted");
   }

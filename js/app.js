@@ -15,7 +15,7 @@ import { taskKey, isOpen, addTasks, setTaskStatus, removeTask, shortDue } from "
 import { openOutlookSync } from "./outlook.js";
 import { renderLearningView } from "./learning/learning.js";
 import { LearningStore } from "./learning/store.js";
-import { loadRoutineConfig, saveRoutineConfig, clearRoutineConfig } from "./learning/routine.js";
+import { loadRoutineConfig, saveRoutineConfig, clearRoutineConfig, setRoutineShare, syncRoutineConfig, publishRoutineConfig } from "./learning/routine.js";
 import { renderNavyaView } from "./navya/navya.js";
 import { NavyaStore, NAVYA_REPO_KEY, DEFAULT_NAVYA_REPO, navyaRepo } from "./navya/store.js";
 
@@ -55,6 +55,9 @@ export async function boot() {
   S.navyaStore = new NavyaStore(cfg, flash);
   S.navya = null; // reload the tab's data after a (re)connect
   S.family = !!cfg.family;
+  // reading routine settings: shared through the private repos (see learning/routine.js)
+  setRoutineShare(cfg, navyaRepo(cfg));
+  syncRoutineConfig();
   document.body.classList.toggle("family", S.family);
   if (S.family) S.view = "navya";
 
@@ -242,12 +245,12 @@ function openSettings() {
         ${ai?.url ? `<button class="btn sm" id="clearai">Remove</button>` : ""}
       </div>
       <h2 style="margin-top:22px">Learning processing</h2>
-      <p class="savenote" style="margin-bottom:10px">The routine that transcribes photos, summarizes links, and drafts briefs for the Learning tab — a separate credential from the GitHub token above, scoped by Anthropic to firing that one routine only. <a href="https://claude.ai/code/routines" target="_blank" rel="noopener">Manage your routine</a>.</p>
+      <p class="savenote" style="margin-bottom:10px">The routine that transcribes photos, summarizes links, and drafts briefs for the Learning tab — a separate credential from the GitHub token above, scoped by Anthropic to firing that one routine only. Saved here once, it's shared through your private repos, so every device signed in picks it up. <a href="https://claude.ai/code/routines" target="_blank" rel="noopener">Manage your routine</a>.</p>
       <label class="fld"><span>Routine API URL</span><input type="text" id="rurl" value="${esc(rc?.url || "")}" placeholder="https://api.anthropic.com/v1/claude_code/routines/.../fire" spellcheck="false"></label>
       <label class="fld"><span>Routine token</span><input type="password" id="rtoken" value="${esc(rc?.token || "")}" placeholder="sk-ant-oat01-..." autocomplete="off" spellcheck="false"></label>
       <div class="btnrow" style="margin-top:0">
         <button class="btn sm" id="saveroutine">Save</button>
-        ${rc?.url ? `<button class="btn sm" id="clearroutine">Remove</button>` : ""}
+        ${rc?.url ? `<button class="btn sm" id="clearroutine">Remove from all devices</button>` : ""}
       </div>
       <div class="btnrow" style="margin-top:18px"><button class="btn pri" id="closesettings">Close</button></div>
     </div>`;
@@ -315,16 +318,22 @@ function openSettings() {
     back.remove();
     boot();
   });
-  $("#saveroutine", back).addEventListener("click", () => {
+  $("#saveroutine", back).addEventListener("click", async (e) => {
     const url = $("#rurl", back).value.trim();
-    const token = $("#rtoken", back).value.trim();
+    const token = $("#rtoken", back).value.trim() || loadRoutineConfig()?.token || "";
     if (!url || !token) return;
+    e.target.disabled = true; e.target.textContent = "Saving…";
     saveRoutineConfig({ url, token });
+    const r = await publishRoutineConfig({ url, token });
     back.remove();
+    flash(r.ok ? "Saved — your other devices pick this up next time they open the app." : "Saved on this device, but couldn't share it to your other devices. Try Save again.", !r.ok);
   });
-  $("#clearroutine", back)?.addEventListener("click", () => {
+  $("#clearroutine", back)?.addEventListener("click", async (e) => {
+    e.target.disabled = true;
     clearRoutineConfig();
+    await publishRoutineConfig(null);
     back.remove();
+    flash("Removed from this device and your other devices.");
   });
 }
 
