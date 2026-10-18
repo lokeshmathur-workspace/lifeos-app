@@ -186,6 +186,52 @@ export function computeNavya(f, today) {
     gamesOnSickDays: out.volleyball.games.filter((g) => sick.includes(g.date)).map((g) => ({ date: g.date, opponent: g.opponent })),
   };
 
+  // ── trends: what changed since the last coach's read, and over the whole term/season ──
+  // The coach's read must be built from these (not from one week), so they're computed here.
+  const sunday = (iso) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.getDate() - d.getDay()); return d.toISOString().slice(0, 10); };
+  const thisWeek = sunday(today);
+  const reads = [...(f.coach || [])].filter((c) => c.weekStart < thisWeek).sort((x, y) => (x.weekStart < y.weekStart ? -1 : 1));
+  const prevRead = reads.at(-1) || null;
+  const since = prevRead ? prevRead.weekStart : addDays(today, -7);
+  const pctOf = (list) => { const m = list.reduce((t, a) => t + a.max, 0); return m ? r1((list.reduce((t, a) => t + a.earned, 0) / m) * 100) : null; };
+  const recentFrom = addDays(today, -14);
+  out.trends = {
+    since, sinceDays: daysBetween(since, today), lastRead: prevRead ? { weekStart: prevRead.weekStart, focus: prevRead.focus || "", headline: prevRead.headline || "" } : null,
+    gpa: { first: out.gpa.trend[0] || null, latest: out.gpa.trend.at(-1) || null, cumulative: out.gpa.cumulative },
+    gradeSnapshots: { first: snaps[0]?.asOf || null, latest: snap.asOf || null, count: snaps.length,
+      // class percentages that haven't moved between snapshots (a stale grade page, not a real trend)
+      pctUnchangedSince: (() => { let d = null; for (let i = snaps.length - 1; i > 0; i--) { const same = Object.keys(snaps[i].classes).every((k) => snaps[i].classes[k]?.pct === snaps[i - 1].classes[k]?.pct); if (!same) break; d = snaps[i - 1].asOf; } return d; })() },
+    classes: out.classes.filter((c) => c.letter).map((c) => {
+      const graded = assignments.filter((a) => a.cls === c.id && a.earned != null && a.max && a.due <= today);
+      const recent = graded.filter((a) => a.due >= recentFrom), earlier = graded.filter((a) => a.due < recentFrom);
+      const newSince = graded.filter((a) => a.due >= since);
+      const cats = {};
+      for (const a of graded) (cats[a.cat || "?"] = cats[a.cat || "?"] || { recent: [], earlier: [] })[a.due >= recentFrom ? "recent" : "earlier"].push(a);
+      return { id: c.id, name: c.name, letter: c.letter, pct: c.pct,
+        snapshot: c.trend.length > 1 ? { from: c.trend[0], to: c.trend.at(-1) } : null,
+        recent14: { items: recent.length, pct: pctOf(recent) }, earlier: { items: earlier.length, pct: pctOf(earlier) },
+        gradedSinceLastRead: { items: newSince.length, pct: pctOf(newSince), lowest: newSince.map((a) => ({ name: a.name, due: a.due, pct: r1((a.earned / a.max) * 100) })).sort((x, y) => x.pct - y.pct).slice(0, 2) },
+        byCategory: Object.fromEntries(Object.entries(cats).map(([k, v]) => [k, { recent: pctOf(v.recent), earlier: pctOf(v.earlier) }])),
+        stillUngraded: c.ungraded.length };
+    }),
+    attendance: { tardiesSinceLastRead: events.filter((e) => e.group === "tardy" && e.date >= since).length,
+      absencesSinceLastRead: events.filter((e) => e.group !== "tardy" && e.date >= since).length, totals: out.attendance.totals || null,
+      tardyPeriods: Object.entries(events.filter((e) => e.group === "tardy").flatMap((e) => e.periods.map(String)).reduce((m, p) => ((m[p] = (m[p] || 0) + 1), m), {})) },
+    phone: (() => { const W = out.phone.weeks; if (!W.length) return null; const last = W.at(-1), prev = W.at(-2) || null;
+      return { weeks: W.map((w) => ({ weekStart: w.weekStart, totalPerDay: w.totalPerDay, socialPerDay: w.socialPerDay, shortFormPerDay: w.shortFormPerDay, pickups: w.pickups?.dailyAvg ?? null })),
+        vsPrevWeek: prev ? { total: last.totalPerDay - prev.totalPerDay, social: last.socialPerDay - prev.socialPerDay, shortForm: last.shortFormPerDay - prev.shortFormPerDay } : null,
+        vsFirstWeek: W.length > 1 ? { total: last.totalPerDay - W[0].totalPerDay, social: last.socialPerDay - W[0].socialPerDay, shortForm: last.shortFormPerDay - W[0].shortFormPerDay, firstWeek: W[0].weekStart } : null,
+        weeksOverLimit: W.filter((w) => w.socialPerDay > L.socialMin).length, weeksTotal: W.length }; })(),
+    volleyball: (() => { const GA = out.volleyball.games.filter((g) => g.date <= today); if (!GA.length) return null;
+      const m = (xs, k) => r1(avg(xs.map((g) => g[k]).filter((x) => x != null)));
+      const last3 = GA.slice(-3), season = GA;
+      return { games: GA.length, gamesSinceLastRead: GA.filter((g) => g.date >= since).length,
+        last3: { assists: m(last3, "assists"), setErrors: m(last3, "setErrors"), aces: m(last3, "aces"), commPct: m(last3, "commPct") },
+        season: { assists: m(season, "assists"), setErrors: m(season, "setErrors"), aces: m(season, "aces"), commPct: m(season, "commPct") },
+        futureDated: out.volleyball.games.filter((g) => g.date > today).map((g) => ({ date: g.date, opponent: g.opponent })) }; })(),
+    checkinsSinceLastRead: checkins.filter((c) => c.date >= since).length,
+  };
+
   // ── HQ scorecards ──
   const worst = withGrade.reduce((a, c) => (c.pct != null && (!a || c.pct < a.pct) ? c : a), null);
   const lt = out.phone.latest;

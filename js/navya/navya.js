@@ -169,8 +169,10 @@ function coachCard(co, kid, run) {
       ${co.status === "draft" ? `<span class="nv-chip warn">draft · only parents see this</span>` : `<span class="nv-chip">approved ${fmtD(co.approvedAt)}</span>`}</div>
     <h2 class="nv-headline">${esc(co.headline)}</h2>
     <div class="nv-focus"><span class="nv-kicker">🎯 This week's one focus</span><b>${esc(co.focus)}</b></div>
+    ${co.sinceLast?.length ? `<div class="nv-talk"><span class="nv-kicker">📈 Since the last read</span><ul class="nv-plain">${co.sinceLast.map((t) => `<li>${esc(t)}</li>`).join("")}</ul></div>` : ""}
     ${co.talk?.length ? `<div class="nv-talk"><span class="nv-kicker">💬 Let's talk about</span><ol>${co.talk.map((t) => `<li>${esc(t)}</li>`).join("")}</ol></div>` : ""}
-    <details class="nv-more"><summary>The full read: what's working, what needs work, how it connects</summary>
+    <details class="nv-more"><summary>The full read: over time, what's working, what needs work, how it connects</summary>
+      ${co.overTime?.length ? `<h4>🗓️ Over time</h4><ul class="nv-plain">${co.overTime.map((t) => `<li>${esc(t)}</li>`).join("")}</ul>` : ""}
       <div class="nv-cols3"><div><h4>🔥 What's working</h4><ul>${list(co.working)}</ul></div>
       <div><h4>🎯 What needs work</h4><ul>${list(co.needsWork)}</ul></div>
       <div><h4>🔗 How it connects</h4><p>${esc(co.connection)}</p></div></div></details>
@@ -183,7 +185,7 @@ function coachCard(co, kid, run) {
 function coachEditor(co) {
   const ta = (k, label, v, rows = 3) => `<label class="nv-fld"><span>${label}</span><textarea data-co="${k}" rows="${rows}">${esc(Array.isArray(v) ? v.join("\n") : v || "")}</textarea></label>`;
   return `<div class="nv-tile s4 coach"><span class="nv-kicker">✏️ Edit the coach's read · one item per line</span>
-    ${ta("headline", "Headline", co.headline, 2)}${ta("working", "What's working", co.working, 4)}${ta("needsWork", "What needs work", co.needsWork, 4)}
+    ${ta("headline", "Headline", co.headline, 2)}${ta("sinceLast", "Since the last read", co.sinceLast, 4)}${ta("overTime", "Over time", co.overTime, 3)}${ta("working", "What's working", co.working, 4)}${ta("needsWork", "What needs work", co.needsWork, 4)}
     ${ta("connection", "How it connects", co.connection, 3)}${ta("focus", "This week's one focus", co.focus, 2)}${ta("talk", "Let's talk about (with Navya)", co.talk, 4)}${ta("parentChecks", "For you to check (parents only)", co.parentChecks, 3)}
     <div class="nv-btnrow"><button class="nv-btn pri" data-act="savecoach" data-approve="1">Save &amp; approve</button><button class="nv-btn" data-act="savecoach">Save as draft</button><button class="nv-btn" data-act="canceledit">Cancel</button></div></div>`;
 }
@@ -472,7 +474,7 @@ function wire(root, D, C) {
       else if (act === "canceledit") { N.coachEdit = false; draw(); }
       else if (act === "savecoach") {
         const co = latestCoach(D), patch = {};
-        root.querySelectorAll("[data-co]").forEach((ta) => { const k = ta.dataset.co, lines = ta.value.split("\n").map((s) => s.trim()).filter(Boolean); patch[k] = ["working", "needsWork", "talk", "parentChecks"].includes(k) ? lines : ta.value.trim(); });
+        root.querySelectorAll("[data-co]").forEach((ta) => { const k = ta.dataset.co, lines = ta.value.split("\n").map((s) => s.trim()).filter(Boolean); patch[k] = ["working", "needsWork", "talk", "parentChecks", "sinceLast", "overTime"].includes(k) ? lines : ta.value.trim(); });
         if (t.dataset.approve) Object.assign(patch, { status: "approved", approvedAt: new Date().toISOString() });
         N.coachEdit = false; await saveCoach(co, patch);
       }
