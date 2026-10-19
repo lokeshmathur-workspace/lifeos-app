@@ -34,6 +34,7 @@ let pollTimer = null;
 export async function renderNavyaView(store, S, renderApp) {
   ctx = { store, S, renderApp };
   const N = (S.navya = S.navya || { tab: "hq", kid: ls.get("navya.kidView", false), loaded: false, staged: [], review: null, coachEdit: false });
+  if (S.kidOnly) N.kid = true; // Navya's own phone: her view, no switch
   if (N.kid && PARENT_ONLY.has(N.tab)) N.tab = "hq";
   N.tab = TAB_ALIAS[N.tab] || N.tab;
   document.body.classList.add("navya-mode");
@@ -67,7 +68,7 @@ function draw() {
   main.innerHTML = `<div class="navya${N.kid ? " kid" : ""}">
     <div class="nv-top">
       <div class="nv-hello"><h1>hey <span>Navya</span> ✨</h1><p>${esc(weekLine())}</p></div>
-      <div class="nv-toggle">👀 Navya view <button class="nv-sw" data-act="kid" aria-pressed="${N.kid}" aria-label="Navya view hides parent-only notes"></button></div>
+      ${ctx.S.kidOnly ? "" : `<div class="nv-toggle">👀 Navya view <button class="nv-sw" data-act="kid" aria-pressed="${N.kid}" aria-label="Navya view hides parent-only notes"></button></div>`}
     </div>
     ${N.tab === "goals" ? "" : goalLine(D, C)}
     <div class="nv-navrow"><nav class="nv-tabs" aria-label="Navya screens">${tabs.map(([k, l]) => `<button data-tab="${k}" aria-pressed="${N.tab === k}">${l}</button>`).join("")}</nav>
@@ -482,7 +483,7 @@ function wire(root, D, C) {
     }
     const act = t.dataset.act;
     try {
-      if (act === "kid") { N.kid = !N.kid; ls.set("navya.kidView", N.kid); if (N.kid && PARENT_ONLY.has(N.tab)) N.tab = "hq"; draw(); }
+      if (act === "kid" && !ctx.S.kidOnly) { N.kid = !N.kid; ls.set("navya.kidView", N.kid); if (N.kid && PARENT_ONLY.has(N.tab)) N.tab = "hq"; draw(); }
       else if (act === "reload") { N.loaded = false; renderNavyaView(ctx.store, ctx.S, ctx.renderApp); }
       else if (act === "draftcoach") await startRun("coach", sundayOf(todayISO()));
       else if (act === "approvecoach") await saveCoach(latestCoach(D), { status: "approved", approvedAt: new Date().toISOString() });

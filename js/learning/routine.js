@@ -29,19 +29,15 @@ export function clearRoutineConfig() {
 }
 
 // ── Shared across devices ─────────────────────────────────────────────────
-// The routine URL + token also live in the private repos, so every device signed in with a
-// GitHub token picks them up: learning/routine.json in the Claude repo (Lokesh's devices) and
-// config/routine.json in the Navya repo (family devices can only see that one). The token can
-// only start this one routine.
+// The routine URL + token also live in learning/routine.json in the Claude repo, so each of
+// Lokesh's devices picks them up. Never in the Navya repo: anyone with a token for that repo
+// (Navya's phone included) could read it, and a session this routine starts reaches the Claude
+// repo. Family devices keep their own copy, entered in Settings; Navya's phone has none.
 let shared = null; // { cfg, navyaRepo }
 export function setRoutineShare(cfg, navyaRepo) { shared = { cfg, navyaRepo }; }
 function shareTargets() {
-  if (!shared?.cfg?.token) return [];
-  const t = [];
-  if (!shared.cfg.family) t.push({ repo: shared.cfg.repo, path: "learning/routine.json" });
-  if (shared.navyaRepo && shared.navyaRepo !== shared.cfg.repo) t.push({ repo: shared.navyaRepo, path: "config/routine.json" });
-  else if (shared.cfg.family) t.push({ repo: shared.cfg.repo, path: "config/routine.json" });
-  return t.map((x) => ({ ...x, gh: new GitHubStore({ token: shared.cfg.token, repo: x.repo, branch: "main" }) }));
+  if (!shared?.cfg?.token || shared.cfg.family) return [];
+  return [{ repo: shared.cfg.repo, path: "learning/routine.json" }].map((x) => ({ ...x, gh: new GitHubStore({ token: shared.cfg.token, repo: x.repo, branch: "main" }) }));
 }
 
 // Reads the shared copy (newest wins) into this device. If no repo has one yet but this device
@@ -94,6 +90,7 @@ export class RoutineError extends Error {
 //   "draft brief <id>" -> routine drafts a brief for that one source
 // Returns { sessionId, sessionUrl } on success.
 export async function fireRoutine(text) {
+  if (shared?.cfg?.kidOnly) throw new RoutineError("Reading runs from a parent's device.", "not_granted");
   let cfg = loadRoutineConfig();
   if (!cfg?.url || !cfg?.token) cfg = await syncRoutineConfig(); // first use on this device: fetch the shared copy
   if (!cfg?.url || !cfg?.token) {

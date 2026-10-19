@@ -47,6 +47,17 @@ worker/          Cloudflare Worker AI proxy — see worker/README.md to deploy
 4. (Optional) Settings → set a PIN — a convenience lock on this device, not the
    real security boundary (that's your token).
 
+Other devices pick "Whose device is this?" at sign-in, each with a fine-grained token for
+**only** the `Navya` repo:
+
+- **A parent's family device** — the Navya tab with parent tools. The reading routine's
+  settings are entered in Settings on that device; they are never stored in the Navya repo.
+- **Navya's own phone** — her view only: no switch to the parent view, no uploads, no parent
+  notes or drafts, and no routine settings (any found are wiped).
+
+The Game Logger's 🔑 button swaps its token (shared with the tracker and stats pages on that
+phone) after checking the new one can open the Navya repo.
+
 The source of truth for what this app is meant to do lives in the private
 `Claude` repo, under `lifeos-rebuild/` (`REQUIREMENTS.md`, `DESIGN-SYSTEM.md`,
 `DATA-MODEL.md`) and `life-os/docs/DATA_PROTOCOL.md`.

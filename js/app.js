@@ -55,9 +55,12 @@ export async function boot() {
   S.navyaStore = new NavyaStore(cfg, flash);
   S.navya = null; // reload the tab's data after a (re)connect
   S.family = !!cfg.family;
-  // reading routine settings: shared through the private repos (see learning/routine.js)
+  // Navya's own phone: her view only, and never the reading routine's settings (its token
+  // could start a session that reaches the Claude repo)
+  S.kidOnly = !!cfg.kidOnly;
   setRoutineShare(cfg, navyaRepo(cfg));
-  syncRoutineConfig();
+  if (S.kidOnly) clearRoutineConfig();
+  else syncRoutineConfig(); // reading routine settings: shared through the Claude repo (see learning/routine.js)
   document.body.classList.toggle("family", S.family);
   if (S.family) S.view = "navya";
 
@@ -74,11 +77,15 @@ function renderSetup() {
       <p class="empty" style="padding:0 0 14px">Paste a GitHub fine-grained token for the private repo that holds your journal. Create it at GitHub → Settings → Developer settings → Fine-grained tokens. Repository access: <b>only</b> the data repo. Permissions: <b>Contents → Read and write</b>, nothing else.</p>
       <label class="fld"><span>Token</span><input type="password" id="tok" placeholder="github_pat_…" autocomplete="off" spellcheck="false"></label>
       <label class="fld"><span>Repository (owner/name)</span><input type="text" id="repo" value="lokeshmathur-workspace/Claude" spellcheck="false"></label>
-      <label class="pickrow" style="margin:4px 0 10px"><input type="checkbox" id="family"> <span>Family device: Navya tab only (token for the Navya repo)</span></label>
+      <div class="fld"><span>Whose device is this?</span>
+        <label class="pickrow"><input type="radio" name="who" value="me" checked> <span>Mine: Life OS, Learning and Navya</span></label>
+        <label class="pickrow"><input type="radio" name="who" value="family"> <span>A parent's family device: Navya tab with parent tools (token for the Navya repo)</span></label>
+        <label class="pickrow" style="margin-bottom:10px"><input type="radio" name="who" value="kid"> <span>Navya's own phone: her view only (token for the Navya repo)</span></label></div>
       <div class="btnrow"><button class="btn pri" id="save">Connect</button></div>
       <p class="savenote" id="note" style="margin-top:10px"></p>
     </section>`;
-  $("#family").onchange = (e) => { $("#repo").value = e.target.checked ? DEFAULT_NAVYA_REPO : "lokeshmathur-workspace/Claude"; };
+  const who = () => main().querySelector("input[name=who]:checked").value;
+  main().querySelectorAll("input[name=who]").forEach((r) => (r.onchange = () => { $("#repo").value = who() === "me" ? "lokeshmathur-workspace/Claude" : DEFAULT_NAVYA_REPO; }));
   $("#save").onclick = async () => {
     const token = $("#tok").value.trim();
     const repo = $("#repo").value.trim();
@@ -91,7 +98,8 @@ function renderSetup() {
       note.textContent = "Repository should look like owner/name.";
       return;
     }
-    saveConfig({ token, repo, branch: "main", ...($("#family").checked ? { family: true } : {}) });
+    const w = who();
+    saveConfig({ token, repo, branch: "main", ...(w !== "me" ? { family: true } : {}), ...(w === "kid" ? { kidOnly: true } : {}) });
     boot();
   };
 }
@@ -229,10 +237,12 @@ function openSettings() {
       <div class="btnrow" style="margin-top:18px">
         ${pinSet ? `<button class="btn" id="clearpin">Remove PIN</button>` : `<button class="btn" id="setpin">Set a PIN</button>`}
       </div>
+      ${cfg?.kidOnly ? `<p class="savenote" style="margin-top:18px">Navya's phone: shows her view of the Navya tab only. To change that, sign out and connect again.</p>
+      <div class="btnrow" style="margin-top:18px"><button class="btn pri" id="closesettings">Close</button></div>` : `
       <div class="btnrow" style="margin-top:18px"><button class="btn" id="privacytest">Check: is today's journal file publicly reachable?</button></div>
       <p class="savenote" id="privacynote" style="margin-top:8px"></p>
       <h2 style="margin-top:22px">Navya tab</h2>
-      ${cfg?.family ? `<p class="savenote">Family device: this token only opens the Navya repo, so only the Navya tab shows.</p>`
+      ${cfg?.family ? `<p class="savenote">Family device: this token only opens the Navya repo, so only the Navya tab shows. Reading screenshots needs the routine URL and token entered below on this device.</p>`
         : `<p class="savenote" style="margin-bottom:10px">Her private repo. Your token needs Contents read/write on it too (GitHub → fine-grained token → Repository access → add Navya).</p>
       <label class="fld"><span>Navya repository</span><input type="text" id="navyarepo" value="${esc(navyaRepo(cfg))}" spellcheck="false"></label>
       <div class="btnrow" style="margin-top:0"><button class="btn sm" id="savenavya">Save</button></div>`}
@@ -252,7 +262,7 @@ function openSettings() {
         <button class="btn sm" id="saveroutine">Save</button>
         ${rc?.url ? `<button class="btn sm" id="clearroutine">Remove from all devices</button>` : ""}
       </div>
-      <div class="btnrow" style="margin-top:18px"><button class="btn pri" id="closesettings">Close</button></div>
+      <div class="btnrow" style="margin-top:18px"><button class="btn pri" id="closesettings">Close</button></div>`}
     </div>`;
   document.body.appendChild(back);
   liveVersion().then((v) => {
@@ -288,7 +298,7 @@ function openSettings() {
     clearPin();
     back.remove();
   });
-  $("#privacytest", back).addEventListener("click", async () => {
+  $("#privacytest", back)?.addEventListener("click", async () => {
     const note = $("#privacynote", back);
     note.textContent = "Checking…";
     try {
@@ -300,7 +310,7 @@ function openSettings() {
       note.textContent = "Couldn't run the check.";
     }
   });
-  $("#saveai", back).addEventListener("click", () => {
+  $("#saveai", back)?.addEventListener("click", () => {
     const url = $("#aiurl", back).value.trim();
     const secret = $("#aisecret", back).value.trim();
     if (!url || !secret) return;
@@ -318,7 +328,7 @@ function openSettings() {
     back.remove();
     boot();
   });
-  $("#saveroutine", back).addEventListener("click", async (e) => {
+  $("#saveroutine", back)?.addEventListener("click", async (e) => {
     const url = $("#rurl", back).value.trim();
     const token = $("#rtoken", back).value.trim() || loadRoutineConfig()?.token || "";
     if (!url || !token) return;
@@ -326,7 +336,7 @@ function openSettings() {
     saveRoutineConfig({ url, token });
     const r = await publishRoutineConfig({ url, token });
     back.remove();
-    flash(r.ok ? "Saved — your other devices pick this up next time they open the app." : "Saved on this device, but couldn't share it to your other devices. Try Save again.", !r.ok);
+    flash(S.family ? "Saved on this device." : r.ok ? "Saved — your other devices pick this up next time they open the app." : "Saved on this device, but couldn't share it to your other devices. Try Save again.", !S.family && !r.ok);
   });
   $("#clearroutine", back)?.addEventListener("click", async (e) => {
     e.target.disabled = true;
