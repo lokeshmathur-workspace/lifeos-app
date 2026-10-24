@@ -179,7 +179,10 @@ function coachCard(co, kid, run) {
       <div><h4>🔗 How it connects</h4><p>${esc(co.connection)}</p></div></div></details>
     ${kid ? "" : `<div class="nv-btnrow">${co.status === "draft" ? `<button class="nv-btn pri" data-act="approvecoach">Approve for Navya</button>` : ""}
       <button class="nv-btn" data-act="editcoach">Edit</button>
-      ${drafting ? "" : `<button class="nv-btn" data-act="draftcoach">${co.weekStart === sundayOf(todayISO()) ? "Redraft" : "Draft this week's read"}</button>`}</div>${drafting ? runLine(run) : ""}`}
+      ${drafting ? "" : co.weekStart === sundayOf(todayISO()) && co.status === "approved"
+        // an approved read is never rewritten (Navya may have seen it); the next one is for next week
+        ? `<span class="sub">Next read: week of ${esc(fmtD(addDays(co.weekStart, 7)))}. New uploads before then go into it.</span>`
+        : `<button class="nv-btn" data-act="draftcoach">${co.weekStart === sundayOf(todayISO()) ? "Redraft" : "Draft this week's read"}</button>`}</div>${drafting ? runLine(run) : ""}`}
   </div>`;
 }
 

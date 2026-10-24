@@ -108,8 +108,11 @@ export function computeNavya(f, today) {
 
   // ── phone ──
   const L = goals?.limits || { socialMin: 90, socialApps: [], shortFormApps: [], messagingApps: [] };
+  // Screen Time sometimes shows an app's full store name ("TikTok - Videos, Shop & LIVE"), so
+  // "TikTok" in goals matches the name itself or the name followed by a non-letter.
+  const isApp = (list, name) => list.some((n) => { const a = name.toLowerCase(), b = n.toLowerCase(); return a === b || (a.startsWith(b) && !/[a-z0-9]/.test(a[b.length])); });
   const weeks = [...screentime].sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1)).map((w) => {
-    const d = w.daysCovered || 7, sum = (names) => names.reduce((s, n) => s + (w.appsMin?.[n] || 0), 0);
+    const d = w.daysCovered || 7, sum = (names) => Object.entries(w.appsMin || {}).reduce((s, [n, m]) => s + (isApp(names, n) ? m : 0), 0);
     const social = sum(L.socialApps) / d;
     return {
       weekStart: w.weekStart, device: w.device, asOf: w.asOf, daysCovered: d, partial: !!w.partialWeek,
@@ -117,7 +120,7 @@ export function computeNavya(f, today) {
       socialPerDay: Math.round(social), shortFormPerDay: Math.round(sum(L.shortFormApps) / d), messagingPerDay: Math.round(sum(L.messagingApps) / d),
       limit: L.socialMin, timesLimit: r1(social / L.socialMin),
       apps: Object.entries(w.appsMin || {}).map(([name, m]) => ({ name, perDay: Math.round(m / d), week: m,
-        kind: L.shortFormApps.includes(name) ? "short" : L.socialApps.includes(name) ? "social" : L.messagingApps.includes(name) ? "msg" : "other" }))
+        kind: isApp(L.shortFormApps, name) ? "short" : isApp(L.socialApps, name) ? "social" : isApp(L.messagingApps, name) ? "msg" : "other" }))
         .sort((a, b) => b.week - a.week),
       days: (w.days || []).map((x) => ({ ...x, overLimit: x.socialMin != null && x.socialMin > L.socialMin })),
       pickups: w.pickups ? { ...w.pickups, everyMin: Math.round((16 * 60) / w.pickups.dailyAvg),
