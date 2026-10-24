@@ -179,10 +179,10 @@ function coachCard(co, kid, run) {
       <div><h4>🔗 How it connects</h4><p>${esc(co.connection)}</p></div></div></details>
     ${kid ? "" : `<div class="nv-btnrow">${co.status === "draft" ? `<button class="nv-btn pri" data-act="approvecoach">Approve for Navya</button>` : ""}
       <button class="nv-btn" data-act="editcoach">Edit</button>
-      ${drafting ? "" : co.weekStart === sundayOf(todayISO()) && co.status === "approved"
+      ${drafting ? "" : co.weekStart >= sundayOf(todayISO()) && co.status === "approved"
         // an approved read is never rewritten (Navya may have seen it); the next one is for next week
         ? `<span class="sub">Next read: week of ${esc(fmtD(addDays(co.weekStart, 7)))}. New uploads before then go into it.</span>`
-        : `<button class="nv-btn" data-act="draftcoach">${co.weekStart === sundayOf(todayISO()) ? "Redraft" : "Draft this week's read"}</button>`}</div>${drafting ? runLine(run) : ""}`}
+        : `<button class="nv-btn" data-act="draftcoach" data-week="${co.weekStart >= sundayOf(todayISO()) ? co.weekStart : sundayOf(todayISO())}">${co.weekStart >= sundayOf(todayISO()) ? "Redraft" : "Draft this week's read"}</button>`}</div>${drafting ? runLine(run) : ""}`}
   </div>`;
 }
 
@@ -488,7 +488,7 @@ function wire(root, D, C) {
     try {
       if (act === "kid" && !ctx.S.kidOnly) { N.kid = !N.kid; ls.set("navya.kidView", N.kid); if (N.kid && PARENT_ONLY.has(N.tab)) N.tab = "hq"; draw(); }
       else if (act === "reload") { N.loaded = false; renderNavyaView(ctx.store, ctx.S, ctx.renderApp); }
-      else if (act === "draftcoach") await startRun("coach", sundayOf(todayISO()));
+      else if (act === "draftcoach") await startRun("coach", t.dataset.week || sundayOf(todayISO()));
       else if (act === "approvecoach") await saveCoach(latestCoach(D), { status: "approved", approvedAt: new Date().toISOString() });
       else if (act === "editcoach") { N.coachEdit = true; draw(); }
       else if (act === "canceledit") { N.coachEdit = false; draw(); }
