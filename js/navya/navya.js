@@ -157,37 +157,40 @@ function autoWins(D, C) {
   return w.slice(0, 8);
 }
 
-// Notes after a read, kept on that week's coach file: parents write notes {talked, decisions,
-// updatedAt}; Navya writes navyaNotes in the same shape, from Navya view. Each side edits only its
-// own part, so neither can overwrite the other. Earlier weeks' notes sit underneath, newest
-// first, and the next read checks how each decision went.
-const hasNotes = (n) => !!(n && (n.talked || n.decisions?.length));
-const NOTE_SIDES = {
-  parents: { field: "notes", title: "From parents", talked: "What we talked about", decisions: "What we decided · one per line",
-    phTalked: "e.g. Talked about period 6. She said the walk from PE is long.", phDecisions: "e.g. Pack the Spanish bag at lunch" },
-  navya: { field: "navyaNotes", title: "From Navya", talked: "What I thought about this week", decisions: "What I'll try · one per line",
-    phTalked: "e.g. Algebra homework is hard when I start it late.", phDecisions: "e.g. Do Amplify right after school" },
-};
+// Notes for each week, kept on that week's coach file as
+// notes: {discussed, changes: [..], updatedAt, log: [{id, date, by, text, tag}]}.
+// The review (what we discussed, what we'll change) is written together and editable from either
+// view. The log is quick dated notes during the week, tagged as a change seen or not yet; anyone
+// adds, and each entry is edited or deleted from the view that wrote it. Last week's notes sit
+// underneath for the next review, and the next read checks how each change went.
+const hasNotes = (n) => !!(n && (n.discussed || n.changes?.length || n.log?.length));
+const LOG_TAGS = { progress: "👍 Made a change", notyet: "⚠️ Not yet" };
+const logLine = (e, editable) => `<li class="${e.tag ? "tag-" + e.tag : ""}"><div class="meta"><span>${fmtD(e.date)} · ${e.by === "navya" ? "Navya" : "Parent"}</span>${e.tag ? `<span class="tg">${LOG_TAGS[e.tag]}</span>` : ""}${editable ? `<button class="nv-link" data-act="editlog" data-id="${esc(e.id)}">Edit</button>` : ""}</div><p>${esc(e.text)}</p></li>`;
+const tagChips = (sel) => `<span class="nv-tags">${Object.entries(LOG_TAGS).map(([k, v]) => `<button type="button" data-act="logtag" data-tag="${k}" aria-pressed="${sel === k}">${v}</button>`).join("")}</span>`;
+function notesView(n) {
+  return `${n.discussed ? `<h5>What we discussed</h5><p class="talked">${esc(n.discussed)}</p>` : ""}
+    ${n.changes?.length ? `<h5>What we'll change</h5><ul class="decisions">${n.changes.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}
+    ${n.log?.length ? `<h5>During the week</h5><ul class="nv-log">${n.log.map((e) => logLine(e, false)).join("")}</ul>` : ""}`;
+}
 function notesBlock(co, kid, D) {
-  const N = ctx.S.navya, mine = kid ? "navya" : "parents";
-  const past = (D?.coach || []).filter((c) => c.weekStart < co.weekStart && (hasNotes(c.notes) || hasNotes(c.navyaNotes))).reverse();
-  const show = (x) => `${x.talked ? `<p class="talked">${esc(x.talked)}</p>` : ""}${x.decisions?.length ? `<ul class="decisions">${x.decisions.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}`;
-  const side = (who) => {
-    const S = NOTE_SIDES[who], n = co[S.field] || {}, own = who === mine, editing = own && N.notesEdit === `${co.weekStart}:${who}`;
-    const title = kid && own ? "Your notes" : S.title;
-    if (editing) return `<div class="nv-note ${who}"><b>${title}</b>
-      <label class="nv-fld"><span>${S.talked}</span><textarea data-notes="talked" rows="3" placeholder="${esc(S.phTalked)}">${esc(n.talked || "")}</textarea></label>
-      <label class="nv-fld"><span>${S.decisions}</span><textarea data-notes="decisions" rows="3" placeholder="${esc(S.phDecisions)}">${esc((n.decisions || []).join("\n"))}</textarea></label>
-      <div class="nv-btnrow"><button class="nv-btn pri" data-act="savenotes" data-week="${co.weekStart}" data-who="${who}">Save notes</button><button class="nv-btn" data-act="cancelnotes">Cancel</button></div></div>`;
-    const btn = own ? `<button class="nv-btn sm" data-act="editnotes" data-week="${co.weekStart}" data-who="${who}">${hasNotes(n) ? "Edit" : kid ? "Add your notes" : "Add notes"}</button>` : "";
-    if (hasNotes(n)) return `<div class="nv-note ${who}"><div class="nv-rowsplit"><b>${title}</b>${btn}</div>${show(n)}<p class="sub">Saved ${fmtD(n.updatedAt)}</p></div>`;
-    if (!own) return kid ? "" : `<p class="sub nv-noteempty">Navya hasn't added her notes yet. She can from Navya view.</p>`;
-    return `<div class="nv-note empty ${who}"><div class="nv-rowsplit"><b>${title}</b>${btn}</div><p class="sub">${kid ? "What did you think of this week? What will you try? Your parents see this." : "After you talk, jot down what you discussed and what you decided. Navya sees these, and next week's read checks how each decision went."}</p></div>`;
-  };
-  const pastWeek = (c) => `<div class="nv-note past"><b>Week of ${fmtD(c.weekStart)}</b>${hasNotes(c.notes) ? `<span class="who">From parents</span>${show(c.notes)}` : ""}${hasNotes(c.navyaNotes) ? `<span class="who">From Navya</span>${show(c.navyaNotes)}` : ""}</div>`;
-  return `<div class="nv-sec nv-notes"><span class="nv-kicker">📝 Our notes</span>
-    ${kid ? side("navya") + side("parents") : side("parents") + side("navya")}
-    ${past.length ? `<details class="nv-more"><summary>Notes from earlier weeks (${past.length})</summary>${past.map(pastWeek).join("")}</details>` : ""}
+  const N = ctx.S.navya, me = kid ? "navya" : "parent", n = co.notes || {}, wk = co.weekStart;
+  const prev = (D?.coach || []).filter((c) => c.weekStart < wk && hasNotes(c.notes)).reverse();
+  const editingReview = N.notesEdit === `${wk}:review`;
+  const review = editingReview
+    ? `<label class="nv-fld"><span>What we discussed · concerns from both of you</span><textarea data-notes="discussed" rows="4" placeholder="e.g. Navya is worried about the Algebra quiz. I'm worried about late nights on the phone.">${esc(n.discussed || "")}</textarea></label>
+      <label class="nv-fld"><span>What we'll change · one per line</span><textarea data-notes="changes" rows="3" placeholder="e.g. Amplify homework right after school">${esc((n.changes || []).join("\n"))}</textarea></label>
+      <div class="nv-btnrow"><button class="nv-btn pri" data-act="savereview" data-week="${wk}">Save</button><button class="nv-btn" data-act="cancelnotes">Cancel</button></div>`
+    : n.discussed || n.changes?.length ? notesView({ discussed: n.discussed, changes: n.changes })
+    : `<p class="sub">When you go through the dashboard together: what each of you is worried about, and what you'll change this week.</p>`;
+  const log = (n.log || []).map((e) => N.logEdit === e.id
+    ? `<li class="editing"><textarea data-logedit="text" rows="2">${esc(e.text)}</textarea><div class="nv-rowsplit">${tagChips(e.tag)}<span class="nv-btnrow"><button class="nv-btn sm pri" data-act="savelog" data-week="${wk}" data-id="${esc(e.id)}">Save</button><button class="nv-btn sm" data-act="dellog" data-week="${wk}" data-id="${esc(e.id)}">Delete</button><button class="nv-btn sm" data-act="cancelnotes">Cancel</button></span></div></li>`
+    : logLine(e, e.by === me)).join("");
+  return `<div class="nv-sec nv-notes"><span class="nv-kicker">📝 Notes · week of ${fmtD(wk)}</span>
+    <div class="nv-note review"><div class="nv-rowsplit"><b>Our review</b>${editingReview ? "" : `<button class="nv-btn sm" data-act="editreview" data-week="${wk}">${n.discussed || n.changes?.length ? "Edit" : "Add review notes"}</button>`}</div>${review}</div>
+    <div class="nv-note log"><b>During the week</b>${log ? `<ul class="nv-log">${log}</ul>` : `<p class="sub">Jot down what you notice as the week goes: a change made, or one that hasn't happened yet.</p>`}
+      <div class="nv-logadd"><textarea data-log="text" rows="2" placeholder="Add a note, e.g. Did Amplify before practice on Tuesday"></textarea><div class="nv-rowsplit">${tagChips(null)}<button class="nv-btn sm pri" data-act="addlog" data-week="${wk}">Add note</button></div></div></div>
+    ${prev[0] ? `<details class="nv-more" open><summary>Last week's notes · week of ${fmtD(prev[0].weekStart)}</summary><div class="nv-note past">${notesView(prev[0].notes)}</div></details>` : ""}
+    ${prev.length > 1 ? `<details class="nv-more"><summary>Older notes (${prev.length - 1})</summary>${prev.slice(1).map((c) => `<div class="nv-note past"><b>Week of ${fmtD(c.weekStart)}</b>${notesView(c.notes)}</div>`).join("")}</details>` : ""}
   </div>`;
 }
 
@@ -526,15 +529,30 @@ function wire(root, D, C) {
       else if (act === "draftcoach") await startRun("coach", t.dataset.week || sundayOf(todayISO()));
       else if (act === "approvecoach") await saveCoach(latestCoach(D), { status: "approved", approvedAt: new Date().toISOString() });
       else if (act === "editcoach") { N.coachEdit = true; draw(); }
-      else if (act === "editnotes") { N.notesEdit = `${t.dataset.week}:${t.dataset.who}`; draw(); }
-      else if (act === "cancelnotes") { N.notesEdit = null; draw(); }
-      else if (act === "savenotes") {
-        const v = (k) => root.querySelector(`[data-notes=${k}]`)?.value || "";
-        const notes = { talked: v("talked").trim(), decisions: v("decisions").split("\n").map((s) => s.trim()).filter(Boolean), updatedAt: new Date().toISOString() };
-        const field = NOTE_SIDES[t.dataset.who].field;
-        t.disabled = true; N.notesEdit = null;
-        await ctx.store.update(`coach/${t.dataset.week}.json`, null, (cur) => ({ ...cur, [field]: notes }), `navya: coach ${t.dataset.week} ${t.dataset.who === "navya" ? "Navya's notes" : "notes"}`);
-        flash("Notes saved."); draw();
+      else if (act === "editreview") { N.notesEdit = `${t.dataset.week}:review`; N.logEdit = null; draw(); }
+      else if (act === "cancelnotes") { N.notesEdit = null; N.logEdit = null; draw(); }
+      else if (act === "editlog") { N.logEdit = t.dataset.id; N.notesEdit = null; draw(); }
+      else if (act === "logtag") { const on = t.getAttribute("aria-pressed") !== "true"; t.closest(".nv-tags").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t && on))); }
+      else if (act === "savereview" || act === "addlog" || act === "savelog" || act === "dellog") {
+        const box = t.closest(".nv-logadd, li, .nv-note") || root, val = (sel) => box.querySelector(sel)?.value?.trim() || "";
+        const tag = box.querySelector(".nv-tags [aria-pressed=true]")?.dataset.tag || null;
+        let mutate, msg;
+        if (act === "savereview") {
+          const discussed = val("[data-notes=discussed]"), changes = (box.querySelector("[data-notes=changes]")?.value || "").split("\n").map((x) => x.trim()).filter(Boolean);
+          mutate = (n) => ({ ...n, discussed, changes, updatedAt: new Date().toISOString() }); msg = "notes";
+        } else if (act === "addlog") {
+          const text = val("[data-log=text]"); if (!text) return;
+          const e = { id: Date.now().toString(36), date: todayISO(), by: N.kid ? "navya" : "parent", text, tag };
+          mutate = (n) => ({ ...n, log: [...(n.log || []), e] }); msg = "note";
+        } else if (act === "savelog") {
+          const text = val("[data-logedit=text]"); if (!text) return;
+          mutate = (n) => ({ ...n, log: (n.log || []).map((e) => (e.id === t.dataset.id ? { ...e, text, tag } : e)) }); msg = "note edited";
+        } else {
+          mutate = (n) => ({ ...n, log: (n.log || []).filter((e) => e.id !== t.dataset.id) }); msg = "note deleted";
+        }
+        t.disabled = true; N.notesEdit = null; N.logEdit = null;
+        await ctx.store.update(`coach/${t.dataset.week}.json`, null, (cur) => ({ ...cur, notes: mutate(cur.notes || {}) }), `navya: coach ${t.dataset.week} ${msg}`);
+        flash(act === "dellog" ? "Note deleted." : "Notes saved."); draw();
       }
       else if (act === "canceledit") { N.coachEdit = false; draw(); }
       else if (act === "savecoach") {
