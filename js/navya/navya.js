@@ -8,7 +8,7 @@ import { computeNavya, STATUS, addDays } from "./compute.js";
 import { buildChanges, applyChanges, FILE_PATHS } from "./merge.js";
 import { lineChart, hbars, columns, SERIES } from "./charts.js";
 import { fireRoutine, RoutineError } from "../learning/routine.js";
-import { makeSharePdf } from "./share.js";
+import { makeShareImage } from "./share.js";
 import { todayISO } from "../dateutil.js";
 import { flash } from "../flash.js";
 
@@ -69,7 +69,7 @@ function draw() {
   main.innerHTML = `<div class="navya${N.kid ? " kid" : ""}">
     <div class="nv-top">
       <div class="nv-hello"><h1>hey <span>Navya</span> ✨</h1><p>${esc(weekLine())}</p></div>
-      <div class="nv-topacts"><button class="nv-btn sm" data-act="share" title="Make a PDF of Navya view to send">📤 Share</button>
+      <div class="nv-topacts"><button class="nv-btn sm" data-act="share" title="Make a picture of this week to send">📤 Share</button>
       ${ctx.S.kidOnly ? "" : `<div class="nv-toggle">👀 Navya view <button class="nv-sw" data-act="kid" aria-pressed="${N.kid}" aria-label="Navya view hides parent-only notes"></button></div>`}</div>
     </div>
     ${shareBar(N.share)}
@@ -126,33 +126,52 @@ function latestCoach(D, approvedOnly) {
   return list.at(-1) || null;
 }
 
-// 📤 Share: always Navya view's HQ (no parent-only notes or drafts), whichever view is open.
+// 📤 Share: one picture of the week from Navya view (approved read only, no parent-only notes),
+// whichever view is open: headline, one focus, since-last-time cards, this week's notes.
 function shareBar(sh) {
   if (!sh) return "";
-  if (sh.status === "making") return `<div class="nv-sharebar"><span>Making the PDF of this week…</span></div>`;
-  if (sh.status === "error") return `<div class="nv-sharebar err"><span>Couldn't make the PDF: ${esc(sh.msg)}</span><button class="nv-btn sm" data-act="shareclose">Close</button></div>`;
-  return `<div class="nv-sharebar"><span>📄 <b>${esc(sh.file.name)}</b> is ready.</span><span class="nv-btnrow">
+  if (sh.status === "making") return `<div class="nv-sharebar"><span>Making the picture of this week…</span></div>`;
+  if (sh.status === "error") return `<div class="nv-sharebar err"><span>Couldn't make the picture: ${esc(sh.msg)}</span><button class="nv-btn sm" data-act="shareclose">Close</button></div>`;
+  return `<div class="nv-sharebar"><img class="nv-shareprev" src="${sh.url}" alt="Picture of this week's coach's read and notes"><div class="nv-sharego"><span>📸 Ready to send.</span><span class="nv-btnrow">
     ${sh.canShare ? `<button class="nv-btn sm pri" data-act="sharesend">Send…</button>` : ""}
     <a class="nv-btn sm${sh.canShare ? "" : " pri"}" href="${sh.url}" download="${esc(sh.file.name)}">Save</a>
-    <button class="nv-btn sm" data-act="shareclose">Close</button></span></div>`;
+    <button class="nv-btn sm" data-act="shareclose">Close</button></span></div></div>`;
+}
+const SHOT_MAX_H = 1920; // one phone screen at 1080 px wide
+function shareShot(co, LOG_SHOWN) { // LOG_SHOWN: how many of the week's newest notes go in
+  const n = co.notes || {}, log = n.log || [];
+  const cards = (co.sinceLast || []).map((x) => {
+    if (typeof x === "string") return `<div class="s-c"><p>${esc(x)}</p></div>`;
+    const [ic, nm] = AREAS[x.area] || ["•", x.area || ""], [ar, cls] = DIRS[x.dir] || ["", "flat"];
+    return `<div class="s-c ${cls}"><div class="s-t"><span>${ic} ${esc(nm)}</span>${ar ? `<span class="s-d ${cls}">${ar}</span>` : ""}</div><b>${esc(x.title || "")}</b>${x.detail ? `<p>${esc(x.detail)}</p>` : ""}</div>`;
+  }).join("");
+  const notes = n.discussed || n.changes?.length || log.length ? `<div class="s-nt"><div class="s-k">📝 Our notes</div>
+      ${n.discussed ? `<p class="s-disc">${esc(n.discussed)}</p>` : ""}
+      ${n.changes?.length ? `<div class="s-h">What we'll change</div><ul class="s-ch">${n.changes.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${log.length ? `<div class="s-h">During the week</div><ul class="s-lg">${log.slice(-LOG_SHOWN).map((e) => `<li class="${e.tag || ""}"><span class="s-m">${fmtD(e.date)} · ${e.by === "navya" ? "Navya" : "Parent"}${e.tag ? ` · ${LOG_TAGS[e.tag]}` : ""}</span>${esc(e.text)}</li>`).join("")}</ul>${log.length > LOG_SHOWN ? `<p class="s-more">+ ${log.length - LOG_SHOWN} earlier note${log.length - LOG_SHOWN > 1 ? "s" : ""} in the app</p>` : ""}` : ""}
+    </div>` : "";
+  return `<div class="navya nv-shot">
+    <div class="s-top"><span class="s-k">🧢 Coach's read · week of ${fmtD(co.weekStart)}</span><span class="s-who">Navya</span></div>
+    <h2>${esc(co.headline)}</h2>
+    <div class="s-fo"><div class="s-k">🎯 This week's one focus</div><b>${esc(co.focus)}</b></div>
+    ${cards ? `<div class="s-k">📈 Since last time</div><div class="s-cs">${cards}</div>` : ""}
+    ${notes}
+  </div>`;
 }
 async function startShare() {
-  const N = ctx.S.navya, D = data(), C = computeNavya(D, todayISO());
+  const N = ctx.S.navya, co = latestCoach(data(), true);
   if (N.share?.url) URL.revokeObjectURL(N.share.url);
+  if (!co) { N.share = { status: "error", msg: "there's no approved coach's read yet." }; return draw(); }
   N.share = { status: "making" }; draw();
-  const wasKid = N.kid, edits = [N.notesEdit, N.logEdit, N.coachEdit];
   try {
-    N.kid = true; N.notesEdit = N.logEdit = null; N.coachEdit = false;
-    const co = latestCoach(D, true);
-    const html = `<div class="navya kid nv-share">
-      <div class="nv-top"><div class="nv-hello"><h1>hey <span>Navya</span> ✨</h1><p>${esc(weekLine())}</p></div></div>
-      ${goalLine(D, C)}${hq(D, C)}
-      <p class="nv-fresh">${freshLine(C)} · shared ${fmtD(todayISO())}</p></div>`;
-    N.kid = wasKid; [N.notesEdit, N.logEdit, N.coachEdit] = edits;
-    const file = await makeSharePdf(html, `Navya - week of ${fmtD(co?.weekStart || todayISO())}`);
-    N.share = { status: "ready", file, url: URL.createObjectURL(file), canShare: !!navigator.canShare?.({ files: [file] }) };
+    // newest 4 notes from the week; fewer if that makes it taller than one phone screen
+    const logN = co.notes?.log?.length || 0;
+    let shot, n = 4;
+    do shot = await makeShareImage(shareShot(co, n), `Navya - week of ${fmtD(co.weekStart)}`);
+    while (shot.height > SHOT_MAX_H && n-- > 2 && n < logN);
+    const { file, width, height } = shot;
+    N.share = { status: "ready", file, width, height, url: URL.createObjectURL(file), canShare: !!navigator.canShare?.({ files: [file] }) };
   } catch (e) {
-    N.kid = wasKid; [N.notesEdit, N.logEdit, N.coachEdit] = edits;
     N.share = { status: "error", msg: e.message || String(e) };
   }
   draw();
