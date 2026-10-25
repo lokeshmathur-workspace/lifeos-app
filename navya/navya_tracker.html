@@ -138,9 +138,9 @@ input:focus,textarea:focus{border-color:var(--gold)}
 <div class="page active" id="page-today">
   <div style="margin-bottom:20px">
     <div class="sec-hdr"><div class="sec-ttl"><span>🏐</span><span class="sec-nm" style="color:var(--sky)">Volleyball</span></div><span class="sec-pct" id="pct-vb" style="color:var(--sky)">0%</span></div>
-    <div class="mcard"><span class="micon">🏐</span><span class="mlbl">Setting Reps</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('setting_reps',-100)">−</button><div class="cmid"><span class="cv" id="v-setting_reps">0</span><span class="cu">reps</span></div><button class="cbtn R btn" onclick="cc('setting_reps',100)">+</button></div><div class="cbb"><div class="cbr" id="bar-setting_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 1000 reps</span></div></div></div>
-    <div class="mcard"><span class="micon">👟</span><span class="mlbl">Footwork Reps</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('footwork_reps',-25)">−</button><div class="cmid"><span class="cv" id="v-footwork_reps">0</span><span class="cu">reps</span></div><button class="cbtn R btn" onclick="cc('footwork_reps',25)">+</button></div><div class="cbb"><div class="cbr" id="bar-footwork_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 100 reps</span></div></div></div>
-    <div class="mcard"><span class="micon">💫</span><span class="mlbl">Serves Practiced</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('serve_reps',-5)">−</button><div class="cmid"><span class="cv" id="v-serve_reps">0</span><span class="cu">serves</span></div><button class="cbtn R btn" onclick="cc('serve_reps',5)">+</button></div><div class="cbb"><div class="cbr" id="bar-serve_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 30 serves</span></div></div></div>
+    <div class="mcard"><span class="micon">🏐</span><span class="mlbl">Setting Reps</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('setting_reps',-10)">−</button><div class="cmid"><span class="cv" id="v-setting_reps">0</span><span class="cu">reps</span></div><button class="cbtn R btn" onclick="cc('setting_reps',10)">+</button></div><div class="cbb"><div class="cbr" id="bar-setting_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 100 reps</span></div></div></div>
+    <div class="mcard"><span class="micon">👟</span><span class="mlbl">Footwork Reps</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('footwork_reps',-10)">−</button><div class="cmid"><span class="cv" id="v-footwork_reps">0</span><span class="cu">reps</span></div><button class="cbtn R btn" onclick="cc('footwork_reps',10)">+</button></div><div class="cbb"><div class="cbr" id="bar-footwork_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 50 reps</span></div></div></div>
+    <div class="mcard"><span class="micon">💫</span><span class="mlbl">Serves Practiced</span><div><div class="cw"><div class="cr"><button class="cbtn L btn" onclick="cc('serve_reps',-5)">−</button><div class="cmid"><span class="cv" id="v-serve_reps">0</span><span class="cu">serves</span></div><button class="cbtn R btn" onclick="cc('serve_reps',5)">+</button></div><div class="cbb"><div class="cbr" id="bar-serve_reps" style="background:var(--sky);width:0%"></div></div><span class="cgl">goal: 20 serves</span></div></div></div>
     <div class="mcard"><span class="micon">✅</span><span class="mlbl">Practice / Training</span><button class="tog btn" id="tog-practice_done" data-c="vb" onclick="tc('practice_done')"><div class="tog-th"></div></button></div>
   </div>
   <div style="margin-bottom:20px">
@@ -240,7 +240,7 @@ input:focus,textarea:focus{border-color:var(--gold)}
 </div>
 
 <script>
-var CNTS={setting_reps:{t:1000,s:100,bc:"#4a9eff"},footwork_reps:{t:100,s:25,bc:"#4a9eff"},serve_reps:{t:30,s:5,bc:"#4a9eff"},sleep_hrs:{t:9,s:0.5,bc:"#a088ff"}};
+var CNTS={setting_reps:{t:100,s:10,bc:"#4a9eff"},footwork_reps:{t:50,s:10,bc:"#4a9eff"},serve_reps:{t:20,s:5,bc:"#4a9eff"},sleep_hrs:{t:9,s:0.5,bc:"#a088ff"}};
 var TOGS=["practice_done","conditioning_done","recovery_done","protein_met","hydration_met","breakfast_had","journal_done","viz_done"];
 var ALLK=Object.keys(CNTS).concat(TOGS);
 var SECS={vb:["setting_reps","footwork_reps","serve_reps","practice_done"],cond:["conditioning_done","recovery_done"],nut:["protein_met","hydration_met","breakfast_had"],mind:["sleep_hrs","journal_done","viz_done"]};
@@ -393,7 +393,7 @@ function bldProg(){
   mc.innerHTML=html;
   var d30=getDays(30);
   bldLine("ch-score",d30.map(function(k){return{k:k,v:dl[k]?dl[k].score:null};}),  "#4a9eff",0,100,"ca-score","%",null);
-  bldBar( "ch-reps", d30.map(function(k){return{k:k,v:dl[k]?(dl[k].metrics&&dl[k].metrics.setting_reps||0):null};}), "#f0c040","ca-reps","reps",1000);
+  bldBar( "ch-reps", d30.map(function(k){return{k:k,v:dl[k]?(dl[k].metrics&&dl[k].metrics.setting_reps||0):null};}), "#f0c040","ca-reps","reps",100);
   bldLine("ch-sleep",d30.map(function(k){return{k:k,v:dl[k]?(dl[k].metrics&&dl[k].metrics.sleep_hrs||0):null};}), "#a088ff",0,11,"ca-sleep","h",9);
   var ins=[];
   if(tw&&lw){if(tw.sl<8)ins.push("<strong>Sleep avg "+tw.sl+"h</strong> — below the 9h goal. The single biggest performance lever available.");
