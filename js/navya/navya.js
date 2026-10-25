@@ -8,6 +8,7 @@ import { computeNavya, STATUS, addDays } from "./compute.js";
 import { buildChanges, applyChanges, FILE_PATHS } from "./merge.js";
 import { lineChart, hbars, columns, SERIES } from "./charts.js";
 import { fireRoutine, RoutineError } from "../learning/routine.js";
+import { makeSharePdf } from "./share.js";
 import { todayISO } from "../dateutil.js";
 import { flash } from "../flash.js";
 
@@ -68,8 +69,10 @@ function draw() {
   main.innerHTML = `<div class="navya${N.kid ? " kid" : ""}">
     <div class="nv-top">
       <div class="nv-hello"><h1>hey <span>Navya</span> ✨</h1><p>${esc(weekLine())}</p></div>
-      ${ctx.S.kidOnly ? "" : `<div class="nv-toggle">👀 Navya view <button class="nv-sw" data-act="kid" aria-pressed="${N.kid}" aria-label="Navya view hides parent-only notes"></button></div>`}
+      <div class="nv-topacts"><button class="nv-btn sm" data-act="share" title="Make a PDF of Navya view to send">📤 Share</button>
+      ${ctx.S.kidOnly ? "" : `<div class="nv-toggle">👀 Navya view <button class="nv-sw" data-act="kid" aria-pressed="${N.kid}" aria-label="Navya view hides parent-only notes"></button></div>`}</div>
     </div>
+    ${shareBar(N.share)}
     ${N.tab === "goals" ? "" : goalLine(D, C)}
     <div class="nv-navrow"><nav class="nv-tabs" aria-label="Navya screens">${tabs.map(([k, l]) => `<button data-tab="${k}" aria-pressed="${N.tab === k}">${l}</button>`).join("")}</nav>
       ${N.kid ? "" : `<details class="nv-addmenu"${PARENT_ONLY.has(N.tab) ? " data-on" : ""}><summary>＋ Add</summary><div class="menu"><button data-tab="snip" aria-pressed="${N.tab === "snip"}">📸 Screenshots &amp; files</button><button data-tab="checkin" aria-pressed="${N.tab === "checkin"}">✍️ Check-in</button></div></details>`}</div>
@@ -121,6 +124,38 @@ const info = (html, label = "How this is worked out") => `<details class="nv-inf
 function latestCoach(D, approvedOnly) {
   const list = (D.coach || []).filter((c) => !approvedOnly || c.status === "approved");
   return list.at(-1) || null;
+}
+
+// 📤 Share: always Navya view's HQ (no parent-only notes or drafts), whichever view is open.
+function shareBar(sh) {
+  if (!sh) return "";
+  if (sh.status === "making") return `<div class="nv-sharebar"><span>Making the PDF of this week…</span></div>`;
+  if (sh.status === "error") return `<div class="nv-sharebar err"><span>Couldn't make the PDF: ${esc(sh.msg)}</span><button class="nv-btn sm" data-act="shareclose">Close</button></div>`;
+  return `<div class="nv-sharebar"><span>📄 <b>${esc(sh.file.name)}</b> is ready.</span><span class="nv-btnrow">
+    ${sh.canShare ? `<button class="nv-btn sm pri" data-act="sharesend">Send…</button>` : ""}
+    <a class="nv-btn sm${sh.canShare ? "" : " pri"}" href="${sh.url}" download="${esc(sh.file.name)}">Save</a>
+    <button class="nv-btn sm" data-act="shareclose">Close</button></span></div>`;
+}
+async function startShare() {
+  const N = ctx.S.navya, D = data(), C = computeNavya(D, todayISO());
+  if (N.share?.url) URL.revokeObjectURL(N.share.url);
+  N.share = { status: "making" }; draw();
+  const wasKid = N.kid, edits = [N.notesEdit, N.logEdit, N.coachEdit];
+  try {
+    N.kid = true; N.notesEdit = N.logEdit = null; N.coachEdit = false;
+    const co = latestCoach(D, true);
+    const html = `<div class="navya kid nv-share">
+      <div class="nv-top"><div class="nv-hello"><h1>hey <span>Navya</span> ✨</h1><p>${esc(weekLine())}</p></div></div>
+      ${goalLine(D, C)}${hq(D, C)}
+      <p class="nv-fresh">${freshLine(C)} · shared ${fmtD(todayISO())}</p></div>`;
+    N.kid = wasKid; [N.notesEdit, N.logEdit, N.coachEdit] = edits;
+    const file = await makeSharePdf(html, `Navya - week of ${fmtD(co?.weekStart || todayISO())}`);
+    N.share = { status: "ready", file, url: URL.createObjectURL(file), canShare: !!navigator.canShare?.({ files: [file] }) };
+  } catch (e) {
+    N.kid = wasKid; [N.notesEdit, N.logEdit, N.coachEdit] = edits;
+    N.share = { status: "error", msg: e.message || String(e) };
+  }
+  draw();
 }
 
 function hq(D, C) {
@@ -529,6 +564,9 @@ function wire(root, D, C) {
       else if (act === "draftcoach") await startRun("coach", t.dataset.week || sundayOf(todayISO()));
       else if (act === "approvecoach") await saveCoach(latestCoach(D), { status: "approved", approvedAt: new Date().toISOString() });
       else if (act === "editcoach") { N.coachEdit = true; draw(); }
+      else if (act === "share") { if (N.share?.status !== "making") await startShare(); }
+      else if (act === "sharesend") { try { await navigator.share({ files: [N.share.file], title: N.share.file.name }); } catch (e) { if (e.name !== "AbortError") flash("Couldn't open sharing. Use Save, then send the file.", true); } }
+      else if (act === "shareclose") { if (N.share?.url) URL.revokeObjectURL(N.share.url); N.share = null; draw(); }
       else if (act === "editreview") { N.notesEdit = `${t.dataset.week}:review`; N.logEdit = null; draw(); }
       else if (act === "cancelnotes") { N.notesEdit = null; N.logEdit = null; draw(); }
       else if (act === "editlog") { N.logEdit = t.dataset.id; N.notesEdit = null; draw(); }
