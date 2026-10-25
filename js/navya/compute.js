@@ -11,6 +11,10 @@ const addDays = (iso, n) => { const d = new Date(iso + "T12:00:00"); d.setDate(d
 // status words shared by the HQ scorecards
 export const STATUS = { ok: "On track", watch: "Watch", work: "Needs work", new: "Just started" };
 
+// Screen Time sometimes shows an app's full store name ("TikTok - Videos, Shop & LIVE"), so
+// "TikTok" in goals matches the name itself or the name followed by a non-letter.
+export const appIn = (list, name) => (list || []).some((n) => { const a = String(name).toLowerCase(), b = String(n).toLowerCase(); return a === b || (a.startsWith(b) && !/[a-z0-9]/.test(a[b.length])); });
+
 export function computeNavya(f, today) {
   const { codes, classes = [], grades = [], assignments = [], attendance, gpa, screentime = [], goals, vb, checkins = [] } = f;
   const scale = codes?.scale || [];
@@ -108,10 +112,8 @@ export function computeNavya(f, today) {
 
   // ── phone ──
   const L = goals?.limits || { socialMin: 90, socialApps: [], shortFormApps: [], messagingApps: [] };
-  // Screen Time sometimes shows an app's full store name ("TikTok - Videos, Shop & LIVE"), so
-  // "TikTok" in goals matches the name itself or the name followed by a non-letter.
-  const isApp = (list, name) => list.some((n) => { const a = name.toLowerCase(), b = n.toLowerCase(); return a === b || (a.startsWith(b) && !/[a-z0-9]/.test(a[b.length])); });
-  const weeks = [...screentime].sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1)).map((w) => {
+  const isApp = appIn;
+  const rows = [...screentime].sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1)).map((w) => {
     const d = w.daysCovered || 7, sum = (names) => Object.entries(w.appsMin || {}).reduce((s, [n, m]) => s + (isApp(names, n) ? m : 0), 0);
     const social = sum(L.socialApps) / d;
     return {
@@ -128,7 +130,11 @@ export function computeNavya(f, today) {
         topFirstShare: w.pickups.total ? Math.round(((Object.values(w.pickups.firstApp || {}).sort((a, b) => b - a)[0] || 0) / w.pickups.total) * 100) : null } : null,
     };
   });
-  out.phone = { limit: L.socialMin, weeks, latest: weeks.at(-1) || null };
+  // A week with no app breakdown (e.g. a Family Sharing summary) can't say how much was social:
+  // it's kept aside instead of counting as 0 minutes of social media.
+  const weeks = rows.filter((w) => w.apps.length);
+  out.phone = { limit: L.socialMin, weeks, latest: weeks.at(-1) || null,
+    summaryOnly: rows.filter((w) => !w.apps.length).map((w) => ({ weekStart: w.weekStart, daysCovered: w.daysCovered, totalPerDay: w.totalPerDay })) };
   if (out.phone.latest) {
     const full = out.phone.latest.days.filter((x) => !x.partialDay && x.date !== out.phone.latest.asOf?.slice(0, 10));
     out.phone.latest.fullDaysOverLimit = full.filter((x) => x.overLimit).length;

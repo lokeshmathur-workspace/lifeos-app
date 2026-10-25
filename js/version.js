@@ -1,6 +1,6 @@
 // The app's version, bumped with every change that's pushed. Shown in Settings and in the
 // Navya footer; the running page compares it with the live copy to offer a reload.
-export const APP_VERSION = "2026-10-24.2";
+export const APP_VERSION = "2026-10-25.1";
 
 // Fetches the published version.js (bypassing every cache) and returns its version, or null.
 export async function liveVersion() {

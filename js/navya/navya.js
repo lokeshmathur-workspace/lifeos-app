@@ -139,7 +139,7 @@ function hq(D, C) {
   const live = rows.filter((r) => r[3] != null), waiting = rows.filter((r) => r[3] == null).map((r) => r[1].replace(/^\S+\s/, ""));
   const wins = autoWins(D, C);
   return `<div class="nv-bento">
-    ${coachCard(co, kid, run)}
+    ${coachCard(co, kid, run, D)}
     <div class="nv-tile s4"><h3>How each area is going</h3><div class="nv-rows">${live.map(([t, title, st, big, sub]) => `
       <button class="nv-row" data-tab="${t}"><span class="nm">${title}</span><span class="nv-status ${st}">● ${STATUS[st]}</span><b>${esc(big)}</b><span class="sub">${esc(sub)}</span><span class="go">→</span></button>`).join("")}</div>
       ${waiting.length ? `<p class="sub" style="margin-top:8px">Not started yet: ${esc(waiting.join(" · "))}${kid ? "" : " (they fill in from ✍️ Check-in and the goals page)"}.</p>` : ""}</div>
@@ -157,7 +157,27 @@ function autoWins(D, C) {
   return w.slice(0, 8);
 }
 
-function coachCard(co, kid, run) {
+// What you talked about and decided after a read, kept on that week's coach file as
+// notes: {talked, decisions: [..], updatedAt}. Earlier weeks' notes sit underneath, newest first,
+// and the next read checks how each decision went.
+const hasNotes = (n) => !!(n && (n.talked || n.decisions?.length));
+function notesBlock(co, kid, D) {
+  const N = ctx.S.navya, n = co.notes || {}, editing = !kid && N.notesEdit === co.weekStart;
+  const past = (D?.coach || []).filter((c) => c.weekStart < co.weekStart && hasNotes(c.notes)).reverse();
+  if (kid && !hasNotes(n) && !past.length) return "";
+  const show = (x) => `${x.talked ? `<p class="talked">${esc(x.talked)}</p>` : ""}${x.decisions?.length ? `<ul class="decisions">${x.decisions.map((d) => `<li>${esc(d)}</li>`).join("")}</ul>` : ""}`;
+  return `<div class="nv-sec nv-notes">
+    <div class="nv-rowsplit"><span class="nv-kicker">📝 Our notes</span>${kid || editing ? "" : `<button class="nv-btn sm" data-act="editnotes" data-week="${co.weekStart}">${hasNotes(n) ? "Edit notes" : "Add notes"}</button>`}</div>
+    ${editing ? `<label class="nv-fld"><span>What we talked about</span><textarea data-notes="talked" rows="3" placeholder="e.g. Talked about period 6. She said the walk from PE is long.">${esc(n.talked || "")}</textarea></label>
+      <label class="nv-fld"><span>What we decided · one per line</span><textarea data-notes="decisions" rows="3" placeholder="e.g. Pack the Spanish bag at lunch so she can go straight to class">${esc((n.decisions || []).join("\n"))}</textarea></label>
+      <div class="nv-btnrow"><button class="nv-btn pri" data-act="savenotes" data-week="${co.weekStart}">Save notes</button><button class="nv-btn" data-act="cancelnotes">Cancel</button></div>`
+      : hasNotes(n) ? `<div class="nv-note">${show(n)}<p class="sub">Saved ${fmtD(n.updatedAt)}</p></div>`
+      : `<p class="sub">After you talk, jot down what you discussed and what you decided. Next week's read checks how each decision went.</p>`}
+    ${past.length ? `<details class="nv-more"><summary>Notes from earlier weeks (${past.length})</summary>${past.map((c) => `<div class="nv-note past"><b>Week of ${fmtD(c.weekStart)}</b>${show(c.notes)}</div>`).join("")}</details>` : ""}
+  </div>`;
+}
+
+function coachCard(co, kid, run, D) {
   const drafting = run?.kind === "coach";
   if (!co) return `<div class="nv-tile s4 coach"><span class="nv-kicker">🧢 Coach's read</span>
     <h2 class="nv-headline">${kid ? "This week's coach's read is on its way 🧢" : "No coach's read yet."}</h2>
@@ -172,6 +192,7 @@ function coachCard(co, kid, run) {
     <div class="nv-focus"><span class="nv-kicker">🎯 This week's one focus</span><b>${esc(co.focus)}</b></div>
     ${co.sinceLast?.length ? `<div class="nv-sec"><span class="nv-kicker">📈 Since last time</span>${changeCards(co.sinceLast)}</div>` : ""}
     ${co.talk?.length ? `<div class="nv-sec"><span class="nv-kicker">💬 Let's talk</span><div class="nv-bubbles">${co.talk.map((t) => `<p class="bub">${esc(t)}</p>`).join("")}</div></div>` : ""}
+    ${notesBlock(co, kid, D)}
     <details class="nv-more"><summary>More: over the season, what's working, what to work on</summary>
       ${co.overTime?.length ? `<h4>🗓️ Over the season</h4>${changeCards(co.overTime)}` : ""}
       <div class="nv-cols3"><div><h4>🔥 What's working</h4><ul>${list(co.working)}</ul></div>
@@ -491,6 +512,15 @@ function wire(root, D, C) {
       else if (act === "draftcoach") await startRun("coach", t.dataset.week || sundayOf(todayISO()));
       else if (act === "approvecoach") await saveCoach(latestCoach(D), { status: "approved", approvedAt: new Date().toISOString() });
       else if (act === "editcoach") { N.coachEdit = true; draw(); }
+      else if (act === "editnotes") { N.notesEdit = t.dataset.week; draw(); }
+      else if (act === "cancelnotes") { N.notesEdit = null; draw(); }
+      else if (act === "savenotes") {
+        const v = (k) => root.querySelector(`[data-notes=${k}]`)?.value || "";
+        const notes = { talked: v("talked").trim(), decisions: v("decisions").split("\n").map((s) => s.trim()).filter(Boolean), updatedAt: new Date().toISOString() };
+        t.disabled = true; N.notesEdit = null;
+        await ctx.store.update(`coach/${t.dataset.week}.json`, null, (cur) => ({ ...cur, notes }), `navya: coach ${t.dataset.week} notes`);
+        flash("Notes saved."); draw();
+      }
       else if (act === "canceledit") { N.coachEdit = false; draw(); }
       else if (act === "savecoach") {
         const co = latestCoach(D), patch = {};

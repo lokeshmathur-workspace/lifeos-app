@@ -695,6 +695,13 @@ body.family .seg button:not([data-v="navya"]){display:none}
 .chg2 b{font-size:16px;line-height:1.35;color:var(--nink)}
 .chg2 .det{margin:0;font-size:14.5px;line-height:1.5;color:var(--nink-2)}
 .nv-bubbles{display:flex;flex-direction:column;gap:8px}
+.nv-notes .nv-btn.sm{padding:6px 12px;font-size:13px}
+.nv-note{background:rgba(13,10,26,.55);border:1px solid var(--nline);border-left:4px solid var(--amber);border-radius:14px;padding:12px 14px;display:flex;flex-direction:column;gap:6px}
+.nv-note .talked{margin:0;font-size:15.5px;line-height:1.5;color:var(--nink)}
+.nv-note .decisions{margin:0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:4px}
+.nv-note .decisions li{font-size:15px;line-height:1.45;color:var(--nink)}.nv-note .decisions li::before{content:"✔ ";color:var(--lime);font-weight:800}
+.nv-note .sub{margin:0}
+.nv-note.past{margin-top:10px;border-left-color:#8F83B3}.nv-note.past b{font-size:13px;color:var(--nink-2);text-transform:uppercase;letter-spacing:.06em}
 .nv-bubbles .bub{margin:0;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.28);border-radius:14px 14px 14px 4px;padding:11px 14px;font-size:16px;line-height:1.45;color:var(--nink);max-width:62ch}
 .nv-focus b{font-size:16.5px!important;line-height:1.45}
 @media (max-width:700px){.nv-headline{font-size:21px!important}}

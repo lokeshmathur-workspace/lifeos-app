@@ -5,6 +5,8 @@
 // buildChanges(data, result, asOf) -> [{ key, area, title, detail, fields: [{k, label, value}], apply(docs, vals) }]
 // applyChanges(data, changes, picked, edits) -> { docs, touched: Set(fileKey) }
 
+import { appIn } from "./compute.js";
+
 const norm = (s) => String(s || "").toLowerCase().replace(/[…\.]+$/, "").replace(/[^a-z0-9]+/g, " ").trim();
 const sameName = (a, b) => { const x = norm(a), y = norm(b); return x === y || (x.length > 6 && y.startsWith(x)) || (y.length > 6 && x.startsWith(y)); };
 const num = (v) => (v === "" || v == null || Number.isNaN(+v) ? null : +v);
@@ -148,7 +150,7 @@ export function buildChanges(data, result, asOf) {
     const weekStart = wk?.weekStart || pick?.days?.[0]?.[0] || null;
     const device = wk?.device || "iPhone";
     const prev = (data.screentime || []).find((x) => x.weekStart === weekStart && x.device === device);
-    const social = (data.goals?.limits?.socialApps || []).reduce((s, n) => s + (apps?.appsMin?.[n] || 0), 0);
+    const social = Object.entries(apps?.appsMin || {}).reduce((s, [n, m]) => s + (appIn(data.goals?.limits?.socialApps, n) ? m : 0), 0);
     const d = wk?.daysCovered || prev?.daysCovered || 7;
     const same = prev && (!wk || (prev.dailyAvgMin === wk.dailyAvgMin && prev.totalMin === wk.totalMin && prev.daysCovered === wk.daysCovered))
       && (!apps || JSON.stringify(prev.appsMin) === JSON.stringify(apps.appsMin)) && (!pick || prev.pickups?.total === pick.total) && !day.length;
