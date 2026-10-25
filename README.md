@@ -67,3 +67,9 @@ The source of truth for what this app is meant to do lives in the private
 Bump `APP_VERSION` in `js/version.js` (format `YYYY-MM-DD.N`) in the same commit as any change
 to the app. Open copies compare it with the published `js/version.js` and offer **Reload now**;
 Settings shows the running version and whether it's the latest.
+
+GitHub Pages' CDN keeps each file for up to 10 minutes after a push, so the check fetches
+`js/version.js` from its plain address (what a reload would get), not a cache-busting one: the
+banner appears once the new code can actually load. **Reload now** re-downloads every module
+(following imports from `js/app.js`) before reloading; if a device still runs the old code
+after that, the banner says the update is on its way instead of offering the same button.
