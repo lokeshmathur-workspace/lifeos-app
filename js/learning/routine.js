@@ -33,11 +33,15 @@ export function clearRoutineConfig() {
 // Lokesh's devices picks them up. Never in the Navya repo: anyone with a token for that repo
 // (Navya's phone included) could read it, and a session this routine starts reaches the Claude
 // repo. Family devices keep their own copy, entered in Settings; Navya's phone has none.
-let shared = null; // { cfg, navyaRepo }
-export function setRoutineShare(cfg, navyaRepo) { shared = { cfg, navyaRepo }; }
+// The parents-only Family repo also keeps a copy (config/routine.json), so Archana's devices
+// (token for Family + Navya) can start a Monarch sync or a weekly read too.
+let shared = null; // { cfg, navyaRepo, familyRepo }
+export function setRoutineShare(cfg, navyaRepo, familyRepo) { shared = { cfg, navyaRepo, familyRepo }; }
 function shareTargets() {
   if (!shared?.cfg?.token || shared.cfg.family) return [];
-  return [{ repo: shared.cfg.repo, path: "learning/routine.json" }].map((x) => ({ ...x, gh: new GitHubStore({ token: shared.cfg.token, repo: x.repo, branch: "main" }) }));
+  const t = shared.cfg.partner ? [] : [{ repo: shared.cfg.repo, path: "learning/routine.json" }];
+  if (shared.familyRepo) t.push({ repo: shared.familyRepo, path: "config/routine.json" });
+  return t.map((x) => ({ ...x, gh: new GitHubStore({ token: shared.cfg.token, repo: x.repo, branch: "main" }) }));
 }
 
 // Reads the shared copy (newest wins) into this device. If no repo has one yet but this device

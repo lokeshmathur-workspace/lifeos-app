@@ -18,6 +18,8 @@ import { LearningStore } from "./learning/store.js";
 import { loadRoutineConfig, saveRoutineConfig, clearRoutineConfig, setRoutineShare, syncRoutineConfig, publishRoutineConfig } from "./learning/routine.js";
 import { renderNavyaView } from "./navya/navya.js";
 import { NavyaStore, NAVYA_REPO_KEY, DEFAULT_NAVYA_REPO, navyaRepo } from "./navya/store.js";
+import { renderFamilyView } from "./family/family.js";
+import { FamilyStore, FAMILY_REPO_KEY, DEFAULT_FAMILY_REPO, familyRepo } from "./family/store.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -55,14 +57,21 @@ export async function boot() {
   S.navyaStore = new NavyaStore(cfg, flash);
   S.navya = null; // reload the tab's data after a (re)connect
   S.family = !!cfg.family;
+  // Family tab: Lokesh and Archana's private Family repo. Archana's devices ("partner") sign in
+  // with a token for Family + Navya only, so they show just those two tabs, never the journal.
+  S.partner = !!cfg.partner;
+  S.familyStore = new FamilyStore(cfg, flash);
+  S.fam = null;
   // Navya's own phone: her view only, and never the reading routine's settings (its token
   // could start a session that reaches the Claude repo)
   S.kidOnly = !!cfg.kidOnly;
-  setRoutineShare(cfg, navyaRepo(cfg));
+  setRoutineShare(cfg, navyaRepo(cfg), S.family ? null : familyRepo(cfg));
   if (S.kidOnly) clearRoutineConfig();
   else syncRoutineConfig(); // reading routine settings: shared through the Claude repo (see learning/routine.js)
   document.body.classList.toggle("family", S.family);
+  document.body.classList.toggle("partner", S.partner);
   if (S.family) S.view = "navya";
+  if (S.partner && !["family", "navya"].includes(S.view)) S.view = "family";
 
   const pinHash = loadPinHash();
   if (pinHash && !S.unlocked) return renderPinGate(pinHash);
@@ -79,13 +88,14 @@ function renderSetup() {
       <label class="fld"><span>Repository (owner/name)</span><input type="text" id="repo" value="lokeshmathur-workspace/Claude" spellcheck="false"></label>
       <div class="fld"><span>Whose device is this?</span>
         <label class="pickrow"><input type="radio" name="who" value="me" checked> <span>Mine: Life OS, Learning and Navya</span></label>
+        <label class="pickrow"><input type="radio" name="who" value="partner"> <span>Archana's device: Family and Navya tabs (token for the Family and Navya repos)</span></label>
         <label class="pickrow"><input type="radio" name="who" value="family"> <span>A parent's family device: Navya tab with parent tools (token for the Navya repo)</span></label>
         <label class="pickrow" style="margin-bottom:10px"><input type="radio" name="who" value="kid"> <span>Navya's own phone: her view only (token for the Navya repo)</span></label></div>
       <div class="btnrow"><button class="btn pri" id="save">Connect</button></div>
       <p class="savenote" id="note" style="margin-top:10px"></p>
     </section>`;
   const who = () => main().querySelector("input[name=who]:checked").value;
-  main().querySelectorAll("input[name=who]").forEach((r) => (r.onchange = () => { $("#repo").value = who() === "me" ? "lokeshmathur-workspace/Claude" : DEFAULT_NAVYA_REPO; }));
+  main().querySelectorAll("input[name=who]").forEach((r) => (r.onchange = () => { $("#repo").value = who() === "me" ? "lokeshmathur-workspace/Claude" : who() === "partner" ? DEFAULT_FAMILY_REPO : DEFAULT_NAVYA_REPO; }));
   $("#save").onclick = async () => {
     const token = $("#tok").value.trim();
     const repo = $("#repo").value.trim();
@@ -99,7 +109,7 @@ function renderSetup() {
       return;
     }
     const w = who();
-    saveConfig({ token, repo, branch: "main", ...(w !== "me" ? { family: true } : {}), ...(w === "kid" ? { kidOnly: true } : {}) });
+    saveConfig({ token, repo, branch: "main", ...(w === "family" || w === "kid" ? { family: true } : {}), ...(w === "kid" ? { kidOnly: true } : {}), ...(w === "partner" ? { partner: true } : {}) });
     boot();
   };
 }
@@ -130,14 +140,16 @@ function renderPinGate(pinHash) {
 
 function renderApp() {
   if (S.family) S.view = "navya";
+  if (S.partner && !["family", "navya"].includes(S.view)) S.view = "family";
   wrap().classList.toggle("wide", S.view !== "today");
-  document.body.classList.toggle("navya-mode", S.view === "navya");
+  document.body.classList.toggle("navya-mode", S.view === "navya" || S.view === "family");
   document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.v === S.view)));
   if (S.view === "today") return renderToday();
   if (S.view === "week") return renderWeekView(S.store, S, renderApp);
   if (S.view === "month") return renderMonthView(S.store, S, renderApp);
   if (S.view === "learning") return renderLearningView(S.learningStore, S, renderApp);
   if (S.view === "navya") return renderNavyaView(S.navyaStore, S, renderApp);
+  if (S.view === "family") return renderFamilyView(S.familyStore, S, renderApp);
 }
 
 window.addEventListener("lifeos:open-settings", openSettings);
@@ -145,7 +157,7 @@ window.addEventListener("lifeos:open-settings", openSettings);
 // After an Outlook import: redraw so new tasks show up — except mid-planning or
 // mid-review, where a redraw would wipe what's being typed.
 window.addEventListener("lifeos:tasks-changed", () => {
-  if (S.view === "learning" || S.view === "navya" || S.planning || S.eveningEditing) return;
+  if (S.view === "learning" || S.view === "navya" || S.view === "family" || S.planning || S.eveningEditing) return;
   renderApp();
 });
 
@@ -239,13 +251,18 @@ function openSettings() {
       </div>
       ${cfg?.kidOnly ? `<p class="savenote" style="margin-top:18px">Navya's phone: shows her view of the Navya tab only. To change that, sign out and connect again.</p>
       <div class="btnrow" style="margin-top:18px"><button class="btn pri" id="closesettings">Close</button></div>` : `
-      <div class="btnrow" style="margin-top:18px"><button class="btn" id="privacytest">Check: is today's journal file publicly reachable?</button></div>
-      <p class="savenote" id="privacynote" style="margin-top:8px"></p>
+      ${cfg?.partner ? "" : `<div class="btnrow" style="margin-top:18px"><button class="btn" id="privacytest">Check: is today's journal file publicly reachable?</button></div>
+      <p class="savenote" id="privacynote" style="margin-top:8px"></p>`}
       <h2 style="margin-top:22px">Navya tab</h2>
       ${cfg?.family ? `<p class="savenote">Family device: this token only opens the Navya repo, so only the Navya tab shows. Reading screenshots needs the routine URL and token entered below on this device.</p>`
         : `<p class="savenote" style="margin-bottom:10px">Her private repo. Your token needs Contents read/write on it too (GitHub → fine-grained token → Repository access → add Navya).</p>
       <label class="fld"><span>Navya repository</span><input type="text" id="navyarepo" value="${esc(navyaRepo(cfg))}" spellcheck="false"></label>
       <div class="btnrow" style="margin-top:0"><button class="btn sm" id="savenavya">Save</button></div>`}
+      ${cfg?.family ? "" : `<h2 style="margin-top:22px">Family tab</h2>
+      ${cfg?.partner ? `<p class="savenote">Archana's device: this token opens the Family and Navya repos only, so only those two tabs show.</p>`
+        : `<p class="savenote" style="margin-bottom:10px">Your and Archana's private repo. Your token needs Contents read/write on it too (GitHub → fine-grained token → Repository access → add Family).</p>
+      <label class="fld"><span>Family repository</span><input type="text" id="familyrepo" value="${esc(familyRepo(cfg))}" spellcheck="false"></label>
+      <div class="btnrow" style="margin-top:0"><button class="btn sm" id="savefamily">Save</button></div>`}`}
       <h2 style="margin-top:22px">AI features</h2>
       <p class="savenote" style="margin-bottom:10px">${ai?.url ? `Connected to <span class="mono">${esc(ai.url)}</span>.` : "Not set up — every AI feature has a manual fallback, so this is optional."} See worker/README.md for deploy steps.</p>
       <label class="fld"><span>Worker URL</span><input type="text" id="aiurl" value="${esc(ai?.url || "")}" placeholder="https://lifeos-ai-proxy.….workers.dev" spellcheck="false"></label>
@@ -320,6 +337,13 @@ function openSettings() {
   $("#clearai", back)?.addEventListener("click", () => {
     clearAiConfig();
     back.remove();
+  });
+  $("#savefamily", back)?.addEventListener("click", () => {
+    const v = $("#familyrepo", back).value.trim();
+    if (!/^[\w.-]+\/[\w.-]+$/.test(v)) return;
+    try { localStorage.setItem(FAMILY_REPO_KEY, v); } catch {}
+    back.remove();
+    boot();
   });
   $("#savenavya", back)?.addEventListener("click", () => {
     const v = $("#navyarepo", back).value.trim();

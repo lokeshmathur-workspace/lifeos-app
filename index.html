@@ -612,6 +612,7 @@ body.navya-mode .seg button[aria-current="true"]{background:linear-gradient(135d
 body.navya-mode #exportbtn,body.navya-mode #backupbtn,body.navya-mode #importbtn{display:none}
 body.navya-mode .iconbtn{color:#C9BEE6;background:#17122B;border-color:#2E2552}
 body.family .seg button:not([data-v="navya"]){display:none}
+body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partner #exportbtn,body.partner #backupbtn,body.partner #importbtn{display:none}
 .navya{--bg:#0D0A1A;--panel:#17122B;--panel-2:#1F1838;--nline:#2E2552;--nink:#F6F1FF;--nink-2:#C9BEE6;--nmuted:#8F83B3;
   --pink:#FF4FB8;--violet:#8B5CF6;--cyan:#22D3EE;--lime:#B8FF3C;--amber:#FFC23D;--red:#FF6B6B;
   color:#F6F1FF;font-family:"DM Sans","Manrope",system-ui,sans-serif;font-size:15px;line-height:1.5;display:flex;flex-direction:column;gap:14px}
@@ -635,6 +636,31 @@ body.family .seg button:not([data-v="navya"]){display:none}
 .nv-empty{color:var(--nmuted);padding:40px 0;text-align:center}
 .nv-top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .nv-topacts{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+/* ── Family tab (reuses the Navya look) ── */
+.navya select{background:var(--panel-2);border:1px solid var(--nline);border-radius:10px;color:var(--nink);padding:8px 10px;font:inherit}
+.fam .good{color:var(--lime)}.fam .bad{color:var(--red)}
+.fam-list{margin:8px 0 0;padding:0;list-style:none;display:flex;flex-direction:column}
+.fam-list li{display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--nline);font-size:14.5px;line-height:1.4;flex-wrap:wrap}
+.fam-list li:first-child{border-top:0}.fam-list li>span:not(.d):not(.sub):not(.fam-bar){flex:1;min-width:140px}
+.fam-list .d{font-size:12.5px;font-weight:800;color:var(--nink-2);min-width:52px;font-variant-numeric:tabular-nums}
+.fam-list li.late .d,.fam-list li.late .sub{color:var(--amber)}
+.fam-list.bars li{flex-direction:column;align-items:stretch;gap:5px}
+.fam-list.checks label{display:flex;gap:8px;align-items:center;flex:1;min-width:160px}
+.fam-li-top{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:14.5px}.fam-li-top span{color:var(--nink-2)}
+.fam-bar{display:block;height:8px;border-radius:99px;background:var(--panel-2);overflow:hidden}
+.fam-bar i{display:block;height:100%;border-radius:99px;background:var(--cyan)}.fam-bar.over i{background:var(--red)}.fam-bar.goal i{background:var(--lime)}
+.fam-form{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.fam-form input,.fam-form select{flex:1;min-width:150px;width:auto}.fam-form input.short,.fam-form select{flex:0 1 160px;min-width:120px}.fam-form input.tiny{flex:0 1 90px;min-width:80px}
+.fam-form input[type=date]{flex:0 1 160px;min-width:140px}
+.fam-cols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}@media (max-width:700px){.fam-cols{grid-template-columns:minmax(0,1fr)}}
+.fam-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}@media (max-width:520px){.fam-grid{grid-template-columns:minmax(0,1fr)}}
+.fam-navya{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;background:rgba(255,79,184,.07);border:1px solid rgba(255,79,184,.3);border-radius:14px;padding:10px 12px;margin-bottom:6px;font-size:14px}
+.fam-navya p{margin:0;flex-basis:100%}
+.fam-traits{display:flex;flex-wrap:wrap;gap:6px}.fam-traits .sticker{background:var(--panel-2);border:1px solid var(--nline);border-radius:999px;padding:4px 10px;font-size:13px}
+.fam-impact{margin:10px 0 0;padding:10px 12px;border-radius:12px;background:rgba(255,194,61,.1);border:1px solid rgba(255,194,61,.35);font-size:14px}
+.fam-scroll{overflow-x:auto}.fam-run{margin-top:10px}
+.fam-row{grid-template-columns:minmax(100px,.9fr) minmax(0,2fr) minmax(0,1.3fr) auto!important}
+.fam-list.quotes li span:not(.d){font-size:14px}
 .nv-sharebar{margin:12px 0 0;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:rgba(34,211,238,.08);border:1px solid rgba(34,211,238,.3);border-radius:14px;padding:10px 14px;color:var(--nink);font-size:14.5px}
 .nv-sharebar.err{background:rgba(255,90,90,.08);border-color:rgba(255,90,90,.35)}
 .nv-sharebar a.nv-btn{text-decoration:none;display:inline-flex;align-items:center}
@@ -911,6 +937,7 @@ body.family .seg button:not([data-v="navya"]){display:none}
       <button data-v="month">Month</button>
       <button data-v="learning">Learning</button>
       <button data-v="navya">Navya</button>
+      <button data-v="family">Family</button>
     </nav>
   </header>
   <main id="main"><p class="empty">Loading…</p></main>
