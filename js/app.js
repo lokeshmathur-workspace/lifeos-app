@@ -142,7 +142,7 @@ function renderApp() {
   if (S.family) S.view = "navya";
   if (S.partner && !["family", "navya"].includes(S.view)) S.view = "family";
   wrap().classList.toggle("wide", S.view !== "today");
-  document.body.classList.toggle("navya-mode", S.view === "navya" || S.view === "family");
+  document.body.classList.toggle("navya-mode", S.view === "navya");
   document.querySelectorAll(".seg button").forEach((b) => b.setAttribute("aria-current", String(b.dataset.v === S.view)));
   if (S.view === "today") return renderToday();
   if (S.view === "week") return renderWeekView(S.store, S, renderApp);

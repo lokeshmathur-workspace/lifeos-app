@@ -101,11 +101,11 @@ export function computeFamily(D, today) {
   // ── coming up: the next 14 days across every area ──
   const in14 = (d) => d && d >= today && daysBetween(today, d) <= 14;
   out.comingUp = [
-    ...(out.money?.bills || []).filter((b) => in14(b.due)).map((b) => ({ date: b.due, icon: "💳", text: `${b.name} · $${Math.round(b.amount)}`, area: "money" })),
-    ...out.home.appointments.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "📅", text: `${a.what}${a.who && a.who !== "both" ? ` (${name(a.who)})` : ""}`, area: "home" })),
-    ...out.kids.flatMap((k) => k.appointments.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "🧒", text: `${k.name}: ${a.what}`, area: "kids" }))),
-    ...out.us.birthdays.filter((p) => in14(p.next)).map((p) => ({ date: p.next, icon: "🎂", text: `${p.name}'s birthday`, area: "us" })),
-    ...out.home.todos.filter((t) => t.due && (t.due < today || in14(t.due))).map((t) => ({ date: t.due, icon: t.due < today ? "⚠️" : "✅", text: t.text, area: "home", overdue: t.due < today })),
+    ...(out.money?.bills || []).filter((b) => in14(b.due)).map((b) => ({ date: b.due, icon: "Bill", text: `${b.name} · $${Math.round(b.amount)}`, area: "money" })),
+    ...out.home.appointments.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "Appointment", text: `${a.what}${a.who && a.who !== "both" ? ` (${name(a.who)})` : ""}`, area: "home" })),
+    ...out.kids.flatMap((k) => k.appointments.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "Kids", text: `${k.name}: ${a.what}`, area: "kids" }))),
+    ...out.us.birthdays.filter((p) => in14(p.next)).map((p) => ({ date: p.next, icon: "Birthday", text: `${p.name}'s birthday`, area: "us" })),
+    ...out.home.todos.filter((t) => t.due && (t.due < today || in14(t.due))).map((t) => ({ date: t.due, icon: t.due < today ? "Overdue" : "To-do", text: t.text, area: "home", overdue: t.due < today })),
   ].sort((a, b) => (a.date < b.date ? -1 : 1));
   return out;
 }
