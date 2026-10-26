@@ -22,6 +22,7 @@ export const FILES = {
   rel: ["relationships.json", { goals: [], learnings: [], together: [], people: [], appreciation: [] }],
   kids: ["kids.json", {}],
   home: ["home.json", { todos: [], chores: [], appointments: [] }],
+  growth: ["growth.json", { items: [] }],
 };
 
 export class FamilyStore {
@@ -29,6 +30,10 @@ export class FamilyStore {
     this.repo = familyRepo(cfg);
     this.gh = new GitHubStore({ token: cfg.token, repo: this.repo, branch: "main" });
     this.navyaGh = new GitHubStore({ token: cfg.token, repo: (() => { try { return localStorage.getItem("navya.repo") || DEFAULT_NAVYA_REPO; } catch { return DEFAULT_NAVYA_REPO; } })(), branch: "main" });
+    // Lokesh's Learning library (Claude repo), read-only, for picking what to share in Growth.
+    // Never on Archana's devices: her token can't open that repo, and nothing is copied from it
+    // except the one idea he chooses and edits.
+    this.learnGh = cfg.partner || cfg.family ? null : new GitHubStore({ token: cfg.token, repo: cfg.repo, branch: "main" });
     this.onFlash = onFlash || (() => {});
     this.docs = {};            // key -> { doc, sha }
     this.reviews = new Map();  // weekStart -> { doc, sha }
@@ -67,6 +72,38 @@ export class FamilyStore {
       for (const p of coachPaths) { const { json } = await this.navyaGh.getFile(p); if (json?.status === "approved") { coach = json; break; } }
       return { computed: computed.json, coach };
     } catch { return null; }
+  }
+
+  // Learning sources to pick from: [{id, title, author, type}], newest first; [] if unavailable.
+  async learningSources() {
+    if (!this.learnGh) return [];
+    try {
+      const [idx, lib] = await Promise.all([this.learnGh.getFile("learning/sources/index.json"), this.learnGh.getFile("learning/library.json")]);
+      const seen = new Set(), out = [];
+      for (const s of [...(idx.json?.sources || [])].sort((a, b) => ((b.updatedAt || "") > (a.updatedAt || "") ? 1 : -1))) { seen.add(s.id); out.push({ id: s.id, title: s.title, author: s.author, type: s.type }); }
+      for (const b of lib.json?.briefs || []) if (!seen.has(b.id)) out.push({ id: b.id, title: b.title, author: b.author, type: b.type, brief: true });
+      return out;
+    } catch { return []; }
+  }
+
+  // The pieces of one source he can pick from: principles (briefs), insights, his own thoughts, highlights.
+  async learningSnippets(src) {
+    if (!this.learnGh) return [];
+    const out = [];
+    try {
+      const lib = (await this.learnGh.getFile("learning/library.json")).json;
+      const brief = (lib?.briefs || []).find((b) => b.id === src.id);
+      for (const p of brief?.principles || []) out.push({ kind: "Principle", text: p.explanation ? `${p.title}: ${p.explanation}` : p.title });
+      const meta = (await this.learnGh.getFile(`learning/sources/${src.id}/meta.json`).catch(() => ({ json: null }))).json;
+      const caps = await Promise.all((meta?.captures || []).map((c) => this.learnGh.getFile(`learning/sources/${src.id}/${typeof c === "string" ? c : c.id}.json`).then((r) => r.json).catch(() => null)));
+      for (const c of caps.filter(Boolean)) {
+        const page = c.pageRef || c.pages?.[0]?.page;
+        if (c.thought) out.push({ kind: "My thought", text: c.thought, page });
+        for (const h of c.highlights || []) out.push({ kind: "Highlight", text: typeof h === "string" ? h : h.text || "", page });
+        for (const p of c.insights?.points || []) out.push({ kind: "Insight", text: p, page });
+      }
+    } catch {}
+    return out.filter((x) => x.text);
   }
 
   data() {

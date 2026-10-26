@@ -15,8 +15,9 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const fmtD = (iso, o = { month: "short", day: "numeric" }) => (iso ? new Date(iso.slice(0, 10) + "T12:00:00").toLocaleDateString("en-US", o) : "");
 const usd = (n) => (n == null ? "–" : `$${Math.round(n).toLocaleString("en-US")}`);
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-const TABS = [["hq", "Overview"], ["money", "Money"], ["us", "Us"], ["health", "Health"], ["kids", "Kids"], ["home", "Home"]];
-const AREAS = { money: "Money", us: "Us", health: "Health", kids: "Kids", home: "Home" };
+const TABS = [["hq", "Overview"], ["money", "Money"], ["us", "Us"], ["growth", "Growth"], ["health", "Health"], ["kids", "Kids"], ["home", "Home"]];
+const KINDS = { book: "Book", podcast: "Podcast", article: "Article", video: "Video", thought: "My own thought" };
+const AREAS = { money: "Money", us: "Us", growth: "Growth", health: "Health", kids: "Kids", home: "Home" };
 const DIRS = { better: ["Better", "up"], worse: ["Slipping", "down"], steady: ["Steady", "flat"] };
 const LOG_TAGS = { progress: "Made a change", notyet: "Not yet" };
 const TRAITS = ["Kindness", "Honesty", "Responsibility", "Respect", "Patience", "Effort", "Gratitude", "Self-control", "Listening", "Sharing", "Confidence", "Resilience"];
@@ -45,7 +46,7 @@ const data = () => ctx.store.data();
 
 function draw() {
   const F = ctx.S.fam, D = data(), C = computeFamily(D, todayISO());
-  const body = { hq, money, us, health, kids, home }[F.tab] || hq;
+  const body = { hq, money, us, growth, health, kids, home }[F.tab] || hq;
   const main = $("#main");
   main.innerHTML = `<div class="fam">
     <div class="fm-top"><div class="fm-hello"><p class="fm-eyebrow">${esc(C.name("lokesh"))} &amp; ${esc(C.name("archana"))} · family</p><h1>Week of ${fmtD(C.week, { month: "long", day: "numeric" })}</h1><p class="fm-sub">Signed in as ${esc(C.name(F.me))}</p></div></div>
@@ -93,6 +94,7 @@ function hq(D, C) {
     ["us", "Us", C.us.daysSinceUs != null ? `time together ${C.us.daysSinceUs === 0 ? "today" : `${C.us.daysSinceUs} days ago`}` : "No time together logged yet", `${C.us.family30} family times in 30 days`],
     ["health", "Health", C.health.map((h) => `${h.name}: ${h.thisWeek ? "checked in" : "no check-in this week"}`).join(" · "), ""],
     ["kids", "Kids", C.kids.map((k) => `${k.name}: ${k.appointments.length} coming up`).join(" · ") || "Add the kids", n?.focus ? `Navya's focus: ${n.focus.split(".")[0]}` : ""],
+    ["growth", "Growth", (() => { const open = (D.growth?.items || []).filter((g) => g.status === "open"), mine = open.filter((g) => !(g.reflections || []).some((r) => r.by === ctx.S.fam.me)); return open.length ? `${open.length} to talk about${mine.length ? ` · ${mine.length} waiting for your thoughts` : ""}` : "Nothing waiting to talk about"; })(), `${(D.growth?.items || []).filter((g) => g.status === "discussed").length} talked about so far`],
     ["home", "Home", `${C.home.todos.length} to-dos open · ${C.home.chores.filter((c) => c.due).length} chores due`, `${C.home.done7} done this week`],
   ];
   return `<div class="fm-bento">${read}
@@ -244,6 +246,63 @@ function kids(D, C) {
   }).join("")}<datalist id="fam-traits">${TRAITS.map((t) => `<option value="${t}">`).join("")}</datalist></div>`;
 }
 
+/* ── Growth: ideas from Lokesh's reading, podcasts and thinking, to talk about together ── */
+
+function growth(D, C) {
+  const F = ctx.S.fam, G = D.growth?.items || [], me = F.me;
+  const open = G.filter((g) => g.status === "open").sort((a, b) => (a.date < b.date ? 1 : -1));
+  const done = G.filter((g) => g.status === "discussed").sort((a, b) => ((a.discussedAt || a.date) < (b.discussedAt || b.date) ? 1 : -1));
+  const card = (g) => {
+    const editing = F.growthEdit === g.id;
+    if (editing) return shareForm(g);
+    const mine = (g.reflections || []).find((r) => r.by === me), others = (g.reflections || []).filter((r) => r.by !== me);
+    const myEdit = F.reflectEdit === g.id || !mine;
+    return `<div class="fm-tile s4 fm-idea" data-id="${g.id}">
+      <div class="fm-rowsplit"><span class="fm-kicker">${esc(KINDS[g.source?.kind] || "Idea")}${g.source?.name ? ` · ${esc(g.source.name)}` : ""}${g.source?.author ? ` · ${esc(g.source.author)}` : ""}</span><span class="sub">${esc(C.name(g.from))} · ${fmtD(g.date)}</span></div>
+      <h2 class="fm-idea-title">${esc(g.title)}</h2>
+      <p class="fm-idea-text">${esc(g.idea)}</p>
+      ${g.why ? `<p class="fm-why"><b>Why I'm sharing it:</b> ${esc(g.why)}</p>` : ""}
+      ${g.questions?.length ? `<div class="fm-sec"><span class="fm-kicker">To reflect on</span><div class="fm-bubbles">${g.questions.map((q) => `<p class="fm-q">${esc(q)}</p>`).join("")}</div></div>` : ""}
+      ${g.status === "discussed" ? `<div class="fm-focus"><span class="fm-kicker">What we'll take from it · ${fmtD(g.discussedAt)}</span><b>${esc(g.takeaway || "We talked about it.")}</b></div>` : ""}
+      <div class="fm-sec"><span class="fm-kicker">Reflections</span>
+        ${others.map((r) => `<div class="fm-reflect"><span class="sub">${esc(C.name(r.by))} · ${fmtD(r.date)}</span><p>${esc(r.text)}</p></div>`).join("")}
+        ${myEdit ? `<label class="fm-fld"><span>Your reflection${others.length ? "" : " · what it brings up for you"}</span><textarea data-g="reflection" rows="3" placeholder="What do you think? Where does this show up in your life, or ours?">${esc(mine?.text || "")}</textarea></label>
+          <div class="fm-btnrow"><button class="fm-btn sm pri" data-act="savereflect" data-id="${g.id}">Save reflection</button>${mine ? `<button class="fm-btn sm" data-act="cancel">Cancel</button>` : ""}</div>`
+        : `<div class="fm-reflect mine"><span class="sub">You · ${fmtD(mine.date)} · <button class="fm-link" data-act="editreflect" data-id="${g.id}">Edit</button></span><p>${esc(mine.text)}</p></div>`}
+        ${!others.length && !mine ? "" : ""}</div>
+      ${g.status === "open" ? (F.discussing === g.id
+        ? `<div class="fam-form"><input data-g="takeaway" placeholder="What we'll take from it, or try (optional)"><button class="fm-btn sm pri" data-act="discussed" data-id="${g.id}">Save</button><button class="fm-btn sm" data-act="cancel">Cancel</button></div>`
+        : `<div class="fm-btnrow"><button class="fm-btn" data-act="startdiscussed" data-id="${g.id}">We talked about it</button>${g.from === me ? `<button class="fm-link" data-act="editgrowth" data-id="${g.id}">Edit</button><button class="fm-link" data-act="delgrowth" data-id="${g.id}">Delete</button>` : ""}</div>`) : ""}
+    </div>`;
+  };
+  return `<div class="fm-bento">
+    <div class="fm-tile s4"><div class="fm-rowsplit"><div><h3>Grow together</h3><p class="sub">One idea at a time from a book, a podcast or your own thinking: what it is, why it matters to you, and a question to reflect on. Talk about it, then note what you'll take from it.</p></div>
+      ${F.growthEdit === "new" ? "" : `<button class="fm-btn pri" data-act="newgrowth">Share an idea</button>`}</div>
+      ${F.growthEdit === "new" ? shareForm(null) : ""}</div>
+    ${open.length ? open.map(card).join("") : `<div class="fm-tile s4"><p class="sub">Nothing waiting to talk about.</p></div>`}
+    ${done.length ? `<div class="fm-tile s4"><details class="fm-more"><summary>Talked about (${done.length})</summary>${done.map((g) => `<div class="fm-note past"><div class="fm-rowsplit"><b>${esc(g.title)}</b><span class="sub">${fmtD(g.discussedAt)}</span></div><p class="sub">${esc(KINDS[g.source?.kind] || "")}${g.source?.name ? ` · ${esc(g.source.name)}` : ""}</p>${g.takeaway ? `<p class="talked">${esc(g.takeaway)}</p>` : ""}<button class="fm-link" data-act="opengrowth" data-id="${g.id}">Open</button></div>`).join("")}</details></div>` : ""}
+    ${F.openGrowth ? (() => { const g = done.find((x) => x.id === F.openGrowth); return g ? card(g) : ""; })() : ""}
+  </div>`;
+}
+
+function shareForm(g) {
+  const F = ctx.S.fam, pick = F.pick || {};
+  const canPick = !!ctx.store.learnGh;
+  const kinds = Object.entries(KINDS).map(([k, l]) => `<option value="${k}"${(g?.source?.kind || pick.kind || "book") === k ? " selected" : ""}>${l}</option>`).join("");
+  return `<div class="fm-share" data-id="${g?.id || "new"}">
+    ${canPick && !g ? `<div class="fm-picker"><span class="fm-kicker">Start from your Learning library</span>
+      ${pick.sources ? `<select data-act="picksource"><option value="">Choose a book, podcast or article…</option>${pick.sources.map((s) => `<option value="${esc(s.id)}"${pick.src?.id === s.id ? " selected" : ""}>${esc(s.title)}${s.author ? ` · ${esc(s.author)}` : ""}</option>`).join("")}</select>`
+        : `<button class="fm-btn sm" data-act="loadsources">${pick.loading ? "Loading…" : "Choose from my library"}</button>`}
+      ${pick.snippets ? (pick.snippets.length ? `<p class="sub">Tap the part you want to share; it goes into the idea below for you to put in your own words.</p><ul class="fm-snips">${pick.snippets.map((x, i) => `<li><button type="button" data-act="picksnip" data-i="${i}"><span class="fm-type">${esc(x.kind)}${x.page ? ` · p. ${esc(x.page)}` : ""}</span>${esc(x.text)}</button></li>`).join("")}</ul>` : `<p class="sub">Nothing to pick from this one yet.</p>`) : ""}</div>` : ""}
+    <div class="fam-form"><input data-g="title" placeholder="A short title, e.g. Change the game, not the score" value="${esc(g?.title || pick.title || "")}"></div>
+    <div class="fam-form"><select data-g="kind">${kinds}</select><input data-g="sourcename" placeholder="Book / podcast / article name" value="${esc(g?.source?.name || pick.src?.title || "")}"><input data-g="author" class="short" placeholder="Author or host" value="${esc(g?.source?.author || pick.src?.author || "")}"></div>
+    <label class="fm-fld"><span>The idea · in your own words</span><textarea data-g="idea" rows="4">${esc(g?.idea || pick.idea || "")}</textarea></label>
+    <label class="fm-fld"><span>Why you're sharing it · how it relates to us (optional)</span><textarea data-g="why" rows="2">${esc(g?.why || "")}</textarea></label>
+    <label class="fm-fld"><span>Questions to reflect on · one per line</span><textarea data-g="questions" rows="3" placeholder="e.g. Where are we playing someone else's game?">${esc((g?.questions || []).join("\n"))}</textarea></label>
+    <div class="fm-btnrow"><button class="fm-btn pri" data-act="savegrowth" data-id="${g?.id || "new"}">${g ? "Save" : "Share with " + esc(ctx.S.fam.me === "lokesh" ? "Archana" : "Lokesh")}</button><button class="fm-btn" data-act="cancel">Cancel</button></div>
+  </div>`;
+}
+
 /* ── Home ────────────────────────────────────────────────── */
 
 function home(D, C) {
@@ -289,6 +348,13 @@ function wire(root, D, C) {
   root.addEventListener("change", async (e) => {
     const t = e.target;
     if (t.dataset.act === "todo" && t.checked) await save("home", (h) => ({ ...h, todos: h.todos.map((x) => (x.id === t.dataset.id ? { ...x, done: true, doneAt: todayISO() } : x)) }), "to-do done");
+    else if (t.dataset.act === "picksource") {
+      const src = (F.pick?.sources || []).find((x) => x.id === t.value); if (!src) return;
+      const b = t.closest(".fm-share"), keep = (k) => b.querySelector(`[data-g=${k}]`)?.value || "";
+      const kind = { book: "book", podcast: "podcast", article: "article", youtube: "video", video: "video", course: "video" }[src.type] || "book";
+      F.pick = { ...F.pick, src, kind, snippets: null, title: keep("title"), idea: keep("idea") }; draw();
+      F.pick = { ...F.pick, snippets: await ctx.store.learningSnippets(src) }; draw();
+    }
     else if (t.dataset.act === "goalstatus") { const kid = t.closest(".fam-kid").dataset.kid; await save("kids", (k) => { k[kid].goals = k[kid].goals.map((g) => (g.id === t.dataset.id ? { ...g, status: t.value } : g)); return k; }, "kid goal"); }
   });
   root.addEventListener("click", async (e) => {
@@ -307,7 +373,7 @@ function wire(root, D, C) {
     if (act === "approveread") { await ctx.store.update(`review/${t.dataset.week}.json`, null, (r) => ({ ...r, status: "approved", approvedAt: new Date().toISOString() }), `family: read ${t.dataset.week} approved`); return draw(); }
     if (act === "editreview") { F.notesEdit = t.dataset.week; F.logEdit = null; return draw(); }
     if (act === "editlog") { F.logEdit = t.dataset.id; F.notesEdit = null; return draw(); }
-    if (act === "cancel") { F.notesEdit = F.logEdit = null; return draw(); }
+    if (act === "cancel") { F.notesEdit = F.logEdit = F.growthEdit = F.reflectEdit = F.discussing = null; F.pick = null; return draw(); }
     if (["savereview", "addlog", "savelog", "dellog"].includes(act)) {
       const b = t.closest(".fm-logadd, li, .fm-note") || root, v = (s) => b.querySelector(s)?.value?.trim() || "";
       const tag = b.querySelector(".fm-tags [aria-pressed=true]")?.dataset.tag || null;
@@ -349,6 +415,40 @@ function wire(root, D, C) {
       return save("kids", (k) => { ensureKid(k).observations.push({ id: newId(), date: today, by: F.me, trait, type, note }); return k; }, `${kid} observation`);
     }
     if (act === "delobs") return save("kids", (k) => { ensureKid(k).observations = k[kid].observations.filter((o) => o.id !== t.dataset.id); return k; }, `${kid} observation removed`);
+    // ── growth
+    if (act === "newgrowth") { F.growthEdit = "new"; F.pick = {}; return draw(); }
+    if (act === "editgrowth") { F.growthEdit = t.dataset.id; return draw(); }
+    if (act === "opengrowth") { F.openGrowth = F.openGrowth === t.dataset.id ? null : t.dataset.id; return draw(); }
+    if (act === "loadsources") { F.pick = { ...(F.pick || {}), loading: true }; draw(); const sources = await ctx.store.learningSources(); F.pick = { ...F.pick, loading: false, sources }; if (!sources.length) flash("Couldn't open your Learning library from this device.", true); return draw(); }
+    if (act === "picksnip") {
+      const x = F.pick.snippets[+t.dataset.i], b = t.closest(".fm-share"), keep = (k) => b.querySelector(`[data-g=${k}]`)?.value || "";
+      const cur = keep("idea").trim();
+      F.pick = { ...F.pick, title: keep("title"), idea: cur ? `${cur}\n\n${x.text}` : x.text };
+      return draw();
+    }
+    if (act === "savegrowth") {
+      const b = t.closest(".fm-share"), v = (k) => b.querySelector(`[data-g=${k}]`)?.value?.trim() || "";
+      const title = v("title"), idea = v("idea");
+      if (!title || !idea) return flash("Add a short title and the idea.", true);
+      const fields = { title, idea, why: v("why"), questions: v("questions").split("\n").map((x) => x.trim()).filter(Boolean),
+        source: { kind: v("kind") || "thought", ...(v("sourcename") ? { name: v("sourcename") } : {}), ...(v("author") ? { author: v("author") } : {}), ...(F.pick?.src && t.dataset.id === "new" ? { ref: F.pick.src.id } : {}) } };
+      const id = t.dataset.id;
+      F.growthEdit = null; F.pick = null;
+      return save("growth", (gr) => ({ ...gr, items: id === "new" ? [...(gr.items || []), { id: newId(), date: today, from: F.me, ...fields, status: "open", reflections: [] }] : (gr.items || []).map((x) => (x.id === id ? { ...x, ...fields } : x)) }), id === "new" ? "shared an idea" : "idea edited");
+    }
+    if (act === "delgrowth") return save("growth", (gr) => ({ ...gr, items: (gr.items || []).filter((x) => x.id !== t.dataset.id) }), "idea removed");
+    if (act === "editreflect") { F.reflectEdit = t.dataset.id; return draw(); }
+    if (act === "savereflect") {
+      const text = t.closest(".fm-idea").querySelector("[data-g=reflection]")?.value?.trim(); if (!text) return;
+      F.reflectEdit = null;
+      return save("growth", (gr) => ({ ...gr, items: gr.items.map((x) => (x.id !== t.dataset.id ? x : { ...x, reflections: [...(x.reflections || []).filter((r) => r.by !== F.me), { id: newId(), by: F.me, date: today, text }] })) }), "reflection");
+    }
+    if (act === "startdiscussed") { F.discussing = t.dataset.id; return draw(); }
+    if (act === "discussed") {
+      const takeaway = t.closest(".fm-idea").querySelector("[data-g=takeaway]")?.value?.trim() || "";
+      F.discussing = null;
+      return save("growth", (gr) => ({ ...gr, items: gr.items.map((x) => (x.id === t.dataset.id ? { ...x, status: "discussed", discussedAt: today, ...(takeaway ? { takeaway } : {}) } : x)) }), "talked about an idea");
+    }
     // ── home
     if (act === "addtodo") { const text = val(box, "text"); if (!text) return; return save("home", (h) => ({ ...h, todos: [...(h.todos || []), { id: newId(), text, who: val(box, "who") || "both", ...(val(box, "due") ? { due: val(box, "due") } : {}), done: false }] }), "to-do"); }
     if (act === "addchore") { const text = val(box, "text"); if (!text) return; return save("home", (h) => ({ ...h, chores: [...(h.chores || []), { id: newId(), text, who: val(box, "who") || "both", every: val(box, "every") || "weekly" }] }), "chore"); }
