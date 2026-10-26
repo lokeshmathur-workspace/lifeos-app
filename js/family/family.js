@@ -45,7 +45,9 @@ export async function renderFamilyView(store, S, renderApp) {
 const data = () => ctx.store.data();
 
 function draw() {
-  const F = ctx.S.fam, D = data(), C = computeFamily(D, todayISO());
+  const F = ctx.S.fam;
+  if (ctx.S.famShare) startShareFromLearning(ctx.S.famShare);
+  const D = data(), C = computeFamily(D, todayISO());
   const body = { hq, money, us, growth, health, kids, home }[F.tab] || hq;
   const main = $("#main");
   main.innerHTML = `<div class="fam">
@@ -285,14 +287,28 @@ function growth(D, C) {
   </div>`;
 }
 
+// Arrived from a Learning source screen: open the share form with that source (and the idea that
+// was tapped) filled in, and list the source's other insights and thoughts to pick from.
+const KIND_OF = { book: "book", podcast: "podcast", article: "article", youtube: "video", video: "video", course: "video" };
+function startShareFromLearning(sh) {
+  const F = ctx.S.fam;
+  ctx.S.famShare = null;
+  F.tab = "growth"; F.growthEdit = "new"; F.openGrowth = null;
+  F.pick = { src: sh.src, kind: KIND_OF[sh.src?.type] || "book", idea: sh.idea || "", fromLearning: true, snippets: null };
+  ctx.store.learningSnippets(sh.src).then((snippets) => { if (F.pick?.fromLearning && F.growthEdit === "new") { F.pick = { ...F.pick, snippets }; draw(); } });
+}
+const backToLearning = (msg) => { ctx.S.view = "learning"; ctx.renderApp(); if (msg) flash(msg); };
+
 function shareForm(g) {
   const F = ctx.S.fam, pick = F.pick || {};
   const canPick = !!ctx.store.learnGh;
   const kinds = Object.entries(KINDS).map(([k, l]) => `<option value="${k}"${(g?.source?.kind || pick.kind || "book") === k ? " selected" : ""}>${l}</option>`).join("");
   return `<div class="fm-share" data-id="${g?.id || "new"}">
     ${canPick && !g ? `<div class="fm-picker"><span class="fm-kicker">Start from your Learning library</span>
-      ${pick.sources ? `<select data-act="picksource"><option value="">Choose a book, podcast or article…</option>${pick.sources.map((s) => `<option value="${esc(s.id)}"${pick.src?.id === s.id ? " selected" : ""}>${esc(s.title)}${s.author ? ` · ${esc(s.author)}` : ""}</option>`).join("")}</select>`
+      ${pick.fromLearning ? `<p class="fm-from">From <b>${esc(pick.src?.title || "")}</b>${pick.src?.author ? ` · ${esc(pick.src.author)}` : ""} · <button class="fm-link" data-act="cancel">Back to Learning</button></p>`
+        : pick.sources ? `<select data-act="picksource"><option value="">Choose a book, podcast or article…</option>${pick.sources.map((s) => `<option value="${esc(s.id)}"${pick.src?.id === s.id ? " selected" : ""}>${esc(s.title)}${s.author ? ` · ${esc(s.author)}` : ""}</option>`).join("")}</select>`
         : `<button class="fm-btn sm" data-act="loadsources">${pick.loading ? "Loading…" : "Choose from my library"}</button>`}
+      ${pick.fromLearning && !pick.snippets ? `<p class="sub">Loading its insights and thoughts…</p>` : ""}
       ${pick.snippets ? (pick.snippets.length ? `<p class="sub">Tap the part you want to share; it goes into the idea below for you to put in your own words.</p><ul class="fm-snips">${pick.snippets.map((x, i) => `<li><button type="button" data-act="picksnip" data-i="${i}"><span class="fm-type">${esc(x.kind)}${x.page ? ` · p. ${esc(x.page)}` : ""}</span>${esc(x.text)}</button></li>`).join("")}</ul>` : `<p class="sub">Nothing to pick from this one yet.</p>`) : ""}</div>` : ""}
     <div class="fam-form"><input data-g="title" placeholder="A short title, e.g. Change the game, not the score" value="${esc(g?.title || pick.title || "")}"></div>
     <div class="fam-form"><select data-g="kind">${kinds}</select><input data-g="sourcename" placeholder="Book / podcast / article name" value="${esc(g?.source?.name || pick.src?.title || "")}"><input data-g="author" class="short" placeholder="Author or host" value="${esc(g?.source?.author || pick.src?.author || "")}"></div>
@@ -373,7 +389,7 @@ function wire(root, D, C) {
     if (act === "approveread") { await ctx.store.update(`review/${t.dataset.week}.json`, null, (r) => ({ ...r, status: "approved", approvedAt: new Date().toISOString() }), `family: read ${t.dataset.week} approved`); return draw(); }
     if (act === "editreview") { F.notesEdit = t.dataset.week; F.logEdit = null; return draw(); }
     if (act === "editlog") { F.logEdit = t.dataset.id; F.notesEdit = null; return draw(); }
-    if (act === "cancel") { F.notesEdit = F.logEdit = F.growthEdit = F.reflectEdit = F.discussing = null; F.pick = null; return draw(); }
+    if (act === "cancel") { const back = F.pick?.fromLearning; F.notesEdit = F.logEdit = F.growthEdit = F.reflectEdit = F.discussing = null; F.pick = null; return back ? backToLearning() : draw(); }
     if (["savereview", "addlog", "savelog", "dellog"].includes(act)) {
       const b = t.closest(".fm-logadd, li, .fm-note") || root, v = (s) => b.querySelector(s)?.value?.trim() || "";
       const tag = b.querySelector(".fm-tags [aria-pressed=true]")?.dataset.tag || null;
@@ -432,8 +448,9 @@ function wire(root, D, C) {
       if (!title || !idea) return flash("Add a short title and the idea.", true);
       const fields = { title, idea, why: v("why"), questions: v("questions").split("\n").map((x) => x.trim()).filter(Boolean),
         source: { kind: v("kind") || "thought", ...(v("sourcename") ? { name: v("sourcename") } : {}), ...(v("author") ? { author: v("author") } : {}), ...(F.pick?.src && t.dataset.id === "new" ? { ref: F.pick.src.id } : {}) } };
-      const id = t.dataset.id;
+      const id = t.dataset.id, fromLearning = !!F.pick?.fromLearning;
       F.growthEdit = null; F.pick = null;
+      if (fromLearning) { await ctx.store.update(FILES.growth[0], FILES.growth[1], (gr) => ({ ...gr, items: [...(gr.items || []), { id: newId(), date: today, from: F.me, ...fields, status: "open", reflections: [] }] }), "family: shared an idea"); return backToLearning("Shared with Archana. It's in Family → Growth."); }
       return save("growth", (gr) => ({ ...gr, items: id === "new" ? [...(gr.items || []), { id: newId(), date: today, from: F.me, ...fields, status: "open", reflections: [] }] : (gr.items || []).map((x) => (x.id === id ? { ...x, ...fields } : x)) }), id === "new" ? "shared an idea" : "idea edited");
     }
     if (act === "delgrowth") return save("growth", (gr) => ({ ...gr, items: (gr.items || []).filter((x) => x.id !== t.dataset.id) }), "idea removed");

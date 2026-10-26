@@ -161,6 +161,13 @@ window.addEventListener("lifeos:tasks-changed", () => {
   renderApp();
 });
 
+// Learning's "Share with Archana" opens Family → Growth with the idea filled in.
+window.addEventListener("lifeos:share-idea", (e) => {
+  S.famShare = e.detail;
+  S.view = "family";
+  renderApp();
+});
+
 window.addEventListener("lifeos:goto-day", (e) => {
   S.day = e.detail;
   S.view = "today";

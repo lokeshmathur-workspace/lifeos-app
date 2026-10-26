@@ -346,11 +346,15 @@ function pagesHTML(full, capId) {
     .join("");
 }
 
+// "Share with Archana": opens Family → Growth with this idea filled in to put in your own words
+// (the Family tab's share form; nothing is shared until it's saved there).
+const shareLink = (text) => `<button class="iconact sharelink" data-act="shareidea" data-text="${esc(text)}" title="Share this idea with Archana">Share</button>`;
+
 function insightsHTML(full) {
   const ins = full.insights;
   if (!ins || (!(ins.points || []).length && !(ins.connections || []).length)) return "";
   return `<div class="block block-insights"><div class="block-label">Insights</div><ul class="ins">${(ins.points || [])
-    .map((p) => `<li>${esc(p)}</li>`)
+    .map((p) => `<li>${esc(p)} ${shareLink(p)}</li>`)
     .join("")}${(ins.connections || []).map((c) => `<li>Connects to: ${esc(c)}</li>`).join("")}</ul></div>`;
 }
 
@@ -504,7 +508,7 @@ function thoughtHTML(t, capId) {
     </div>`;
   }
   return `<div class="block block-thought">
-    <div class="block-label">Your thought${t.pageRef ? ` · p. ${esc(t.pageRef)}` : ""}<button class="iconact" data-act="editthought" data-cid="${capId}" aria-label="Edit thought" title="Edit">✎ Edit</button></div>
+    <div class="block-label">Your thought${t.pageRef ? ` · p. ${esc(t.pageRef)}` : ""}<button class="iconact" data-act="editthought" data-cid="${capId}" aria-label="Edit thought" title="Edit">✎ Edit</button>${t.thought ? shareLink(t.thought) : ""}</div>
     <p class="quote" style="margin-top:2px">${esc(t.thought || "")}</p>
     ${t.note ? `<div class="thoughtnote"><b>My note</b> ${esc(t.note)}</div>` : ""}
   </div>`;
@@ -622,6 +626,7 @@ function vSource() {
       ? `<button class="btn pri" data-act="cap" data-mode="page" data-id="${s.id}">Add page</button>`
       : `<button class="btn pri" data-act="cap" data-mode="text" data-id="${s.id}">Paste text</button><button class="btn" data-act="cap" data-mode="page" data-id="${s.id}">Add screenshot</button>`}
     <button class="btn" data-act="cap" data-mode="thought" data-id="${s.id}">Add thought</button>
+    <button class="btn" data-act="shareidea" data-text="">Share with Archana</button>
   </div>
   ${processBlock}
   <div class="btnrow">${meta.status === "finished" ? `<button class="btn" data-act="reopen" data-id="${s.id}">Move back to active</button>` : `<button class="btn" data-act="finish" data-id="${s.id}">I've finished this — move to Finished</button>`}</div>
@@ -1050,6 +1055,11 @@ document.addEventListener("click", async (e) => {
   if (b.tagName === "LABEL" && b.querySelector("input[type=file]")) return;
   if (a !== "delsrc" && a !== "delcap" && a !== "delsrcdash") l.delArm = null;
   switch (a) {
+    case "shareidea": {
+      const m = l.meta || {};
+      window.dispatchEvent(new CustomEvent("lifeos:share-idea", { detail: { src: { id: m.id || l.curId, title: m.title, author: m.author, type: m.type }, idea: b.dataset.text || "" } }));
+      break;
+    }
     case "settings":
       window.dispatchEvent(new CustomEvent("lifeos:open-settings"));
       break;
