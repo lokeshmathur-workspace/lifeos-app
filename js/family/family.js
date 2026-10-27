@@ -92,7 +92,7 @@ function hq(D, C) {
   const up = C.comingUp;
   const m = C.money, n = C.navya;
   const rows = [
-    ["money", "Money", m ? `${usd(m.spent)} spent · on pace for ${usd(m.projected)}` : "Not synced from Monarch yet", m ? [m.avg3Spending != null ? `usual month ${usd(m.avg3Spending)}` : "", m.savingsRate != null ? `saved ${m.savingsRate}% last month` : ""].filter(Boolean).join(" · ") : ""],
+    ["money", "Money", m ? `${usd(m.spent)} spent · on pace for ${usd(m.projected)}` : "Not synced from Monarch yet", m ? [m.avg3Spending != null ? `usual month ${usd(m.avg3Spending)}` : "", ...m.creditLines.filter((cl) => cl.now.net).map((cl) => `HELOC ${cl.now.net > 0 ? "+" : "−"}${usd(Math.abs(cl.now.net))} this month`)].filter(Boolean).join(" · ") : ""],
     ["us", "Us", C.us.daysSinceUs != null ? `time together ${C.us.daysSinceUs === 0 ? "today" : `${C.us.daysSinceUs} days ago`}` : "No time together logged yet", `${C.us.family30} family times in 30 days`],
     ["health", "Health", C.health.map((h) => `${h.name}: ${h.thisWeek ? "checked in" : "no check-in this week"}`).join(" · "), ""],
     ["kids", "Kids", C.kids.map((k) => `${k.name}: ${k.appointments.length} coming up`).join(" · ") || "Add the kids", n?.focus ? `Navya's focus: ${n.focus.split(".")[0]}` : ""],
@@ -153,11 +153,13 @@ function money(D, C) {
   if (!m) return `<div class="fm-bento"><div class="fm-tile s4"><h3>Money</h3>${empty("Nothing from Monarch yet. Refresh pulls this month's spending, budgets, bills, debts and goals into the dashboard (totals only, never individual transactions).")}${sync}${watchEdit}</div></div>`;
   const overUsual = m.avg3Spending != null && m.projected > m.avg3Spending;
   const watch = m.watch.map((w) => {
-    const base = w.budget ?? w.avg3;
+    const base = w.budget ? w.budget : w.avg3;
     return `<li><div class="fam-li-top"><b>${esc(w.category)}</b><span>${usd(w.spent)} so far · on pace for ${usd(w.projected)}</span></div>${bar(w.projected || 0, Math.max(base || 0, w.projected || 0), w.over ? "over" : "")}
-      <span class="sub">${w.budget != null ? `budget ${usd(w.budget)}` : "no budget"}${w.avg3 != null ? ` · usual ${usd(w.avg3)}/month` : ""}${w.over ? ` · <b class="bad">${usd(w.over)} over</b>` : ""}</span></li>`;
+      <span class="sub">${w.budget ? `budget ${usd(w.budget)}` : "no budget"}${w.avg3 != null ? ` · usual ${usd(w.avg3)}/month` : ""}${w.over ? ` · <b class="bad">${usd(w.over)} ${w.budget ? "over budget" : "above usual"}</b>` : ""}</span></li>`;
   }).join("");
-  const goals = m.goals.map((g) => `<li><div class="fam-li-top"><b>${esc(g.name)}</b><span>${usd(g.current)}${g.target ? ` of ${usd(g.target)}` : ""}</span></div>${g.target ? bar(g.current, g.target, "goal") : ""}
+  const goals = m.goals.map((g) => g.kind === "debt" ? `<li><div class="fam-li-top"><b>${esc(g.name)}</b><span>${usd(g.left)} to pay off</span></div>
+    <span class="sub">${g.monthly ? `${usd(g.monthly)}/month planned` : "no monthly payment set"}${g.months ? ` · about ${g.months} months at that pace` : ""}</span></li>`
+    : `<li><div class="fam-li-top"><b>${esc(g.name)}</b><span>${usd(g.current)}${g.target ? ` of ${usd(g.target)}` : ""}</span></div>${g.target ? bar(g.current, g.target, "goal") : ""}
     <span class="sub">${g.monthly ? `${usd(g.monthly)}/month` : ""}${g.months ? ` · about ${g.months} months to go` : ""}${g.monthsFaster ? ` · <b class="good">${g.monthsFaster} months sooner</b> if the watched overspend went here` : ""}</span></li>`).join("");
   return `<div class="fm-bento">
     <div class="fm-tile s4 glow"><div class="fm-rowsplit"><h3>${fmtD(m.month + "-01", { month: "long" })} so far</h3><span class="sub">from Monarch ${fmtD(m.asOf)}</span></div>
@@ -167,9 +169,15 @@ function money(D, C) {
       ${m.lastMonth ? `<p class="sub">Last month: spent ${usd(m.lastMonth.spending)} of ${usd(m.lastMonth.income)} income.</p>` : ""}
       <div class="fm-btnrow">${sync}</div>${m.flags.length ? `<ul class="fm-check">${m.flags.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}</div>
     <div class="fm-tile s2"><h3>Categories you watch</h3>${watch ? `<ul class="fam-list bars">${watch}</ul>` : empty("Add categories below.")}
-      ${m.overWatch ? `<p class="fam-impact">On pace to spend <b>${usd(m.overWatch)}</b> more than planned in these this month. Put toward your goals instead, that's ${usd(m.overWatch * 12)} a year.</p>` : ""}${watchEdit}</div>
+      ${m.overWatch ? `<p class="fam-impact">On pace to spend <b>${usd(m.overWatch)}</b> more than ${m.watch.some((w) => w.over && w.budget) ? "planned" : "usual"} in these this month. Put toward your goals instead, that's ${usd(m.overWatch * 12)} a year.</p>` : ""}${watchEdit}</div>
     <div class="fm-tile s2"><h3>Savings, retirement &amp; payoff</h3>${goals ? `<ul class="fam-list bars">${goals}</ul>` : empty("No goals in Monarch yet.")}
-      ${m.debts.length ? `<h4>Short-term debt · ${usd(m.debtTotal)}</h4><ul class="fam-list">${m.debts.map((d) => `<li><span>${esc(d.name)}</span><span>${usd(d.balance)}${d.apr ? ` · ${d.apr}% APR` : ""}${d.months ? ` · paid off in ~${d.months} months` : ""}</span></li>`).join("")}</ul>` : ""}</div>
+      ${m.shortTermTotal ? `<h4>Short-term debt · ${usd(m.shortTermTotal)}</h4><ul class="fam-list">${m.creditLines.map((cl) => `<li><span>${esc(cl.name)}</span><span>${usd(cl.balance)}</span></li>`).join("")}${m.debts.filter((d) => !d.longTerm).map((d) => `<li><span>${esc(d.name)}</span><span>${usd(d.balance)}${d.apr ? ` · ${d.apr}% APR` : ""}${d.months ? ` · paid off in ~${d.months} months` : ""}</span></li>`).join("")}</ul>` : ""}
+      ${m.debts.some((d) => d.longTerm) ? `<h4>Long-term</h4><ul class="fam-list">${m.debts.filter((d) => d.longTerm).map((d) => `<li><span>${esc(d.name)}</span><span>${usd(d.balance)}${d.monthlyPayment ? ` · ${usd(d.monthlyPayment)}/month` : ""}${d.months ? ` · ~${d.months} months left` : ""}</span></li>`).join("")}</ul>` : ""}</div>
+    ${m.creditLines.map((cl) => { const n = cl.now; return `<div class="fm-tile s4 fam-heloc"><div class="fm-rowsplit"><h3>${esc(cl.name)} · short-term debt</h3><span class="sub">drawn adds to it, paid takes it down; never counted as spending</span></div>
+      <div class="fm-big3"><div class="tri"><b>${usd(cl.balance)}</b><span>owed now</span></div>
+        <div class="tri"><b class="${n.net > 0 ? "bad" : n.net < 0 ? "good" : ""}">${n.net > 0 ? "+" : n.net < 0 ? "−" : ""}${usd(Math.abs(n.net))}</b><span>${n.net > 0 ? "added this month" : n.net < 0 ? "paid down this month" : "no change this month"}</span></div>
+        <div class="tri"><b>${usd(n.drawn)} / ${usd(n.paid)}</b><span>drawn / paid this month${n.interest ? ` · ${usd(n.interest)} interest` : ""}</span></div></div>
+      ${cl.months.length > 1 ? `<div class="fam-scroll"><table><thead><tr><th>Month</th><th>Drawn</th><th>Paid</th><th>Net</th><th>Interest</th></tr></thead><tbody>${cl.months.map((x) => `<tr><td>${fmtD(x.month + "-01", { month: "short", year: "numeric" })}</td><td>${usd(x.drawn)}</td><td>${usd(x.paid)}</td><td class="${x.net > 0 ? "bad" : x.net < 0 ? "good" : ""}">${x.net > 0 ? "+" : x.net < 0 ? "−" : ""}${usd(Math.abs(x.net))}</td><td>${usd(x.interest)}</td></tr>`).join("")}</tbody></table></div>` : ""}</div>`; }).join("")}
     <div class="fm-tile s2"><h3>Bills · next 30 days</h3>${m.bills.length ? `<ul class="fam-list">${m.bills.map((b) => `<li><span class="d">${fmtD(b.due)}</span><span>${esc(b.name)}</span><b>${usd(b.amount)}</b></li>`).join("")}</ul><p class="sub">${usd(m.bills14)} due in the next 2 weeks.</p>` : empty("No bills due in the next 30 days.")}</div>
     <div class="fm-tile s2"><h3>Over budget this month</h3>${m.overBudget.length ? `<ul class="fam-list">${m.overBudget.slice(0, 6).map((b) => `<li><span>${esc(b.category)}</span><span>on pace for ${usd(b.projected)} of ${usd(b.budget)}</span></li>`).join("")}</ul>` : empty("Every budgeted category is on pace.")}</div>
     ${m.months.length ? `<div class="fm-tile s4"><h3>Cash flow by month</h3><div class="fam-scroll"><table><thead><tr><th>Month</th><th>Income</th><th>Spending</th><th>Saved</th><th>Rate</th></tr></thead><tbody>${m.months.map((c) => `<tr><td>${fmtD(c.month + "-01", { month: "short", year: "numeric" })}</td><td>${usd(c.income)}</td><td>${usd(c.spending)}</td><td>${usd(c.savings)}</td><td>${c.rate ?? "–"}%</td></tr>`).join("")}</tbody></table></div></div>` : ""}

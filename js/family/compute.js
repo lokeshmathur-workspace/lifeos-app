@@ -26,15 +26,18 @@ export function computeFamily(D, today) {
     const budgetTotal = budgeted.reduce((s, b) => s + b.budget, 0) || null, budgetSpent = budgeted.reduce((s, b) => s + (b.spent || 0), 0);
     const rate = (c) => (c?.income ? (c.savings / c.income) * 100 : null);
     const watch = (m.watch || []).map((w) => {
-      const proj = pace(w.spent), base = w.budget ?? w.avg3;
+      // no budget (or a 0 budget, how Monarch reports "none") → compare with the usual month instead
+      const proj = pace(w.spent), base = w.budget ? w.budget : w.avg3;
       return { ...w, projected: r0(proj), over: proj != null && base != null ? r0(Math.max(0, proj - base)) : null, vsAvg: w.avg3 != null && proj != null ? r0(proj - w.avg3) : null };
     });
     const overWatch = watch.reduce((s, w) => s + (w.over || 0), 0);
     const goals = (m.goals || []).map((g) => {
-      const left = g.target != null && g.current != null ? Math.max(0, g.target - g.current) : null;
+      // a debt goal counts down to its target (usually 0): what's left is the balance above it
+      const left = g.kind === "debt" ? (g.current != null ? Math.max(0, g.current - (g.target || 0)) : null)
+        : g.target != null && g.current != null ? Math.max(0, g.target - g.current) : null;
       const months = left != null && g.monthly ? Math.ceil(left / g.monthly) : null;
       const monthsFaster = left != null && g.monthly && overWatch ? months - Math.ceil(left / (g.monthly + overWatch)) : null;
-      return { ...g, left, pct: g.target ? r0((g.current / g.target) * 100) : null, months, monthsFaster };
+      return { ...g, left, pct: g.kind === "debt" ? null : g.target ? r0((g.current / g.target) * 100) : null, months, monthsFaster };
     });
     const in30 = (d) => d >= today && daysBetween(today, d) <= 30;
     const bills = (m.bills || []).filter((b) => in30(b.due)).sort((a, b) => (a.due < b.due ? -1 : 1));
@@ -46,8 +49,16 @@ export function computeFamily(D, today) {
       months: full.slice(-6).map((c) => ({ ...c, rate: r1(rate(c)) })),
       overBudget: (m.budgets || []).map((b) => ({ ...b, projected: r0(pace(b.spent)) })).filter((b) => b.budget && b.projected > b.budget).sort((a, b) => b.projected - b.budget - (a.projected - a.budget)),
       watch, overWatch: r0(overWatch), goals, bills, bills14: bills.filter((b) => daysBetween(today, b.due) <= 14).reduce((s, b) => s + (b.amount || 0), 0),
-      debts: (m.debts || []).map((d) => ({ ...d, months: d.monthlyPayment ? Math.ceil(d.balance / d.monthlyPayment) : null })),
+      // short-term debt = cards, loans and credit lines (the HELOC); a mortgage is long-term, shown on its own
+      debts: (m.debts || []).map((d) => ({ ...d, longTerm: d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""), months: d.monthlyPayment ? Math.ceil(d.balance / d.monthlyPayment) : null })),
+      shortTermTotal: (m.debts || []).filter((d) => !(d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""))).reduce((s, d) => s + (d.balance || 0), 0) + (m.creditLines || []).reduce((s, c) => s + (c.balance || 0), 0),
       debtTotal: (m.debts || []).reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [],
+      // credit lines (the HELOC): short-term debt, never spending — drawn adds to it, paid takes it down
+      creditLines: (m.creditLines || []).map((cl) => {
+        const months = (cl.months || []).map((x) => ({ ...x, net: (x.drawn || 0) - (x.paid || 0) }));
+        const now = months.find((x) => x.month === m.month) || { month: m.month, drawn: 0, paid: 0, interest: 0, net: 0 };
+        return { ...cl, months: months.slice(-6), now, net6: months.slice(-6).reduce((s, x) => s + x.net, 0) };
+      }),
     };
   } else out.money = null;
 
