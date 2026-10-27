@@ -92,7 +92,7 @@ function hq(D, C) {
   const up = C.comingUp;
   const m = C.money, n = C.navya;
   const rows = [
-    ["money", "Money", m ? `${usd(m.spent)} spent · on pace for ${usd(m.projected)}` : "Not synced from Monarch yet", m ? [m.avg3Spending != null ? `usual month ${usd(m.avg3Spending)}` : "", ...m.creditLines.filter((cl) => cl.now.net).map((cl) => `HELOC ${cl.now.net > 0 ? "+" : "−"}${usd(Math.abs(cl.now.net))} this month`)].filter(Boolean).join(" · ") : ""],
+    ["money", "Money", m ? `${usd(m.spent)} spent so far${m.avg3Spending != null ? ` · usual month ${usd(m.avg3Spending)}` : ""}` : "Not synced from Monarch yet", m ? [m.savingsRate != null ? `saved ${m.savingsRate}% last month` : "", ...m.creditLines.filter((cl) => cl.now.net).map((cl) => `HELOC ${cl.now.net > 0 ? "+" : "−"}${usd(Math.abs(cl.now.net))} this month`)].filter(Boolean).join(" · ") : ""],
     ["us", "Us", C.us.daysSinceUs != null ? `time together ${C.us.daysSinceUs === 0 ? "today" : `${C.us.daysSinceUs} days ago`}` : "No time together logged yet", `${C.us.family30} family times in 30 days`],
     ["health", "Health", C.health.map((h) => `${h.name}: ${h.thisWeek ? "checked in" : "no check-in this week"}`).join(" · "), ""],
     ["kids", "Kids", C.kids.map((k) => `${k.name}: ${k.appointments.length} coming up`).join(" · ") || "Add the kids", n?.focus ? `Navya's focus: ${n.focus.split(".")[0]}` : ""],
@@ -151,7 +151,7 @@ function money(D, C) {
   const sync = run?.kind === "finance" ? runLine(run) : `<button class="fm-btn sm${!m || m.stale ? " pri" : ""}" data-act="syncmoney">Refresh from Monarch</button>`;
   const watchEdit = `<details class="fm-more"><summary>Categories you watch</summary><div class="fam-form"><input name="watch" value="${esc((D.config?.finance?.watch || []).join(", "))}" placeholder="Clothing, Shopping, Restaurants & Bars"><button class="fm-btn sm" data-act="savewatch">Save</button></div><p class="sub">Use Monarch's category names, separated by commas. The next sync picks them up.</p></details>`;
   if (!m) return `<div class="fm-bento"><div class="fm-tile s4"><h3>Money</h3>${empty("Nothing from Monarch yet. Refresh pulls this month's spending, budgets, bills, debts and goals into the dashboard (totals only, never individual transactions).")}${sync}${watchEdit}</div></div>`;
-  const overUsual = m.avg3Spending != null && m.projected > m.avg3Spending;
+  const vsUsual = m.avg3Spending != null && m.spent != null ? m.spent - m.avg3Spending : null;
   const watch = m.watch.map((w) => {
     const base = w.budget ? w.budget : w.avg3;
     return `<li><div class="fam-li-top"><b>${esc(w.category)}</b><span>${usd(w.spent)} so far · on pace for ${usd(w.projected)}</span></div>${bar(w.projected || 0, Math.max(base || 0, w.projected || 0), w.over ? "over" : "")}
@@ -163,9 +163,10 @@ function money(D, C) {
     <span class="sub">${g.monthly ? `${usd(g.monthly)}/month` : ""}${g.months ? ` · about ${g.months} months to go` : ""}${g.monthsFaster ? ` · <b class="good">${g.monthsFaster} months sooner</b> if the watched overspend went here` : ""}</span></li>`).join("");
   return `<div class="fm-bento">
     <div class="fm-tile s4 glow"><div class="fm-rowsplit"><h3>${fmtD(m.month + "-01", { month: "long" })} so far</h3><span class="sub">from Monarch ${fmtD(m.asOf)}</span></div>
-      <div class="fm-big3"><div class="tri"><b>${usd(m.spent)}</b><span>spent so far</span></div><div class="tri"><b class="${overUsual ? "bad" : ""}">${usd(m.projected)}</b><span>on pace for this month${m.avg3Spending != null ? ` · usual ${usd(m.avg3Spending)}` : ""}</span></div>
+      <div class="fm-big3"><div class="tri"><b class="${vsUsual > 0 ? "bad" : ""}">${usd(m.spent)}</b><span>spent so far${m.daysElapsed ? ` · day ${m.daysElapsed} of ${m.daysInMonth}` : ""}</span></div><div class="tri"><b>${usd(m.avg3Spending)}</b><span>your usual month · last 3 months</span></div>
       <div class="tri"><b>${m.savingsRate ?? "–"}%</b><span>saved last month · ${m.savingsRate3 ?? "–"}% over 3</span></div></div>
-      ${m.budgetTotal ? `<p class="sub">Budgeted categories: on pace for <b class="${m.budgetProjected > m.budgetTotal ? "bad" : "good"}">${usd(m.budgetProjected)}</b> of ${usd(m.budgetTotal)} budgeted.</p>` : ""}
+      ${vsUsual != null ? `<p class="sub">So far <b class="${vsUsual > 0 ? "bad" : "good"}">${usd(Math.abs(vsUsual))} ${vsUsual > 0 ? "more" : "less"}</b> than a usual month in total.</p>` : ""}
+      ${m.budgetTotal ? `<p class="sub">Budgeted categories: <b class="${m.budgetSpent > m.budgetTotal ? "bad" : "good"}">${usd(m.budgetSpent)}</b> spent of ${usd(m.budgetTotal)} budgeted.</p>` : ""}
       ${m.lastMonth ? `<p class="sub">Last month: spent ${usd(m.lastMonth.spending)} of ${usd(m.lastMonth.income)} income.</p>` : ""}
       <div class="fm-btnrow">${sync}</div>${m.flags.length ? `<ul class="fm-check">${m.flags.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}</div>
     <div class="fm-tile s2"><h3>Categories you watch</h3>${watch ? `<ul class="fam-list bars">${watch}</ul>` : empty("Add categories below.")}
@@ -179,7 +180,7 @@ function money(D, C) {
         <div class="tri"><b>${usd(n.drawn)} / ${usd(n.paid)}</b><span>drawn / paid this month${n.interest ? ` · ${usd(n.interest)} interest` : ""}</span></div></div>
       ${cl.months.length > 1 ? `<div class="fam-scroll"><table><thead><tr><th>Month</th><th>Drawn</th><th>Paid</th><th>Net</th><th>Interest</th></tr></thead><tbody>${cl.months.map((x) => `<tr><td>${fmtD(x.month + "-01", { month: "short", year: "numeric" })}</td><td>${usd(x.drawn)}</td><td>${usd(x.paid)}</td><td class="${x.net > 0 ? "bad" : x.net < 0 ? "good" : ""}">${x.net > 0 ? "+" : x.net < 0 ? "−" : ""}${usd(Math.abs(x.net))}</td><td>${usd(x.interest)}</td></tr>`).join("")}</tbody></table></div>` : ""}</div>`; }).join("")}
     <div class="fm-tile s2"><h3>Bills · next 30 days</h3>${m.bills.length ? `<ul class="fam-list">${m.bills.map((b) => `<li><span class="d">${fmtD(b.due)}</span><span>${esc(b.name)}</span><b>${usd(b.amount)}</b></li>`).join("")}</ul><p class="sub">${usd(m.bills14)} due in the next 2 weeks.</p>` : empty("No bills due in the next 30 days.")}</div>
-    <div class="fm-tile s2"><h3>Over budget this month</h3>${m.overBudget.length ? `<ul class="fam-list">${m.overBudget.slice(0, 6).map((b) => `<li><span>${esc(b.category)}</span><span>on pace for ${usd(b.projected)} of ${usd(b.budget)}</span></li>`).join("")}</ul>` : empty("Every budgeted category is on pace.")}</div>
+    <div class="fm-tile s2"><h3>Over budget this month</h3>${m.overBudget.length ? `<ul class="fam-list">${m.overBudget.slice(0, 6).map((b) => `<li><span>${esc(b.category)}</span><span>${usd(b.spent)} spent of ${usd(b.budget)}</span></li>`).join("")}</ul>` : empty("No budgeted category is over yet.")}</div>
     ${m.months.length ? `<div class="fm-tile s4"><h3>Cash flow by month</h3><div class="fam-scroll"><table><thead><tr><th>Month</th><th>Income</th><th>Spending</th><th>Saved</th><th>Rate</th></tr></thead><tbody>${m.months.map((c) => `<tr><td>${fmtD(c.month + "-01", { month: "short", year: "numeric" })}</td><td>${usd(c.income)}</td><td>${usd(c.spending)}</td><td>${usd(c.savings)}</td><td>${c.rate ?? "–"}%</td></tr>`).join("")}</tbody></table></div></div>` : ""}
   </div>`;
 }

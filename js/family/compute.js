@@ -43,11 +43,14 @@ export function computeFamily(D, today) {
     const bills = (m.bills || []).filter((b) => in30(b.due)).sort((a, b) => (a.due < b.due ? -1 : 1));
     out.money = {
       asOf: m.asOf, month: m.month, stale: m.asOf ? daysBetween(m.asOf.slice(0, 10), today) > 7 : true,
-      spent: cur?.spending ?? null, income: cur?.income ?? null, projected: r0(pace(cur?.spending)), budgetTotal, budgetProjected: budgetTotal ? r0(pace(budgetSpent)) : null,
+      // no month-end projection for the total or budgets: big one-off payments (tuition, club fees, the
+      // mortgage) make a straight-line pace wrong. Only the watched day-to-day categories are projected.
+      spent: cur?.spending ?? null, income: cur?.income ?? null, budgetTotal, budgetSpent: budgetTotal ? r0(budgetSpent) : null,
+      daysElapsed: el, daysInMonth: dim,
       lastMonth: full.at(-1) || null, avg3Spending: r0(avg(full.slice(-3).map((c) => c.spending))),
       savingsRate: r1(rate(full.at(-1))), savingsRate3: r1(avg(full.slice(-3).map(rate).filter((x) => x != null))),
       months: full.slice(-6).map((c) => ({ ...c, rate: r1(rate(c)) })),
-      overBudget: (m.budgets || []).map((b) => ({ ...b, projected: r0(pace(b.spent)) })).filter((b) => b.budget && b.projected > b.budget).sort((a, b) => b.projected - b.budget - (a.projected - a.budget)),
+      overBudget: (m.budgets || []).filter((b) => b.budget && b.spent > b.budget).sort((a, b) => b.spent - b.budget - (a.spent - a.budget)),
       watch, overWatch: r0(overWatch), goals, bills, bills14: bills.filter((b) => daysBetween(today, b.due) <= 14).reduce((s, b) => s + (b.amount || 0), 0),
       // short-term debt = cards, loans and credit lines (the HELOC); a mortgage is long-term, shown on its own
       debts: (m.debts || []).map((d) => ({ ...d, longTerm: d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""), months: d.monthlyPayment ? Math.ceil(d.balance / d.monthlyPayment) : null })),
