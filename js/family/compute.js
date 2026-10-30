@@ -9,6 +9,49 @@ const avg = (a) => (a.length ? a.reduce((s, x) => s + x, 0) / a.length : null);
 const r0 = (x) => (x == null ? null : Math.round(x));
 const r1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
 
+// Paydays on a contribution's schedule from `from` to `to` (inclusive): every 14 days from a known
+// payday, twice a month (the 15th and the last day), or monthly on `day` (default the last day).
+export function paydays(c, from, to) {
+  const out = [];
+  if (from > to) return out;
+  if (c.schedule === "biweekly") {
+    if (!c.anchorPayday) return out;
+    for (let d = addDays(c.anchorPayday, Math.ceil(daysBetween(c.anchorPayday, from) / 14) * 14); d <= to; d = addDays(d, 14)) out.push(d);
+    return out;
+  }
+  for (let y = +from.slice(0, 4), mo = +from.slice(5, 7); `${y}-${String(mo).padStart(2, "0")}` <= to.slice(0, 7); mo === 12 ? (y++, mo = 1) : mo++) {
+    const ym = `${y}-${String(mo).padStart(2, "0")}`, last = new Date(y, mo, 0).getDate();
+    const days = c.schedule === "semimonthly" ? [15, last] : [Math.min(c.day || last, last)];
+    for (const dd of days) { const d = `${ym}-${String(dd).padStart(2, "0")}`; if (d >= from && d <= to) out.push(d); }
+  }
+  return out;
+}
+
+// "Pay yourselves first": the sync's category rows (travel, the kids' sport, what merchants took)
+// plus what the app works out itself — paycheck contributions from config (401(k), Roth, ESPP, read
+// off the paystubs) and credit-line paydown (paid minus new draws). Shown only once a sync has run.
+export function payFirstData(m, pf, today) {
+  if (!m?.payYourself) return null;
+  const year = today.slice(0, 4), monthStart = today.slice(0, 8) + "01";
+  const contrib = (pf?.contributions || []).filter((c) => c.perPaycheck > 0).map((c) => {
+    // to date: the paystub's YTD (if from this year) plus the paychecks since, never past the annual cap
+    const upTo = (d) => {
+      const base = c.ytd != null && c.ytdAsOf?.startsWith(year) && c.ytdAsOf <= d ? c.ytd + c.perPaycheck * paydays(c, addDays(c.ytdAsOf, 1), d).length
+        : c.ytd != null && c.ytdAsOf?.startsWith(year) ? c.ytd : c.perPaycheck * paydays(c, `${year}-01-01`, d).length;
+      return c.annualCap ? Math.min(base, c.annualCap) : base;
+    };
+    const ytd = upTo(today), before = monthStart > `${year}-01-01` ? upTo(addDays(monthStart, -1)) : 0;
+    return { label: c.label, kind: c.kind || "retirement", note: c.note, month: r0(Math.max(0, ytd - before)), ytd: r0(ytd) };
+  });
+  const paydown = (m.creditLines || []).map((cl) => {
+    const net = (mo) => (mo.paid || 0) - (mo.drawn || 0);
+    const cur = (cl.months || []).find((mo) => mo.month === m.month);
+    const ytd = (cl.months || []).filter((mo) => mo.month.startsWith(year)).reduce((s, mo) => s + net(mo), 0);
+    return { label: `${cl.name} · paydown`, kind: "paydown", note: "paid minus new draws", month: r0(Math.max(0, cur ? net(cur) : 0)), ytd: r0(Math.max(0, ytd)) };
+  });
+  return { ...m.payYourself, kept: [...contrib, ...(m.payYourself.kept || []), ...paydown] };
+}
+
 export function computeFamily(D, today) {
   const out = { today, week: sundayOf(today) };
   const people = D.config?.people || [];
@@ -55,12 +98,13 @@ export function computeFamily(D, today) {
       // short-term debt = cards, loans and credit lines (the HELOC); a mortgage is long-term, shown on its own
       debts: (m.debts || []).map((d) => ({ ...d, longTerm: d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""), months: d.monthlyPayment ? Math.ceil(d.balance / d.monthlyPayment) : null })),
       shortTermTotal: (m.debts || []).filter((d) => !(d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""))).reduce((s, d) => s + (d.balance || 0), 0) + (m.creditLines || []).reduce((s, c) => s + (c.balance || 0), 0),
-      debtTotal: (m.debts || []).reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [], payYourself: m.payYourself || null,
+      debtTotal: (m.debts || []).reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [], payYourself: payFirstData(m, D.config?.finance?.payFirst, today),
       // credit lines (the HELOC): short-term debt, never spending — drawn adds to it, paid takes it down
       creditLines: (m.creditLines || []).map((cl) => {
         const months = (cl.months || []).map((x) => ({ ...x, net: (x.drawn || 0) - (x.paid || 0) }));
         const now = months.find((x) => x.month === m.month) || { month: m.month, drawn: 0, paid: 0, interest: 0, net: 0 };
-        return { ...cl, months: months.slice(-6), now, net6: months.slice(-6).reduce((s, x) => s + x.net, 0) };
+        const minimum = (D.config?.finance?.creditLines || []).find((c) => c.account === cl.account || c.name === cl.name)?.minimum || null;
+        return { ...cl, minimum, belowMin: minimum != null && cl.balance > 0 && now.paid < minimum, months: months.slice(-6), now, net6: months.slice(-6).reduce((s, x) => s + x.net, 0) };
       }),
     };
   } else out.money = null;

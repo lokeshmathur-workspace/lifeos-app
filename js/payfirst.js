@@ -4,13 +4,13 @@
 //
 // Data (one object, from finance/monarch.json → payYourself, or Navya's money.json):
 //   { month: "YYYY-MM", earned?: [{label, month, ytd}],
-//     kept:  [{label, kind: "retirement"|"short"|"invest"|"save"|"paydown"|"travel", note?, month, ytd}],
+//     kept:  [{label, kind: "retirement"|"short"|"invest"|"save"|"paydown"|"kids"|"travel", note?, month, ytd}],
 //     taken: [{category, month, ytd, merchants: [{name, month, monthCount?, ytd, ytdCount?}]}] }
 // Amounts are positive dollars; `month` is this month so far, `ytd` this year so far.
 // Travel counts as kept: business travel is an investment, personal travel an investment in memories.
 
 // Kept rows are grouped by kind, in this order; headings show only when more than one group has money.
-const GROUPS = [["Retirement", ["retirement"]], ["Savings & investing", ["short", "save", "invest"]], ["Paying down debt", ["paydown"]], ["Travel", ["travel"]]];
+const GROUPS = [["Retirement", ["retirement"]], ["Savings & investing", ["short", "save", "invest"]], ["Paying down debt", ["paydown"]], ["Investing in the kids", ["kids"]], ["Travel", ["travel"]]];
 
 const usd = (n) => (n == null ? "–" : `$${Math.round(n).toLocaleString("en-US")}`);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
