@@ -7,7 +7,8 @@
 //     kept:  [{label, kind: "retirement"|"short"|"invest"|"save"|"paydown"|"kids"|"travel", note?, month, ytd}],
 //     taken: [{category, month, ytd, note?, merchants: [{name, month, monthCount?, ytd, ytdCount?}]}] }
 // A taken row with no merchants yet shows its `note` (e.g. where the store detail will come from).
-// Amounts are positive dollars; `month` is this month so far, `ytd` this year so far.
+// Amounts are positive dollars; `month` is this month so far, `ytd` this year so far. Counts are the
+// number of days that merchant charged you (what Monarch can count).
 // Travel counts as kept: business travel is an investment, personal travel an investment in memories.
 
 // Kept rows are grouped by kind, in this order; headings show only when more than one group has money.
@@ -49,7 +50,7 @@ export function payFirstHTML(p, range, w) {
     ? groups.map(([h, xs]) => `<li class="pyf-group"><span>${esc(h)}</span><span>${xs.length > 1 ? usd(sum(xs, "amt")) : ""}</span></li>${xs.map(row).join("")}`).join("")
     : r.kept.map(row).join("");
   const cats = r.taken.map((c) => !c.merchants.length ? `<div class="pyf-cat"><div class="pyf-sum"><span class="pyf-catname">${esc(c.category)}</span><b>${usd(c.amt)}</b>${c.note ? `<span class="pyf-catwho">${esc(c.note)}</span>` : ""}</div></div>` : `<details class="pyf-cat"><summary><span class="pyf-catname">${esc(c.category)}</span><span class="pyf-catwho">${c.merchants.length} ${c.merchants.length === 1 ? takers.replace(/s$/, "") : takers} took</span><b>${usd(c.amt)}</b></summary>
-      <ul class="pyf-merch">${c.merchants.slice(0, 8).map((m) => `<li><span><b>${esc(m.name)}</b> took ${usd(m.amt)}</span><span class="pyf-n">${m.count ? `${m.count} charge${m.count === 1 ? "" : "s"}` : ""}</span></li>`).join("")}
+      <ul class="pyf-merch">${c.merchants.slice(0, 8).map((m) => `<li><span><b>${esc(m.name)}</b> took ${usd(m.amt)}</span><span class="pyf-n">${m.count ? `on ${m.count} day${m.count === 1 ? "" : "s"}` : ""}</span></li>`).join("")}
       ${c.merchants.length > 8 ? `<li class="pyf-more">and ${c.merchants.length - 8} more took ${usd(sum(c.merchants.slice(8), "amt"))}</li>` : ""}</ul></details>`).join("");
   return `<div class="pyf">
     <div class="pyf-head"><h3>${esc(w.title)}</h3><span class="pyf-range" role="group" aria-label="Period">

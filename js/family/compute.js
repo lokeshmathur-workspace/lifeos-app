@@ -10,7 +10,8 @@ const r0 = (x) => (x == null ? null : Math.round(x));
 const r1 = (x) => (x == null ? null : Math.round(x * 10) / 10);
 
 // Paydays on a contribution's schedule from `from` to `to` (inclusive): every 14 days from a known
-// payday, twice a month (the 15th and the last day), or monthly on `day` (default the last day).
+// payday, twice a month (on `days`, default the 15th and the last day), or monthly on `day`
+// (default the last day).
 export function paydays(c, from, to) {
   const out = [];
   if (from > to) return out;
@@ -21,7 +22,7 @@ export function paydays(c, from, to) {
   }
   for (let y = +from.slice(0, 4), mo = +from.slice(5, 7); `${y}-${String(mo).padStart(2, "0")}` <= to.slice(0, 7); mo === 12 ? (y++, mo = 1) : mo++) {
     const ym = `${y}-${String(mo).padStart(2, "0")}`, last = new Date(y, mo, 0).getDate();
-    const days = c.schedule === "semimonthly" ? [15, last] : [Math.min(c.day || last, last)];
+    const days = c.schedule === "semimonthly" ? (c.days || [15, last]).map((x) => Math.min(x, last)) : [Math.min(c.day || last, last)];
     for (const dd of days) { const d = `${ym}-${String(dd).padStart(2, "0")}`; if (d >= from && d <= to) out.push(d); }
   }
   return out;
