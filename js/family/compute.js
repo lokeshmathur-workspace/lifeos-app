@@ -98,7 +98,7 @@ export function computeFamily(D, today) {
       // short-term debt = cards, loans and credit lines (the HELOC); a mortgage is long-term, shown on its own
       debts: (m.debts || []).map((d) => ({ ...d, longTerm: d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""), months: d.monthlyPayment ? Math.ceil(d.balance / d.monthlyPayment) : null })),
       shortTermTotal: (m.debts || []).filter((d) => !(d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""))).reduce((s, d) => s + (d.balance || 0), 0) + (m.creditLines || []).reduce((s, c) => s + (c.balance || 0), 0),
-      debtTotal: (m.debts || []).reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [], payYourself: payFirstData(m, D.config?.finance?.payFirst, today),
+      debtTotal: (m.debts || []).reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [], payYourself: payFirstData(m, D.config?.finance?.payFirst, today), navyaMoney: m.navyaMoney || null,
       // credit lines (the HELOC): short-term debt, never spending — drawn adds to it, paid takes it down
       creditLines: (m.creditLines || []).map((cl) => {
         const months = (cl.months || []).map((x) => ({ ...x, net: (x.drawn || 0) - (x.paid || 0) }));

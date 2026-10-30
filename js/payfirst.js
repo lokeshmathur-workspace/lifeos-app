@@ -33,11 +33,12 @@ export function computePayFirst(p, range) {
     merchantCount: new Set(top.map((m) => m.name)).size };
 }
 
-// words: { title, you, kept, taken, takers?, earnedLabel?, keptHead, takenHead, payday, into }
+// words: { title, you, kept, taken, takers?, earnedLabel?, keptHead, takenHead, payday, into, scope? }
 export function payFirstHTML(p, range, w) {
   const r = computePayFirst(p, range);
   if (!r) return "";
   const period = range === "year" ? "this year" : "this month", takers = w.takers || "merchants";
+  const scope = w.scope ? ` data-scope="${esc(w.scope)}"` : ""; // which section's switch, when a screen has two
   const ratioText = r.keptTotal >= r.takenTotal && r.takenTotal ? `${w.you} kept <b>$${(r.keptTotal / r.takenTotal).toFixed(2)}</b> for every $1 ${takers} took ${period}.`
     : r.takenTotal ? `${cap(takers)} took <b>$${(r.takenTotal / Math.max(r.keptTotal, 1)).toFixed(2)}</b> for every $1 ${w.you.toLowerCase()} kept ${period}.` : `Nothing went to ${takers} ${period}.`;
   const row = (x) => `<li><span>${esc(x.label)}${x.note ? `<small>${esc(x.note)}</small>` : ""}</span><b>${usd(x.amt)}</b></li>`;
@@ -52,7 +53,7 @@ export function payFirstHTML(p, range, w) {
       ${c.merchants.length > 8 ? `<li class="pyf-more">and ${c.merchants.length - 8} more took ${usd(sum(c.merchants.slice(8), "amt"))}</li>` : ""}</ul></details>`).join("");
   return `<div class="pyf">
     <div class="pyf-head"><h3>${esc(w.title)}</h3><span class="pyf-range" role="group" aria-label="Period">
-      <button type="button" data-act="pyfrange" data-range="month" aria-pressed="${range !== "year"}">This month</button><button type="button" data-act="pyfrange" data-range="year" aria-pressed="${range === "year"}">This year</button></span></div>
+      <button type="button" data-act="pyfrange"${scope} data-range="month" aria-pressed="${range !== "year"}">This month</button><button type="button" data-act="pyfrange"${scope} data-range="year" aria-pressed="${range === "year"}">This year</button></span></div>
     ${r.earned ? `<p class="pyf-earned">${esc(w.earnedLabel || "Earned")} ${period}: <b>${usd(r.earned)}</b></p>` : ""}
     <div class="pyf-vs">
       <div class="pyf-side kept"><span>${esc(w.kept)}</span><b>${usd(r.keptTotal)}</b></div>
