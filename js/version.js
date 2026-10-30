@@ -1,6 +1,6 @@
 // The app's version, bumped with every change that's pushed. Shown in Settings and in the
 // Navya footer; the running page compares it with the live copy to offer a reload.
-export const APP_VERSION = "2026-10-27.2";
+export const APP_VERSION = "2026-10-30.1";
 
 // Fetches the published version.js from the same address the app loads it from (not a
 // one-off URL), so it reports the version a reload would actually get: GitHub Pages' CDN keeps

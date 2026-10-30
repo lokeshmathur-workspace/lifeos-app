@@ -69,7 +69,8 @@ header.top{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom
 .brand{font-family:"Manrope",sans-serif;font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:600}
 .spring{flex:1}
 
-.seg{display:flex;background:var(--sunk);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px}
+.seg{display:flex;background:var(--sunk);border:1px solid var(--line);border-radius:999px;padding:3px;gap:2px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+.seg button{flex:none}
 .seg button{
   font:inherit;font-size:13px;font-weight:500;border:0;background:none;color:var(--muted);
   padding:5px 15px;border-radius:999px;cursor:pointer;transition:color .12s,background .12s;
@@ -698,6 +699,59 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .fm-note{border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;background:var(--surface)}
 .fm-note>b,.fm-note .fm-rowsplit>b{font-size:11.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-2)}
 .fm-note.review{border-left:3px solid var(--fam)}.fm-note.past{background:var(--raised);margin-top:10px}
+/* ── Pay yourself first (js/payfirst.js): kept vs taken, shared by Family → Money and Navya → Money.
+   Each host sets --pk (kept), --pt (taken) and the ink/line/fill it sits on. ── */
+.fam .pyf{--pk:var(--fam);--pt:#B4533A;--pink2:var(--ink);--pmut:var(--muted);--pline:var(--line);--pfill:var(--raised);--ptxt:var(--ink-2)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .fam .pyf{--pt:#E0876E}}
+:root[data-theme="dark"] .fam .pyf{--pt:#E0876E}
+.navya .pyf{--pk:var(--lime);--pt:var(--red);--pink2:var(--nink);--pmut:var(--nmuted);--pline:var(--nline);--pfill:var(--panel-2);--ptxt:var(--nink-2)}
+.fm-last3{display:block;margin-top:4px;font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.pyf{display:flex;flex-direction:column;gap:14px;font-variant-numeric:tabular-nums}
+.pyf h3,.pyf h4{margin:0}
+.pyf-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.pyf-range{display:inline-flex;border:1px solid var(--pline);border-radius:999px;padding:2px;background:var(--pfill)}
+.pyf-range button{border:0;background:none;color:var(--pmut);font-size:13px;font-weight:600;padding:5px 12px;border-radius:999px}
+.pyf-range button[aria-pressed="true"]{background:var(--pink2);color:var(--pfill)}
+.pyf-earned{color:var(--ptxt);font-size:14px}.pyf-earned b{color:var(--pink2)}
+.pyf-vs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.pyf-side{display:flex;flex-direction:column;gap:2px;padding-left:12px;border-left:3px solid var(--pk)}
+.pyf-side.taken{border-left-color:var(--pt)}
+.pyf-side span{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--pmut)}
+.pyf-side b{font-size:32px;line-height:1.1;font-weight:700;color:var(--pk)}.pyf-side.taken b{color:var(--pt)}
+.fam .pyf-side b{font-family:"Literata",Georgia,serif;font-weight:500}
+.navya .pyf-side b{font-family:"Bricolage Grotesque","Manrope",system-ui,sans-serif}
+.pyf-bar{height:10px;border-radius:999px;background:var(--pt);overflow:hidden}
+.pyf-bar i{display:block;height:100%;background:var(--pk);border-right:2px solid var(--pfill)}
+.pyf-ratio{font-size:15.5px;color:var(--ptxt);margin:0}.pyf-ratio b{color:var(--pink2)}
+.fam .pyf-ratio{font-family:"Literata",Georgia,serif;font-size:17px}
+.pyf-cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.5fr);gap:22px}
+@media (max-width:700px){.pyf-cols{grid-template-columns:minmax(0,1fr)}}
+.pyf-cols h4{font-size:12px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--pmut);margin:0 0 6px}
+.pyf-kept{list-style:none;margin:0;padding:0}
+.pyf-kept li,.pyf-merch li{display:flex;justify-content:space-between;align-items:baseline;gap:10px;padding:7px 0;border-top:1px solid var(--pline);font-size:14px;color:var(--ptxt)}
+.pyf-kept li:first-child{border-top:0}
+.pyf-kept li b{color:var(--pk)}
+.pyf-kept li small{display:block;font-size:12px;color:var(--pmut)}
+.pyf-kept li.pyf-group{border-top:0;padding:12px 0 2px;font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--pmut)}
+.pyf-kept li.pyf-group:first-child{padding-top:0}
+.pyf-kept li.pyf-group+li{border-top:0}
+.pyf-cat{border-top:1px solid var(--pline)}
+.pyf-cat:first-of-type{border-top:0}
+.pyf-cat summary{list-style:none;display:grid;grid-template-columns:14px minmax(0,1fr) auto auto;gap:8px;align-items:baseline;padding:8px 0;cursor:pointer;font-size:14px}
+.pyf-cat summary::-webkit-details-marker{display:none}
+.pyf-cat summary::before{content:"\203A";color:var(--pmut);font-weight:700;transition:transform .15s;display:inline-block}
+.pyf-cat[open] summary::before{transform:rotate(90deg)}
+.pyf-catname{font-weight:700;color:var(--pink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pyf-catwho{font-size:12.5px;color:var(--pmut)}
+.pyf-cat summary b{color:var(--pt)}
+.pyf-merch{list-style:none;margin:0 0 8px 22px;padding:0}
+.pyf-merch li{font-size:13.5px;padding:5px 0}
+.pyf-merch li b{color:var(--pink2)}
+.pyf-n,.pyf-more{font-size:12px;color:var(--pmut)}
+.pyf-n{white-space:nowrap}
+.pyf-more{padding:6px 0}
+.pyf-nudge{margin:0;padding:12px 14px;border-left:3px solid var(--pk);background:var(--pfill);border-radius:0 8px 8px 0;font-size:14px;line-height:1.5;color:var(--ptxt)}
+.pyf-nudge b{color:var(--pink2)}
 .fm-note .talked{font-size:15px;line-height:1.55;color:var(--ink);white-space:pre-line}
 .fm-note .decisions{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:3px}.fm-note .decisions li{font-size:15px;color:var(--ink)}.fm-note .decisions li::marker{color:var(--fam)}
 .fm-log{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0}

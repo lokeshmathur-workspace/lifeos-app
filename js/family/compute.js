@@ -47,7 +47,7 @@ export function computeFamily(D, today) {
       // mortgage) make a straight-line pace wrong. Only the watched day-to-day categories are projected.
       spent: cur?.spending ?? null, income: cur?.income ?? null, budgetTotal, budgetSpent: budgetTotal ? r0(budgetSpent) : null,
       daysElapsed: el, daysInMonth: dim,
-      lastMonth: full.at(-1) || null, avg3Spending: r0(avg(full.slice(-3).map((c) => c.spending))),
+      lastMonth: full.at(-1) || null, avg3Spending: r0(avg(full.slice(-3).map((c) => c.spending))), last3: full.slice(-3).map((c) => ({ month: c.month, spending: c.spending })),
       savingsRate: r1(rate(full.at(-1))), savingsRate3: r1(avg(full.slice(-3).map(rate).filter((x) => x != null))),
       months: full.slice(-6).map((c) => ({ ...c, rate: r1(rate(c)) })),
       overBudget: (m.budgets || []).filter((b) => b.budget && b.spent > b.budget).sort((a, b) => b.spent - b.budget - (a.spent - a.budget)),
@@ -55,7 +55,7 @@ export function computeFamily(D, today) {
       // short-term debt = cards, loans and credit lines (the HELOC); a mortgage is long-term, shown on its own
       debts: (m.debts || []).map((d) => ({ ...d, longTerm: d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""), months: d.monthlyPayment ? Math.ceil(d.balance / d.monthlyPayment) : null })),
       shortTermTotal: (m.debts || []).filter((d) => !(d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""))).reduce((s, d) => s + (d.balance || 0), 0) + (m.creditLines || []).reduce((s, c) => s + (c.balance || 0), 0),
-      debtTotal: (m.debts || []).reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [],
+      debtTotal: (m.debts || []).reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [], payYourself: m.payYourself || null,
       // credit lines (the HELOC): short-term debt, never spending — drawn adds to it, paid takes it down
       creditLines: (m.creditLines || []).map((cl) => {
         const months = (cl.months || []).map((x) => ({ ...x, net: (x.drawn || 0) - (x.paid || 0) }));

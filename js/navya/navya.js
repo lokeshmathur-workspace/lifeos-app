@@ -11,6 +11,7 @@ import { fireRoutine, RoutineError } from "../learning/routine.js";
 import { makeShareImage } from "./share.js";
 import { todayISO } from "../dateutil.js";
 import { flash } from "../flash.js";
+import { payFirstHTML } from "../payfirst.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -23,7 +24,7 @@ const sundayOf = (iso) => { const d = new Date(iso + "T12:00:00"); d.setDate(d.g
 const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }, del(k) { try { localStorage.removeItem(k); } catch {} } };
 
-const TABS = [["hq", "🏠 HQ"], ["acad", "📚 School"], ["phone", "📱 Phone"], ["sport", "🏐 Sport & health"], ["goals", "🎯 Goals"]];
+const TABS = [["hq", "🏠 HQ"], ["acad", "📚 School"], ["phone", "📱 Phone"], ["sport", "🏐 Sport & health"], ["money", "💰 Money"], ["goals", "🎯 Goals"]];
 // Old tab names (links, saved state) land on the merged tab.
 const TAB_ALIAS = { char: "sport", vb: "sport", fuel: "sport" };
 const PARENT_ONLY = new Set(["snip", "checkin"]);
@@ -64,7 +65,7 @@ function draw() {
   N.tab = TAB_ALIAS[N.tab] || N.tab;
   const has = hasData(D, C);
   const tabs = TABS.filter(([k]) => k === "hq" || k === "goals" || has[k] || N.tab === k);
-  const body = { hq, goals, acad, sport, phone, snip, checkin }[N.tab] || hq;
+  const body = { hq, goals, acad, sport, phone, money, snip, checkin }[N.tab] || hq;
   const main = $("#main");
   main.innerHTML = `<div class="navya${N.kid ? " kid" : ""}">
     <div class="nv-top">
@@ -114,6 +115,7 @@ function hasData(D, C) {
     acad: C.classes.some((c) => c.letter) || !!C.attendance.totals,
     phone: !!C.phone.latest,
     sport: C.volleyball.games.length > 0 || !!C.character.latest || C.daily.logged > 0 || !!C.volleyball.reps7,
+    money: !!D.money,
   };
 }
 
@@ -423,6 +425,11 @@ function sport(D, C) {
 }
 
 /* ── Phone & time ───────────────────────────────────────── */
+/* ── money: pay yourself first ───────────────────────────── */
+function money(D) {
+  return `<div class="nv-bento"><div class="nv-tile s4">${payFirstHTML(D.money, ctx.S.navya.pyfRange, { title: "💰 Pay yourself first", you: "You", kept: "You kept", taken: "Stores took", takers: "stores", earnedLabel: "You earned", keptHead: "What you kept", takenHead: "Who took your money", payday: "Pay yourself first: the day money comes in, move your share to savings before a store gets it.", into: "your savings and investing" })}</div></div>`;
+}
+
 function phone(D, C) {
   const lt = C.phone.latest;
   if (!lt) return emptyState("No Screen Time yet", "Add her iPhone's Screen Time Week view, the Most Used list and Pickups with ＋ Add → Screenshots & files.");
@@ -579,6 +586,7 @@ function wire(root, D, C) {
     const act = t.dataset.act;
     try {
       if (act === "kid" && !ctx.S.kidOnly) { N.kid = !N.kid; ls.set("navya.kidView", N.kid); if (N.kid && PARENT_ONLY.has(N.tab)) N.tab = "hq"; draw(); }
+      else if (act === "pyfrange") { N.pyfRange = t.dataset.range; draw(); }
       else if (act === "reload") { N.loaded = false; renderNavyaView(ctx.store, ctx.S, ctx.renderApp); }
       else if (act === "draftcoach") await startRun("coach", t.dataset.week || sundayOf(todayISO()));
       else if (act === "approvecoach") await saveCoach(latestCoach(D), { status: "approved", approvedAt: new Date().toISOString() });

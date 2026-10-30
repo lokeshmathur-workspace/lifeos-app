@@ -19,7 +19,7 @@ export const FILES = {
   codes: ["school/codes.json", null], goals: ["goals.json", null], classes: ["academics/classes.json", []],
   grades: ["academics/grades.json", []], assignments: ["academics/assignments.json", []],
   attendance: ["academics/attendance.json", null], gpa: ["academics/gpa.json", null],
-  screentime: ["phone/screentime.json", []], documents: ["school/documents.json", []], vb: ["navya_data.json", {}], computed: ["computed.json", null],
+  screentime: ["phone/screentime.json", []], documents: ["school/documents.json", []], vb: ["navya_data.json", {}], computed: ["computed.json", null], money: ["money.json", null],
 };
 
 export class NavyaStore {

@@ -5,6 +5,7 @@
 // syncs the Monarch summary (see the Family repo's CLAUDE.md).
 import { computeFamily, sundayOf, addDays, daysBetween } from "./compute.js";
 import { FILES } from "./store.js";
+import { payFirstHTML } from "../payfirst.js";
 import { fireRoutine, RoutineError } from "../learning/routine.js";
 import { todayISO } from "../dateutil.js";
 import { flash } from "../flash.js";
@@ -14,6 +15,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const fmtD = (iso, o = { month: "short", day: "numeric" }) => (iso ? new Date(iso.slice(0, 10) + "T12:00:00").toLocaleDateString("en-US", o) : "");
 const usd = (n) => (n == null ? "–" : `$${Math.round(n).toLocaleString("en-US")}`);
+const monShort = (ym) => new Date(ym + "-15T12:00:00").toLocaleDateString("en-US", { month: "short" });
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
 const TABS = [["hq", "Overview"], ["money", "Money"], ["us", "Us"], ["growth", "Growth"], ["health", "Health"], ["kids", "Kids"], ["home", "Home"]];
 const KINDS = { book: "Book", podcast: "Podcast", article: "Article", video: "Video", thought: "My own thought" };
@@ -163,12 +165,13 @@ function money(D, C) {
     <span class="sub">${g.monthly ? `${usd(g.monthly)}/month` : ""}${g.months ? ` · about ${g.months} months to go` : ""}${g.monthsFaster ? ` · <b class="good">${g.monthsFaster} months sooner</b> if the watched overspend went here` : ""}</span></li>`).join("");
   return `<div class="fm-bento">
     <div class="fm-tile s4 glow"><div class="fm-rowsplit"><h3>${fmtD(m.month + "-01", { month: "long" })} so far</h3><span class="sub">from Monarch ${fmtD(m.asOf)}</span></div>
-      <div class="fm-big3"><div class="tri"><b class="${vsUsual > 0 ? "bad" : ""}">${usd(m.spent)}</b><span>spent so far${m.daysElapsed ? ` · day ${m.daysElapsed} of ${m.daysInMonth}` : ""}</span></div><div class="tri"><b>${usd(m.avg3Spending)}</b><span>your usual month · last 3 months</span></div>
+      <div class="fm-big3"><div class="tri"><b class="${vsUsual > 0 ? "bad" : ""}">${usd(m.spent)}</b><span>spent so far${m.daysElapsed ? ` · day ${m.daysElapsed} of ${m.daysInMonth}` : ""}</span></div><div class="tri"><b>${usd(m.avg3Spending)}</b><span>a usual month · average${m.last3?.length ? ` of the last ${m.last3.length}` : ""}</span>${m.last3?.length ? `<small class="fm-last3">${m.last3.map((c) => `${monShort(c.month)} ${usd(c.spending)}`).join(" · ")}</small>` : ""}</div>
       <div class="tri"><b>${m.savingsRate ?? "–"}%</b><span>saved last month · ${m.savingsRate3 ?? "–"}% over 3</span></div></div>
       ${vsUsual != null ? `<p class="sub">So far <b class="${vsUsual > 0 ? "bad" : "good"}">${usd(Math.abs(vsUsual))} ${vsUsual > 0 ? "more" : "less"}</b> than a usual month in total.</p>` : ""}
       ${m.budgetTotal ? `<p class="sub">Budgeted categories: <b class="${m.budgetSpent > m.budgetTotal ? "bad" : "good"}">${usd(m.budgetSpent)}</b> spent of ${usd(m.budgetTotal)} budgeted.</p>` : ""}
       ${m.lastMonth ? `<p class="sub">Last month: spent ${usd(m.lastMonth.spending)} of ${usd(m.lastMonth.income)} income.</p>` : ""}
       <div class="fm-btnrow">${sync}</div>${m.flags.length ? `<ul class="fm-check">${m.flags.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}</div>
+    ${m.payYourself ? `<div class="fm-tile s4">${payFirstHTML(m.payYourself, ctx.S.fam.pyfRange, { title: "Pay yourselves first", you: "You", kept: "You paid yourselves", taken: "Merchants took", keptHead: "What you paid yourselves", takenHead: "Who took your money", payday: "Pay yourselves first: on payday, move that to the ESPP or cash savings before they get it.", into: "your 401(k)s and savings" })}</div>` : ""}
     <div class="fm-tile s2"><h3>Categories you watch</h3>${watch ? `<ul class="fam-list bars">${watch}</ul>` : empty("Add categories below.")}
       ${m.overWatch ? `<p class="fam-impact">On pace to spend <b>${usd(m.overWatch)}</b> more than ${m.watch.some((w) => w.over && w.budget) ? "planned" : "usual"} in these this month. Put toward your goals instead, that's ${usd(m.overWatch * 12)} a year.</p>` : ""}${watchEdit}</div>
     <div class="fm-tile s2"><h3>Savings, retirement &amp; payoff</h3>${goals ? `<ul class="fam-list bars">${goals}</ul>` : empty("No goals in Monarch yet.")}
@@ -392,6 +395,7 @@ function wire(root, D, C) {
     const ensureKid = (k) => { k[kid] = k[kid] || { appointments: [], goals: [], observations: [] }; return k[kid]; };
     if (act === "reload") { ctx.store.reviews.clear(); F.loaded = false; F.run = null; return renderFamilyView(ctx.store, ctx.S, ctx.renderApp); }
     if (act === "tag" || act === "obstype") { const on = act === "obstype" || t.getAttribute("aria-pressed") !== "true"; t.closest(".fm-tags").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t && on))); return; }
+    if (act === "pyfrange") { F.pyfRange = t.dataset.range; return draw(); }
     if (act === "opennavya") { ctx.S.view = "navya"; return ctx.renderApp(); }
     if (act === "draftread") return startRun("read", sundayOf(today));
     if (act === "syncmoney") return startRun("finance");
