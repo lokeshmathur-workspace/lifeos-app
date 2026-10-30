@@ -30,16 +30,23 @@ export function paydays(c, from, to) {
 
 // "Pay yourselves first": the sync's category rows (travel, the kids' sport, what merchants took)
 // plus what the app works out itself — paycheck contributions from config (401(k), Roth, ESPP, read
-// off the paystubs) and credit-line paydown (paid minus new draws). Shown only once a sync has run.
+// off the paystubs, `stubs` and `perPaycheck`) and credit-line paydown (paid minus new draws). Shown only once a sync has run.
 export function payFirstData(m, pf, today) {
   if (!m?.payYourself) return null;
   const year = today.slice(0, 4), monthStart = today.slice(0, 8) + "01";
-  const contrib = (pf?.contributions || []).filter((c) => c.perPaycheck > 0).map((c) => {
-    // to date: the paystub's YTD (if from this year) plus the paychecks since, never past the annual cap
+  const contrib = (pf?.contributions || []).map((c) => {
+    // Paystub figures for this year: [{date, amount (that paycheck), ytd}]. Between stubs the year-
+    // to-date is the last stub's plus perPaycheck for each payday since; before the first stub it
+    // backs out. So a contribution that changed or hit its limit mid-year still adds up.
+    const stubs = (c.stubs || (c.ytd != null ? [{ date: c.ytdAsOf, amount: c.perPaycheck, ytd: c.ytd }] : []))
+      .filter((x) => x.date?.startsWith(year)).sort((a, b) => (a.date < b.date ? -1 : 1));
+    const per = c.perPaycheck || 0;
     const upTo = (d) => {
-      const base = c.ytd != null && c.ytdAsOf?.startsWith(year) && c.ytdAsOf <= d ? c.ytd + c.perPaycheck * paydays(c, addDays(c.ytdAsOf, 1), d).length
-        : c.ytd != null && c.ytdAsOf?.startsWith(year) ? c.ytd : c.perPaycheck * paydays(c, `${year}-01-01`, d).length;
-      return c.annualCap ? Math.min(base, c.annualCap) : base;
+      const last = [...stubs].reverse().find((x) => x.date <= d), first = stubs[0];
+      const v = last ? last.ytd + per * paydays(c, addDays(last.date, 1), d).length
+        : first ? first.ytd - (first.amount || 0) - per * paydays(c, addDays(d, 1), addDays(first.date, -1)).length
+        : per * paydays(c, `${year}-01-01`, d).length;
+      return Math.max(0, c.annualCap ? Math.min(v, c.annualCap) : v);
     };
     const ytd = upTo(today), before = monthStart > `${year}-01-01` ? upTo(addDays(monthStart, -1)) : 0;
     return { label: c.label, kind: c.kind || "retirement", note: c.note, month: r0(Math.max(0, ytd - before)), ytd: r0(ytd) };
