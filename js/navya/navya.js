@@ -427,7 +427,7 @@ function sport(D, C) {
 /* ── Phone & time ───────────────────────────────────────── */
 /* ── money: pay yourself first ───────────────────────────── */
 function money(D) {
-  return `<div class="nv-bento"><div class="nv-tile s4">${payFirstHTML(D.money, ctx.S.navya.pyfRange, { title: "💰 Pay yourself first", you: "You", kept: "You kept", taken: "Stores took", takers: "stores", earnedLabel: "You earned", keptHead: "What you kept", takenHead: "Who took your money", payday: "Pay yourself first: the day money comes in, move your share to savings before a store gets it.", into: "your savings and investing" })}</div></div>`;
+  return `<div class="nv-bento"><div class="nv-tile s4">${payFirstHTML(D.money, ctx.S.navya.pyfRange, { title: "💰 Pay yourself first", you: "You", kept: "You kept", taken: "Stores took", takers: "stores", earnedLabel: "Money in", keptHead: "What you kept", takenHead: "Who took your money", payday: "Pay yourself first: the day money comes in, move your share to savings before a store gets it.", into: "your savings and investing" })}</div></div>`;
 }
 
 function phone(D, C) {

@@ -5,7 +5,8 @@
 // Data (one object, from finance/monarch.json → payYourself, or Navya's money.json):
 //   { month: "YYYY-MM", earned?: [{label, month, ytd}],
 //     kept:  [{label, kind: "retirement"|"short"|"invest"|"save"|"paydown"|"kids"|"travel", note?, month, ytd}],
-//     taken: [{category, month, ytd, merchants: [{name, month, monthCount?, ytd, ytdCount?}]}] }
+//     taken: [{category, month, ytd, note?, merchants: [{name, month, monthCount?, ytd, ytdCount?}]}] }
+// A taken row with no merchants yet shows its `note` (e.g. where the store detail will come from).
 // Amounts are positive dollars; `month` is this month so far, `ytd` this year so far.
 // Travel counts as kept: business travel is an investment, personal travel an investment in memories.
 
@@ -25,7 +26,8 @@ export function computePayFirst(p, range) {
     merchants: (c.merchants || []).map((m) => ({ ...m, amt: m[k] || 0, count: range === "year" ? m.ytdCount : m.monthCount })).filter((m) => m.amt > 0).sort((a, b) => b.amt - a.amt) }))
     .filter((c) => c.amt > 0).sort((a, b) => b.amt - a.amt);
   const keptTotal = sum(kept, "amt"), takenTotal = sum(taken, "amt"), earned = sum((p.earned || []).map((x) => ({ amt: x[k] || 0 })), "amt");
-  const top = taken.flatMap((c) => c.merchants.map((m) => ({ ...m, category: c.category }))).sort((a, b) => b.amt - a.amt);
+  // a category whose merchants aren't known yet stands in for them
+  const top = taken.flatMap((c) => (c.merchants.length ? c.merchants : [{ name: c.category, amt: c.amt }]).map((m) => ({ ...m, category: c.category }))).sort((a, b) => b.amt - a.amt);
   return { range, keptTotal, takenTotal, earned, kept, taken, top3: top.slice(0, 3), top3Total: sum(top.slice(0, 3), "amt"),
     keptShare: keptTotal + takenTotal ? keptTotal / (keptTotal + takenTotal) : 0,
     merchantCount: new Set(top.map((m) => m.name)).size };
@@ -45,7 +47,7 @@ export function payFirstHTML(p, range, w) {
   const keptRows = groups.length > 1
     ? groups.map(([h, xs]) => `<li class="pyf-group"><span>${esc(h)}</span><span>${xs.length > 1 ? usd(sum(xs, "amt")) : ""}</span></li>${xs.map(row).join("")}`).join("")
     : r.kept.map(row).join("");
-  const cats = r.taken.map((c) => `<details class="pyf-cat"><summary><span class="pyf-catname">${esc(c.category)}</span><span class="pyf-catwho">${c.merchants.length} ${c.merchants.length === 1 ? takers.replace(/s$/, "") : takers} took</span><b>${usd(c.amt)}</b></summary>
+  const cats = r.taken.map((c) => !c.merchants.length ? `<div class="pyf-cat"><div class="pyf-sum"><span class="pyf-catname">${esc(c.category)}</span><b>${usd(c.amt)}</b>${c.note ? `<span class="pyf-catwho">${esc(c.note)}</span>` : ""}</div></div>` : `<details class="pyf-cat"><summary><span class="pyf-catname">${esc(c.category)}</span><span class="pyf-catwho">${c.merchants.length} ${c.merchants.length === 1 ? takers.replace(/s$/, "") : takers} took</span><b>${usd(c.amt)}</b></summary>
       <ul class="pyf-merch">${c.merchants.slice(0, 8).map((m) => `<li><span><b>${esc(m.name)}</b> took ${usd(m.amt)}</span><span class="pyf-n">${m.count ? `${m.count} charge${m.count === 1 ? "" : "s"}` : ""}</span></li>`).join("")}
       ${c.merchants.length > 8 ? `<li class="pyf-more">and ${c.merchants.length - 8} more took ${usd(sum(c.merchants.slice(8), "amt"))}</li>` : ""}</ul></details>`).join("");
   return `<div class="pyf">

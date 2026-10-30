@@ -738,12 +738,13 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .pyf-cat{border-top:1px solid var(--pline)}
 .pyf-cat:first-of-type{border-top:0}
 .pyf-cat summary{list-style:none;display:grid;grid-template-columns:14px minmax(0,1fr) auto auto;gap:8px;align-items:baseline;padding:8px 0;cursor:pointer;font-size:14px}
+.pyf-sum{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px;align-items:baseline;padding:8px 0 8px 22px;font-size:14px}.pyf-sum .pyf-catwho{grid-column:1/-1}
 .pyf-cat summary::-webkit-details-marker{display:none}
 .pyf-cat summary::before{content:"\203A";color:var(--pmut);font-weight:700;transition:transform .15s;display:inline-block}
 .pyf-cat[open] summary::before{transform:rotate(90deg)}
 .pyf-catname{font-weight:700;color:var(--pink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pyf-catwho{font-size:12.5px;color:var(--pmut)}
-.pyf-cat summary b{color:var(--pt)}
+.pyf-cat summary b,.pyf-sum b{color:var(--pt)}
 .pyf-merch{list-style:none;margin:0 0 8px 22px;padding:0}
 .pyf-merch li{font-size:13.5px;padding:5px 0}
 .pyf-merch li b{color:var(--pink2)}
