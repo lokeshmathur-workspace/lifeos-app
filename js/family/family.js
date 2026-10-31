@@ -101,7 +101,7 @@ function hq(D, C) {
     ["growth", "Growth", (() => { const open = (D.growth?.items || []).filter((g) => g.status === "open"), mine = open.filter((g) => !(g.reflections || []).some((r) => r.by === ctx.S.fam.me)); return open.length ? `${open.length} to talk about${mine.length ? ` · ${mine.length} waiting for your thoughts` : ""}` : "Nothing waiting to talk about"; })(), `${(D.growth?.items || []).filter((g) => g.status === "discussed").length} talked about so far`],
     ["home", "Home", `${C.home.todos.length} to-dos open · ${C.home.chores.filter((c) => c.due).length} chores due`, `${C.home.done7} done this week`],
   ];
-  return `<div class="fm-bento">${read}
+  return `<div class="fm-bento">${turnNudge(D, C)}${read}
     <div class="fm-tile s2"><h3>Coming up · next 2 weeks</h3>${up.length ? `<ul class="fam-list">${up.map((u) => `<li class="${u.overdue ? "late" : ""}"><span class="d">${fmtD(u.date)}</span><span><span class="fm-type">${u.icon}</span>${esc(u.text)}</span></li>`).join("")}</ul>` : empty("Nothing in the next two weeks.")}</div>
     <div class="fm-tile s2"><h3>How each area is going</h3><div class="fm-rows">${rows.map(([t, title, big, sub]) => `<button class="fm-row fam-row" data-tab="${t}"><span class="nm">${title}</span><b>${esc(big)}</b><span class="sub">${esc(sub)}</span><span class="go">→</span></button>`).join("")}</div></div>
   </div>`;
@@ -191,10 +191,179 @@ function money(D, C) {
 
 /* ── Us ──────────────────────────────────────────────────── */
 
+// ── Us: our compass, Growing Together (the weekly talk), a question of the week, rituals ──
+const VALUE_LIST = ["Honesty", "Kindness", "Faith", "Family first", "Adventure", "Learning", "Health", "Generosity", "Gratitude", "Hard work",
+  "Excellence", "Fun", "Respect", "Loyalty", "Courage", "Humility", "Service", "Curiosity", "Discipline", "Patience", "Independence",
+  "Tradition", "Creativity", "Simplicity", "Financial freedom", "Compassion", "Responsibility", "Growth", "Joy", "Integrity"];
+// Love-map questions (after the Gottmans): one a week, in order, then round again.
+const QUESTIONS = ["What's one worry you haven't said out loud yet?", "What would a perfect Saturday look like for you this year?",
+  "Which friend do you feel closest to right now, and why?", "What's something you're proud of this month that I might have missed?",
+  "What do you want our kids to remember about their childhood?", "When do you feel most loved by me?",
+  "What's a dream you've put on hold?", "What's weighing on you most at work right now?", "What's one thing you'd like us to do more of together?",
+  "What did your family do well growing up that you'd like us to keep?", "Where would you go if we had a free week and no budget?",
+  "What's something small I do that makes your day better?", "What's one thing you'd like to learn in the next year?",
+  "When did you last feel really proud of our family?", "What's a habit of mine you'd like me to keep?", "What does a good evening at home look like to you?",
+  "Who do you want to be in five years?", "What's one way I could support you better this month?", "What's a memory of us you go back to?",
+  "What are you looking forward to most this season?", "What's something you need more of right now: rest, fun, help or space?",
+  "What value do you most want Navya to carry with her?", "What's one money worry or hope you'd like us to talk about?",
+  "If we wrote this year's story, what would the title be?", "What made you laugh this week?", "What's a tradition you'd like us to start?"];
+const RIT_EVERY = { daily: "Daily", weekly: "Weekly", monthly: "Monthly", yearly: "Yearly" };
+const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const TALK = "Growing Together";
+const weekNo = (iso) => Math.floor((new Date(iso + "T12:00:00") - new Date("2026-01-04T12:00:00")) / (7 * 86400000));
+const qFor = (iso) => QUESTIONS[((weekNo(iso) % QUESTIONS.length) + QUESTIONS.length) % QUESTIONS.length];
+// The next Growing Together (today if it's the day) and the one before: what's added in between is for the next one.
+function meetDates(D, today) {
+  const md = D.config?.us?.meetingDay ?? 0, next = addDays(today, (md - new Date(today + "T12:00:00").getDay() + 7) % 7);
+  return { md, next, last: addDays(next, -7), day: DAYS[md], isToday: next === today, isTomorrow: daysBetween(today, next) === 1 };
+}
+const curQuestion = (R, M) => (R.questions || []).find((q) => q.week === M.next) || { week: M.next, text: qFor(M.next), answers: {} };
+
+// What's waiting for whoever holds this phone.
+function turnItems(D, C, R, me, other) {
+  const M = meetDates(D, C.today), mine = (R.valuePicks || {})[me] || [], q = curQuestion(R, M), wk = C.week;
+  const thanked = (R.appreciation || []).some((a) => a.from === me && a.date > M.last), rs = R.rituals || [], kept = (R.ritualLog || {})[wk] || [];
+  const g = (R.growing || {})[M.next] || {}, added = [...(g.plans || []), ...(g.issues || [])].some((x) => x.by === me);
+  return [
+    !R.compass?.values?.length && { f: "values", t: "Pick your values", sub: mine.length ? `${mine.length} picked · tap to change` : "About 2 minutes", done: mine.length > 0 },
+    { f: "question", t: "Answer this week's question", sub: q.answers?.[me] ? "Done · unlocks when you've both answered" : q.text, done: !!q.answers?.[me] },
+    { f: "thanks", t: "Say thank you", sub: thanked ? "Done this week · add another" : `Something ${C.name(other)} or the kids did this week`, done: thanked },
+    { f: "meeting", t: `Add to ${TALK}`, sub: added ? "Done · add more" : "A plan for good times, or something on your mind", done: added },
+    rs.length && { f: "rituals", t: "Tick off a ritual", sub: `${kept.length} of ${rs.length} this week`, done: false },
+  ].filter(Boolean);
+}
+
+function turnNudge(D, C) {
+  const F = ctx.S.fam, R = D.rel || {}, other = F.me === "lokesh" ? "archana" : "lokesh", M = meetDates(D, C.today);
+  if (!M.isToday && !M.isTomorrow) return "";
+  const left = turnItems(D, C, R, F.me, other).filter((x) => !x.done && x.f !== "rituals").length;
+  return left ? `<button class="fm-nudge" data-tab="us"><b>${TALK} is ${M.isToday ? "today" : "tomorrow"}.</b> ${left} thing${left === 1 ? "" : "s"} left for you <span aria-hidden="true">›</span></button>` : "";
+}
+
+function yourTurnTile(D, C, R, me, other) {
+  const M = meetDates(D, C.today), items = turnItems(D, C, R, me, other), left = items.filter((x) => !x.done).length;
+  return `<div class="fm-tile s4 fm-turn"><div class="fm-rowsplit"><h3 class="fm-name">Your turn, ${esc(C.name(me))}</h3><span class="sub">${left ? `Before ${TALK}, ${M.isToday ? "today" : M.day}` : "All done for this week"}</span></div>
+    <ul>${items.map((x) => `<li><button type="button" class="fm-turnrow${x.done ? " done" : ""}" data-act="usfocus" data-f="${x.f}"><span class="ck" aria-hidden="true"></span><span class="tx"><b>${esc(x.t)}</b><span>${esc(x.sub)}</span></span><span class="go" aria-hidden="true">›</span></button></li>`).join("")}</ul></div>`;
+}
+
+function compassTile(R, C, me, other) {
+  const cp = R.compass;
+  if (cp?.values?.length) return `<div class="fm-tile s4 fm-compass"><div class="fm-rowsplit"><span class="fm-kicker">Our family compass</span><button class="fm-link" data-act="usfocus" data-f="compass">Edit</button></div>
+    ${cp.mission ? `<p class="fm-mission">${esc(cp.mission)}</p>` : ""}
+    <ul class="fm-values">${cp.values.map((v) => `<li><b>${esc(v.name)}</b>${v.looksLike ? `<span>${esc(v.looksLike)}</span>` : ""}</li>`).join("")}</ul>
+    <p class="sub">${cp.setAt ? `Written together, ${fmtD(cp.setAt, { month: "long", year: "numeric" })}. ` : ""}Look at it again at your year-end retreat.</p></div>`;
+  const picks = R.valuePicks || {}, mine = picks[me] || [], theirs = picks[other] || [], done = mine.length > 0 && theirs.length > 0;
+  const both = done ? mine.filter((v) => theirs.includes(v)) : [];
+  return `<div class="fm-tile s4 fm-compass"><span class="fm-kicker">Our family compass</span>
+    <p class="fm-mission">Start with what matters to you.</p>
+    <ol class="fm-steps"><li class="${done ? "done" : ""}"><b>Each of you picks up to 10 values</b>, on your own phone. You won't see each other's picks until you've both chosen.</li>
+      <li class="${done ? "now" : ""}"><b>Look at where you overlap.</b> Choose 3–5 together and say what each looks like in your house.</li>
+      <li><b>One sentence</b> that sums up the family you're building.</li></ol>
+    <div class="fm-rowsplit"><span class="sub">You: <b>${mine.length ? `${mine.length} picked` : "not yet"}</b> · ${esc(C.name(other))}: <b>${theirs.length ? "done" : "not yet"}</b></span>
+      <button class="fm-btn sm${mine.length ? "" : " pri"}" data-act="usfocus" data-f="values">${mine.length ? "Change my picks" : "Pick my values"}</button></div>
+    ${done ? `<div class="fm-overlap"><b>You both picked</b><span>${both.map((v) => `<i>${esc(v)}</i>`).join("") || `<em class="sub">Nothing in common yet. That's a good conversation.</em>`}</span>
+      <p class="sub">Only you: ${esc(mine.filter((v) => !both.includes(v)).join(", ") || "none")} · Only ${esc(C.name(other))}: ${esc(theirs.filter((v) => !both.includes(v)).join(", ") || "none")}. Worth asking each other why.</p>
+      <button class="fm-btn sm pri" data-act="usfocus" data-f="compass">Write our compass together</button></div>` : ""}</div>`;
+}
+
+function growingTile(D, C, R) {
+  const M = meetDates(D, C.today), g = (R.growing || {})[M.next] || {};
+  const appr = (R.appreciation || []).filter((a) => a.date > M.last).sort((a, b) => (a.date < b.date ? -1 : 1));
+  const todos = (D.home?.todos || []).filter((t) => !t.done), plans = g.plans || [], issues = g.issues || [];
+  const step = (n, title, hint, body) => `<li><span class="n">${n}</span><div><b>${title}</b>${hint ? `<span class="sub"> · ${hint}</span>` : ""}${body}</div></li>`;
+  const who = (p) => (p.kind === "us" ? "Date" : p.kind === "me" ? esc(C.name(p.by)) : "Family");
+  return `<div class="fm-tile s4 fm-sou"><div class="fm-rowsplit"><h3 class="fm-name">${TALK}</h3><span class="sub">${M.isToday ? "Today" : `${M.day}, ${fmtD(M.next)}`} · about 30 minutes, in this order</span></div>
+    <ol class="fm-agenda">
+      ${step(1, "Appreciation", "say them out loud", appr.length ? `<ul class="fam-list quotes">${appr.map((a) => `<li><span><b>${esc(C.name(a.from))} → ${esc(C.name(a.to))}:</b> ${esc(a.text)}</span></li>`).join("")}</ul>` : `<p class="sub">None written since last time. Bring one each.</p>`)}
+      ${step(2, "Home", `${todos.length} open`, todos.length ? `<ul class="fam-list">${todos.slice(0, 4).map((t) => `<li><span>${esc(t.text)}</span><span class="sub">${esc(C.name(t.who))}${t.due ? ` · ${fmtD(t.due)}` : ""}</span></li>`).join("")}</ul><p class="sub">Who owns what this week?</p>` : `<p class="sub">Nothing open on the Home tab.</p>`)}
+      ${step(3, "Good times", "plan them before the week fills up", `${plans.length ? `<ul class="fam-list">${plans.map((p) => `<li><span><span class="fm-type">${who(p)}</span>${esc(p.what)}</span><span class="sub">${esc(p.when || "")}</span><button class="fm-link" data-act="delgrowing" data-list="plans" data-id="${p.id}">Remove</button></li>`).join("")}</ul>` : ""}
+        <div class="fam-form"><select name="kind"><option value="us">Date</option><option value="family">Family</option><option value="me">Time for me</option></select><input name="what" placeholder="What? e.g. Thai Ginger"><input name="when" placeholder="When?" class="short"><button class="fm-btn sm" data-act="addplan">Add</button></div>`)}
+      ${step(4, "One thing", "last, on purpose", `${issues.length ? issues.map((x) => `<p class="fm-issue">“${esc(x.text)}”<span class="sub"> ${esc(C.name(x.by))}, ${fmtD(x.date)}</span> <button class="fm-link" data-act="delgrowing" data-list="issues" data-id="${x.id}">Remove</button></p>`).join("") + (issues.length > 1 ? `<p class="sub">Pick one for today; the other can wait a week.</p>` : "") : ""}
+        <div class="fam-form"><input name="issue" placeholder="Something on your mind? It waits here for ${TALK}."><button class="fm-btn sm" data-act="raiseissue">Add</button></div>
+        <p class="fm-hint">One topic. One of you talks while the other listens and says back what they heard, then swap. Understand each other first; solve second.</p>`)}
+    </ol>
+    <div class="btnrow"><button class="fm-btn sm" data-act="talknotes">Notes from today</button><span class="sub">Kept with this week's read on Overview.</span></div></div>`;
+}
+
+function questionTile(D, C, R, me, other) {
+  const M = meetDates(D, C.today), qs = R.questions || [], cur = curQuestion(R, M);
+  const a = cur.answers || {}, mineA = a[me], theirA = a[other];
+  const body = cur.revealed && mineA && theirA ? `<div class="fm-answers"><div><b>${esc(C.name(me))}</b><p>${esc(mineA.text)}</p></div><div><b>${esc(C.name(other))}</b><p>${esc(theirA.text)}</p></div></div>`
+    : !mineA ? `<div class="btnrow"><button class="fm-btn sm pri" data-act="usfocus" data-f="question">Answer</button><span class="sub">Only you see it until you've both answered.</span></div>`
+    : !theirA ? `<p class="fm-locked">Your answer is in. It unlocks when ${esc(C.name(other))} answers.</p>`
+    : `<p class="fm-locked">You've both answered.</p><div class="btnrow"><button class="fm-btn sm pri" data-act="revealq">Read them together</button></div>`;
+  const past = qs.filter((q) => q.week < M.next && q.revealed).sort((x, y) => (x.week < y.week ? 1 : -1))[0];
+  return `<div class="fm-tile s2 fm-qw"><span class="fm-kicker">Question of the week</span><p class="fm-qtext">${esc(cur.text)}</p>${body}
+    ${past ? `<details class="fm-more"><summary>Last time: ${esc(past.text)}</summary><div class="fm-answers">${[me, other].map((p) => `<div><b>${esc(C.name(p))}</b><p>${esc(past.answers?.[p]?.text || "")}</p></div>`).join("")}</div></details>` : ""}</div>`;
+}
+
+function ritualsTile(R, C) {
+  const wk = C.week, rs = R.rituals || [], log = R.ritualLog || {}, kept = log[wk] || [];
+  const weeksSince = (id) => { const ws = Object.keys(log).filter((w) => w < wk && log[w].includes(id)).sort(); return ws.length ? Math.round(daysBetween(ws.at(-1), wk) / 7) : null; };
+  return `<div class="fm-tile s2 fm-rituals"><div class="fm-rowsplit"><span class="fm-kicker">Our rituals</span><span class="sub">This week</span></div>
+    ${rs.length ? `<ul class="fm-ritlist">${rs.map((r) => { const ws = r.every === "weekly" && !kept.includes(r.id) ? weeksSince(r.id) : null;
+      return `<li><button type="button" class="fm-tick" data-act="keptritual" data-id="${r.id}" aria-pressed="${kept.includes(r.id)}" aria-label="Kept this week"></button><span><b>${esc(r.text)}</b><span class="sub"> · ${RIT_EVERY[r.every] || ""}</span>${ws >= 2 ? `<span class="fm-slip">${ws} weeks since the last one</span>` : ""}</span><button class="fm-link" data-act="del" data-file="rel" data-list="rituals" data-id="${r.id}">Remove</button></li>`; }).join("")}</ul>` : empty("The small things you do on purpose: a daily check-in, a weekly date, a monthly adventure.")}
+    <div class="fam-form"><input name="ritual" placeholder="e.g. Sunday walk, just us"><select name="every">${Object.entries(RIT_EVERY).map(([k, v]) => `<option value="${k}"${k === "weekly" ? " selected" : ""}>${v}</option>`).join("")}</select><button class="fm-btn sm" data-act="addritual">Add</button></div>
+    <p class="sub">No score. Just a nudge when one slips.</p></div>`;
+}
+
+// One job, big and plain, for the phone.
+function usFocus(D, C, R, me, other) {
+  const F = ctx.S.fam, f = F.usFocus, M = meetDates(D, C.today);
+  const head = (t, sub) => `<button class="fm-back" data-act="usback">‹ Back</button><h2 class="fm-ftitle">${t}</h2>${sub ? `<p class="fm-fsub">${sub}</p>` : ""}`;
+  const bar = (left, btn) => `<div class="fm-fbar"><span>${left}</span>${btn}</div>`;
+  let body = "";
+  if (f === "values") {
+    const draft = (F.valDraft = F.valDraft || ((R.valuePicks || {})[me] || []).slice());
+    body = head("Pick your values", `Tap up to 10 that matter most to you. ${esc(C.name(other))} won't see your picks until you've both chosen.`)
+      + `<div class="fm-vchips big">${VALUE_LIST.map((v) => `<button type="button" class="fm-vchip" data-act="pickvalue" data-v="${esc(v)}" aria-pressed="${draft.includes(v)}">${esc(v)}</button>`).join("")}</div>`
+      + bar(`<b>${draft.length}</b> of 10 picked`, `<button class="fm-btn pri" data-act="savevalues"${draft.length ? "" : " disabled"}>Done</button>`);
+  } else if (f === "compass") {
+    const picks = R.valuePicks || {}, both = (picks[me] || []).filter((v) => (picks[other] || []).includes(v));
+    const d = (F.compDraft = F.compDraft || { values: (R.compass?.values || both.slice(0, 5).map((name) => ({ name, looksLike: "" }))).map((v) => ({ ...v })), mission: R.compass?.mission || "" });
+    const names = d.values.map((v) => v.name), offer = [...new Set([...both, ...(picks[me] || []), ...(picks[other] || []), ...names])];
+    body = head("Our family compass", "Do this one together. Choose 3–5 values, say what each looks like in your house, then one sentence for the family you're building.")
+      + `<div class="fm-vchips big">${offer.map((v) => `<button type="button" class="fm-vchip${both.includes(v) ? " both" : ""}" data-act="compvalue" data-v="${esc(v)}" aria-pressed="${names.includes(v)}">${esc(v)}</button>`).join("")}</div>
+      ${d.values.map((v, i) => `<label class="fm-fld"><b>${esc(v.name)}</b><input data-look="${i}" value="${esc(v.looksLike || "")}" placeholder="In our house this looks like…"></label>`).join("")}
+      <label class="fm-fld"><b>Our sentence</b><textarea data-mission rows="3" placeholder="e.g. We grow together, tell the truth with kindness, and make room for adventure.">${esc(d.mission)}</textarea></label>`
+      + bar(`${d.values.length} value${d.values.length === 1 ? "" : "s"}${d.values.length > 5 ? " · 3–5 works best" : ""}`, `<button class="fm-btn pri" data-act="savecompass"${d.values.length ? "" : " disabled"}>Save our compass</button>`);
+  } else if (f === "question") {
+    const cur = curQuestion(R, M);
+    body = head("This week's question", "Only you can see your answer until you've both answered. Then you read them together.")
+      + `<p class="fm-qtext big">${esc(cur.text)}</p><textarea name="answer" rows="5" placeholder="Write as much or as little as you like.">${esc(cur.answers?.[me]?.text || "")}</textarea>`
+      + bar("", `<button class="fm-btn pri" data-act="answerq">Save my answer</button>`);
+  } else if (f === "thanks") {
+    const to = F.thanksTo || other;
+    body = head("Say thank you", `Something small counts. You'll both see it at ${TALK}.`)
+      + `<div class="fm-choice" role="group">${[other, ...C.kids.filter((k) => !k.unnamed).map((k) => k.id)].map((id) => `<button type="button" data-act="thanksto" data-to="${id}" aria-pressed="${to === id}">${esc(C.name(id))}</button>`).join("")}</div>
+      <textarea name="text" rows="4" placeholder="Thank you for…"></textarea>` + bar("", `<button class="fm-btn pri" data-act="savethanks">Save</button>`);
+  } else if (f === "meeting") {
+    const kind = F.meetKind || "plan";
+    body = head(`Add to ${TALK}`, "")
+      + `<div class="fm-choice" role="group"><button type="button" data-act="meetkind" data-k="plan" aria-pressed="${kind === "plan"}">Plan something good</button><button type="button" data-act="meetkind" data-k="issue" aria-pressed="${kind === "issue"}">Something on my mind</button></div>
+      ${kind === "plan" ? `<div class="fm-choice small" role="group">${[["us", "Date"], ["family", "Family"], ["me", "Time for me"]].map(([k, l]) => `<button type="button" data-act="plankind" data-k="${k}" aria-pressed="${(F.planKind || "us") === k}">${l}</button>`).join("")}</div>
+        <input name="what" placeholder="What? e.g. Thai Ginger"><input name="when" placeholder="When? e.g. Friday 7pm">`
+        : `<p class="fm-fsub">One thing, said plainly. It waits for ${TALK} (${esc(M.day)}), where one of you listens while the other speaks.</p><textarea name="issue" rows="4" placeholder="e.g. Mornings feel rushed and we snap at each other."></textarea>`}`
+      + bar("", `<button class="fm-btn pri" data-act="savemeeting">Save</button>`);
+  } else if (f === "rituals") {
+    const kept = (R.ritualLog || {})[C.week] || [];
+    body = head("Tick off a ritual", "Tap the ones you kept this week.")
+      + `<ul class="fm-ritlist big">${(R.rituals || []).map((r) => `<li><button type="button" class="fm-tick" data-act="keptritual" data-id="${r.id}" aria-pressed="${kept.includes(r.id)}" aria-label="Kept this week"></button><span><b>${esc(r.text)}</b><span class="sub"> · ${RIT_EVERY[r.every] || ""}</span></span></li>`).join("")}</ul>`
+      + bar("", `<button class="fm-btn pri" data-act="usback">Done</button>`);
+  }
+  return `<div class="fm-focusscreen">${body}</div>`;
+}
+
 function us(D, C) {
   const R = D.rel || {}, F = ctx.S.fam, other = F.me === "lokesh" ? "archana" : "lokesh";
+  if (F.usFocus) return usFocus(D, C, R, F.me, other);
   const recent = (list, n = 6) => (list || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, n);
   return `<div class="fm-bento">
+    ${yourTurnTile(D, C, R, F.me, other)}
+    ${compassTile(R, C, F.me, other)}
+    ${growingTile(D, C, R)}
+    ${questionTile(D, C, R, F.me, other)}
+    ${ritualsTile(R, C)}
     <div class="fm-tile s4 glow"><h3>You two</h3><div class="fm-big3">
       <div class="tri"><b>${C.us.daysSinceUs == null ? "–" : C.us.daysSinceUs === 0 ? "today" : `${C.us.daysSinceUs} days`}</b><span>since time just you two</span></div>
       <div class="tri"><b>${C.us.us30}</b><span>times together · 30 days</span></div><div class="tri"><b>${C.us.family30}</b><span>family times · 30 days</span></div></div>
@@ -204,7 +373,7 @@ function us(D, C) {
       <div class="fam-form"><select name="to"><option value="${other}">To ${esc(C.name(other))}</option>${C.kids.map((k) => `<option value="${k.id}">To ${esc(k.name)}</option>`).join("")}</select><input name="text" placeholder="Thank you for…"><button class="fm-btn sm pri" data-act="addappreciation">Add</button></div>
       ${(R.appreciation || []).length ? `<ul class="fam-list quotes">${recent(R.appreciation, 8).map((a) => `<li><span class="d">${fmtD(a.date)}</span><span><b>${esc(C.name(a.from))} → ${esc(C.name(a.to))}:</b> ${esc(a.text)}</span></li>`).join("")}</ul>` : ""}</div>
     <div class="fm-tile s2"><h3>Our relationship goals</h3>
-      ${(R.goals || []).length ? `<ul class="fam-list">${R.goals.map((g) => `<li><span>${esc(g.text)}</span><button class="fm-link" data-act="del" data-file="rel" data-list="goals" data-id="${g.id}">Remove</button></li>`).join("")}</ul>` : empty("What you want more of as a couple.")}
+      ${(R.goals || []).length ? `<ul class="fam-list">${R.goals.map((g) => `<li><span>${g.value ? `<span class="fm-type">${esc(g.value)}</span>` : ""}${esc(g.text)}</span><button class="fm-link" data-act="del" data-file="rel" data-list="goals" data-id="${g.id}">Remove</button></li>`).join("")}</ul>` : empty("What you want more of as a couple.")}
       <div class="fam-form"><input name="text" placeholder="e.g. A date night every two weeks"><button class="fm-btn sm pri" data-act="addgoal">Add</button></div></div>
     <div class="fm-tile s2"><h3>Learnings</h3><p class="sub">From a relationship coach, a book, friends who do it well.</p>
       <div class="fam-form"><input name="source" placeholder="Source, e.g. coach session" class="short"><input name="text" placeholder="What you took away"><button class="fm-btn sm pri" data-act="addlearning">Add</button></div>
@@ -358,6 +527,12 @@ async function save(key, mutate, msg) {
   draw();
 }
 const form = (t) => t.closest(".fam-form, .fam-health, .fam-kid") || document;
+// The compass screen's text boxes, read back into the draft before it redraws.
+function readCompass(root, d) {
+  if (!d) return;
+  root.ownerDocument.querySelectorAll(".fm-focusscreen [data-look]").forEach((el) => { const v = d.values[+el.dataset.look]; if (v) v.looksLike = el.value; });
+  const m = root.ownerDocument.querySelector(".fm-focusscreen [data-mission]"); if (m) d.mission = m.value;
+}
 const val = (box, name) => box.querySelector(`[name=${name}]`)?.value?.trim() || "";
 
 async function startRun(kind, arg) {
@@ -396,6 +571,37 @@ function wire(root, D, C) {
     const ensureKid = (k) => { k[kid] = k[kid] || { appointments: [], goals: [], observations: [] }; return k[kid]; };
     if (act === "reload") { ctx.store.reviews.clear(); F.loaded = false; F.run = null; return renderFamilyView(ctx.store, ctx.S, ctx.renderApp); }
     if (act === "tag" || act === "obstype") { const on = act === "obstype" || t.getAttribute("aria-pressed") !== "true"; t.closest(".fm-tags").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t && on))); return; }
+    if (act === "usfocus") { F.usFocus = t.dataset.f; F.valDraft = F.compDraft = null; window.scrollTo(0, 0); return draw(); }
+    if (act === "usback") { F.usFocus = null; F.valDraft = F.compDraft = null; return draw(); }
+    if (act === "pickvalue") { const v = t.dataset.v, d = F.valDraft || []; F.valDraft = d.includes(v) ? d.filter((x) => x !== v) : d.length < 10 ? [...d, v] : d; if (d.length >= 10 && !d.includes(v)) flash("Ten is the most. Tap one to swap it out."); return draw(); }
+    if (act === "compvalue") { const d = F.compDraft; readCompass(root, d); const v = t.dataset.v; d.values = d.values.some((x) => x.name === v) ? d.values.filter((x) => x.name !== v) : [...d.values, { name: v, looksLike: "" }]; return draw(); }
+    if (act === "thanksto") { F.thanksTo = t.dataset.to; return draw(); }
+    if (act === "meetkind") { F.meetKind = t.dataset.k; return draw(); }
+    if (act === "plankind") { F.planKind = t.dataset.k; return draw(); }
+    if (["savevalues", "savecompass", "answerq", "revealq", "savethanks", "savemeeting", "addplan", "raiseissue", "delgrowing", "keptritual", "addritual"].includes(act)) {
+      const M = meetDates(D, today), me = F.me, other = me === "lokesh" ? "archana" : "lokesh", scr = t.closest(".fm-focusscreen") || box;
+      const v = (n) => scr.querySelector(`[name=${n}]`)?.value?.trim() || "";
+      const grow = (r, fn) => { const g = { ...(r.growing || {}) }; g[M.next] = fn({ plans: [], issues: [], ...(g[M.next] || {}) }); return { ...r, growing: g }; };
+      const done = (msg) => { F.usFocus = null; F.valDraft = F.compDraft = null; if (msg) flash(msg); };
+      if (act === "savevalues") { const picks = F.valDraft || []; done(`Saved. ${C.name(other)} won't see them until you've both picked.`); return save("rel", (r) => ({ ...r, valuePicks: { ...(r.valuePicks || {}), [me]: picks } }), "value picks"); }
+      if (act === "savecompass") { const d = F.compDraft; readCompass(root, d); const vals = d.values.filter((x) => x.name); if (!vals.length) return; done("Your family compass is saved."); return save("rel", (r) => ({ ...r, compass: { mission: d.mission.trim(), values: vals.map((x) => ({ name: x.name, looksLike: (x.looksLike || "").trim() })), setAt: today } }), "family compass"); }
+      if (act === "answerq") { const text = v("answer"); if (!text) return; done(`Saved. It unlocks when ${C.name(other)} answers too.`);
+        return save("rel", (r) => { const qs = r.questions || [], cur = qs.find((q) => q.week === M.next) || { week: M.next, text: qFor(M.next), answers: {} };
+          const upd = { ...cur, answers: { ...(cur.answers || {}), [me]: { text, at: new Date().toISOString() } } };
+          return { ...r, questions: [...qs.filter((q) => q.week !== M.next), upd] }; }, "question of the week"); }
+      if (act === "revealq") return save("rel", (r) => ({ ...r, questions: (r.questions || []).map((q) => (q.week === M.next ? { ...q, revealed: true, revealedAt: today } : q)) }), "read the week's answers");
+      if (act === "savethanks") { const text = v("text"); if (!text) return; const to = F.thanksTo || other; done("Thank you saved."); return save("rel", (r) => ({ ...r, appreciation: [...(r.appreciation || []), { id: newId(), date: today, from: me, to, text }] }), "appreciation"); }
+      if (act === "savemeeting" || act === "addplan" || act === "raiseissue") {
+        const issue = act === "raiseissue" || (act === "savemeeting" && (F.meetKind || "plan") === "issue");
+        if (issue) { const text = v("issue"); if (!text) return; done(`Saved for ${TALK}.`); return save("rel", (r) => grow(r, (g) => ({ ...g, issues: [...g.issues, { id: newId(), by: me, date: today, text }] })), "growing together: on my mind"); }
+        const what = v("what"); if (!what) return; const kind = act === "addplan" ? v("kind") || "us" : F.planKind || "us"; done(`Saved for ${TALK}.`);
+        return save("rel", (r) => grow(r, (g) => ({ ...g, plans: [...g.plans, { id: newId(), by: me, kind, what, when: v("when") }] })), "growing together: plan");
+      }
+      if (act === "delgrowing") return save("rel", (r) => grow(r, (g) => ({ ...g, [t.dataset.list]: (g[t.dataset.list] || []).filter((x) => x.id !== t.dataset.id) })), "growing together: removed");
+      if (act === "keptritual") return save("rel", (r) => { const log = { ...(r.ritualLog || {}) }, wk = C.week, cur = log[wk] || []; log[wk] = cur.includes(t.dataset.id) ? cur.filter((x) => x !== t.dataset.id) : [...cur, t.dataset.id]; return { ...r, ritualLog: log }; }, "ritual");
+      if (act === "addritual") { const text = val(box, "ritual"); if (!text) return; return save("rel", (r) => ({ ...r, rituals: [...(r.rituals || []), { id: newId(), text, every: val(box, "every") || "weekly" }] }), "ritual added"); }
+    }
+    if (act === "talknotes") { F.tab = "hq"; draw(); setTimeout(() => root.ownerDocument.querySelector(".fm-notes")?.scrollIntoView({ behavior: "smooth" }), 50); return; }
     if (act === "pyfrange") { F[t.dataset.scope === "navya" ? "nvRange" : "pyfRange"] = t.dataset.range; return draw(); }
     if (act === "opennavya") { ctx.S.view = "navya"; return ctx.renderApp(); }
     if (act === "draftread") return startRun("read", sundayOf(today));
