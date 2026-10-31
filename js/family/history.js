@@ -27,6 +27,7 @@ export function snapshotOf(D, C) {
     us: { together: (R.together || []).filter((t) => t.date >= wk && t.date <= addDays(wk, 6)).length,
       thanks: (R.appreciation || []).filter((a) => a.date >= wk && a.date <= addDays(wk, 6)).length, ritualsKept: kept.length, ritualsTotal: (R.rituals || []).length },
     health,
+    nutrition: C.nutrition ? { planned: C.nutrition.review.planned, cooked: C.nutrition.review.cooked, out: C.nutrition.review.out } : null,
     home: { done: C.home.done7, open: C.home.todos.length },
     kids: { appointments: C.kids.reduce((s, k) => s + k.appointments.length, 0) },
   };
@@ -43,7 +44,8 @@ function rows(s, C) {
     ["Social media a day", s.navya?.social, hm, -1], ["Volleyball calls", s.navya?.calls, pct, 1]]]);
   r.push(["Us", [["Time together this week", s.us?.together, n, 1], ["Thank-yous", s.us?.thanks, n, 1],
     ["Rituals kept", s.us ? s.us.ritualsKept : null, (x) => (x == null ? "–" : `${x} of ${s.us.ritualsTotal}`), 1]]]);
-  r.push(["Health", Object.entries(s.health || {}).flatMap(([id, h]) => [[`${C.name(id)}: sleep`, h?.sleep, (x) => (x == null ? "–" : `${x}h`), 1], [`${C.name(id)}: exercise days`, h?.exercise, n, 1]])]);
+  if (s.nutrition) r.push(["Nutrition", [["Dinners planned", s.nutrition.planned, n, 1], ["Cooked at home", s.nutrition.cooked, n, 1], ["Ate out", s.nutrition.out, n, -1]]]);
+  else r.push(["Health", Object.entries(s.health || {}).flatMap(([id, h]) => [[`${C.name(id)}: sleep`, h?.sleep, (x) => (x == null ? "–" : `${x}h`), 1], [`${C.name(id)}: exercise days`, h?.exercise, n, 1]])]);
   r.push(["Home", [["To-dos done this week", s.home?.done, n, 1], ["To-dos open", s.home?.open, n, -1]]]);
   return r;
 }

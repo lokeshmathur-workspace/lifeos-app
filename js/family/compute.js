@@ -126,6 +126,20 @@ export function computeFamily(D, today) {
     return { id: p.id, name: p.name, last, thisWeek: last?.weekStart === out.week, prev: { sleepHours: a("sleepHours"), exerciseDays: a("exerciseDays"), eating: a("eating"), energy: a("energy") }, weeks: mine.slice(-8) };
   });
 
+  // ── nutrition: plan the 7 days from the next Growing Together, review the 7 before it ──
+  const NM = D.nutrition?.meals || {}, md = D.config?.us?.meetingDay ?? 0;
+  const nextMeet = addDays(today, (md - day(today).getDay() + 7) % 7);
+  const span = (start) => Array.from({ length: 7 }, (_, i) => { const date = addDays(start, i); return { date, ...(NM[date] || {}) }; });
+  const rev = span(addDays(nextMeet, -7)), plan = span(nextMeet);
+  const fav = {};
+  for (const m of Object.values(NM)) if (m.dinner && m.again === "yes") fav[m.dinner] = (fav[m.dinner] || 0) + 1;
+  out.nutrition = {
+    plan: { start: nextMeet, days: plan, planned: plan.filter((d) => d.dinner).length },
+    review: { start: addDays(nextMeet, -7), days: rev, planned: rev.filter((d) => d.dinner).length, cooked: rev.filter((d) => d.status === "cooked").length,
+      out: rev.filter((d) => d.status === "out").length, other: rev.filter((d) => d.status === "other").length, open: rev.filter((d) => d.date <= today && !d.status).length },
+    favorites: Object.entries(fav).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([name]) => name),
+  };
+
   // ── us & relationships ──
   const R = D.rel || {};
   const lastOf = (kind) => (R.together || []).filter((t) => t.kind === kind).map((t) => t.date).sort().at(-1) || null;

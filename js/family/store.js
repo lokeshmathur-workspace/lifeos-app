@@ -19,6 +19,7 @@ export const FILES = {
   config: ["config.json", { people: [{ id: "lokesh", name: "Lokesh" }, { id: "archana", name: "Archana" }], kids: [], finance: { watch: [] } }],
   money: ["finance/monarch.json", null],
   health: ["health.json", { entries: [] }],
+  nutrition: ["nutrition.json", { meals: {} }],
   rel: ["relationships.json", { goals: [], learnings: [], together: [], people: [], appreciation: [] }],
   kids: ["kids.json", {}],
   home: ["home.json", { todos: [], chores: [], appointments: [] }],

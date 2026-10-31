@@ -19,9 +19,9 @@ const fmtD = (iso, o = { month: "short", day: "numeric" }) => (iso ? new Date(is
 const usd = (n) => (n == null ? "–" : `$${Math.round(n).toLocaleString("en-US")}`);
 const monShort = (ym) => new Date(ym + "-15T12:00:00").toLocaleDateString("en-US", { month: "short" });
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-const TABS = [["hq", "Overview"], ["money", "Money"], ["us", "Us"], ["growth", "Growth"], ["health", "Health"], ["kids", "Kids"], ["home", "Home"], ["past", "Looking back"]];
+const TABS = [["hq", "Overview"], ["money", "Money"], ["us", "Us"], ["growth", "Growth"], ["nutrition", "Nutrition"], ["kids", "Kids"], ["home", "Home"], ["past", "Looking back"]];
 const KINDS = { book: "Book", podcast: "Podcast", article: "Article", video: "Video", thought: "My own thought" };
-const AREAS = { money: "Money", us: "Us", growth: "Growth", health: "Health", kids: "Kids", home: "Home" };
+const AREAS = { money: "Money", us: "Us", growth: "Growth", health: "Nutrition", nutrition: "Nutrition", kids: "Kids", home: "Home" };
 const DIRS = { better: ["Better", "up"], worse: ["Slipping", "down"], steady: ["Steady", "flat"] };
 const LOG_TAGS = { progress: "Made a change", notyet: "Not yet" };
 const TRAITS = ["Kindness", "Honesty", "Responsibility", "Respect", "Patience", "Effort", "Gratitude", "Self-control", "Listening", "Sharing", "Confidence", "Resilience"];
@@ -64,7 +64,8 @@ function draw() {
   if (ctx.S.famShare) startShareFromLearning(ctx.S.famShare);
   const D = data(), C = computeFamily(D, todayISO());
   const past = (D, C) => pastView(D, C, F);
-  const body = { hq, money, us, growth, health, kids, home, past }[F.tab] || hq;
+  if (F.tab === "health") F.tab = "nutrition"; // the old Health tab
+  const body = { hq, money, us, growth, nutrition, kids, home, past }[F.tab] || hq;
   const main = $("#main");
   main.innerHTML = `<div class="fam">
     <div class="fm-top"><div class="fm-hello"><p class="fm-eyebrow">${esc(C.name("lokesh"))} &amp; ${esc(C.name("archana"))} · family</p><h1>Week of ${fmtD(C.week, { month: "long", day: "numeric" })}</h1><p class="fm-sub">Signed in as ${esc(C.name(F.me))}</p></div></div>
@@ -112,7 +113,7 @@ function hq(D, C) {
   const rows = [
     ["money", "Money", m ? `${usd(m.spent)} spent so far${m.avg3Spending != null ? ` · usual month ${usd(m.avg3Spending)}` : ""}` : "Not synced from Monarch yet", m ? [m.savingsRate != null ? `saved ${m.savingsRate}% last month` : "", ...m.creditLines.filter((cl) => cl.now.net).map((cl) => `HELOC ${cl.now.net > 0 ? "+" : "−"}${usd(Math.abs(cl.now.net))} this month`)].filter(Boolean).join(" · ") : ""],
     ["us", "Us", C.us.daysSinceUs != null ? `time together ${C.us.daysSinceUs === 0 ? "today" : `${C.us.daysSinceUs} days ago`}` : "No time together logged yet", `${C.us.family30} family times in 30 days`],
-    ["health", "Health", C.health.map((h) => `${h.name}: ${h.thisWeek ? "checked in" : "no check-in this week"}`).join(" · "), ""],
+    ["nutrition", "Nutrition", `${C.nutrition.plan.planned} of 7 dinners planned from ${fmtD(C.nutrition.plan.start)}`, C.nutrition.review.planned || C.nutrition.review.cooked ? `last 7 days: ${C.nutrition.review.cooked} cooked · ${C.nutrition.review.out} out` : ""],
     ["kids", "Kids", C.kids.map((k) => `${k.name}: ${k.appointments.length} coming up`).join(" · ") || "Add the kids", n?.focus ? `Navya's focus: ${n.focus.split(".")[0]}` : ""],
     ["growth", "Growth", (() => { const open = (D.growth?.items || []).filter((g) => g.status === "open"), mine = open.filter((g) => !(g.reflections || []).some((r) => r.by === ctx.S.fam.me)); return open.length ? `${open.length} to talk about${mine.length ? ` · ${mine.length} waiting for your thoughts` : ""}` : "Nothing waiting to talk about"; })(), `${(D.growth?.items || []).filter((g) => g.status === "discussed").length} talked about so far`],
     ["home", "Home", `${C.home.todos.length} to-dos open · ${C.home.chores.filter((c) => c.due).length} chores due`, `${C.home.done7} done this week`],
@@ -402,6 +403,37 @@ function us(D, C) {
   </div>`;
 }
 
+/* ── Nutrition: plan the week's meals, review last week's ── */
+
+const dayName = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+function nutrition(D, C) {
+  const F = ctx.S.fam, N = C.nutrition, tab = F.nutTab || "plan";
+  const range = (st) => `${fmtD(st)} – ${fmtD(addDays(st, 6))}`;
+  const head = `<div class="fm-tile s4 fm-nuthead"><div class="fm-rowsplit"><h3 class="fm-name">Family nutrition</h3>
+      <span class="fm-monthpick" role="group"><button type="button" data-act="nuttab" data-t="plan" aria-pressed="${tab === "plan"}">Plan the week</button><button type="button" data-act="nuttab" data-t="review" aria-pressed="${tab === "review"}">Review last week</button></span></div>
+    <p class="sub">${tab === "plan" ? `Meals for ${range(N.plan.start)}, from Growing Together to the next one.` : `How ${range(N.review.start)} went.`}</p></div>`;
+  if (tab === "plan") {
+    return `<div class="fm-bento">${head}
+      ${N.favorites.length ? `<div class="fm-tile s4"><span class="fm-kicker">Your favorites</span><p class="sub">Tap one to put it on the next open night.</p><div class="fm-vchips">${N.favorites.map((f) => `<button type="button" class="fm-vchip" data-act="nutfav" data-v="${esc(f)}">${esc(f)}</button>`).join("")}</div></div>` : ""}
+      <div class="fm-tile s4 fm-nutplan"><ul class="fm-meals">${N.plan.days.map((d) => `<li><span class="dn">${dayName(d.date)}</span>
+          <input data-meal="dinner" data-date="${d.date}" value="${esc(d.dinner || "")}" placeholder="Dinner">
+          <details${d.lunch || d.breakfast ? " open" : ""}><summary>Lunch, breakfast</summary><div class="fm-mealx"><input data-meal="lunch" data-date="${d.date}" value="${esc(d.lunch || "")}" placeholder="Lunch"><input data-meal="breakfast" data-date="${d.date}" value="${esc(d.breakfast || "")}" placeholder="Breakfast"></div></details></li>`).join("")}</ul>
+        <div class="fm-fbar static"><span>${N.plan.planned} of 7 dinners planned</span><button class="fm-btn pri" data-act="saveplan">Save the plan</button></div></div></div>`;
+  }
+  const R = N.review, watch = (C.money?.watch || []).find((w) => /restaurant/i.test(w.category));
+  const seg = (d, key, opts) => `<span class="fm-choice small" role="group">${opts.map(([v, l]) => `<button type="button" data-act="nutset" data-date="${d.date}" data-k="${key}" data-v="${v}" aria-pressed="${d[key] === v}">${l}</button>`).join("")}</span>`;
+  return `<div class="fm-bento">${head}
+    <div class="fm-tile s4"><div class="fm-big3">
+      <div class="tri"><b>${R.cooked}</b><span>cooked at home${R.planned ? ` · ${R.planned} planned` : ""}</span></div>
+      <div class="tri"><b>${R.out}</b><span>ate out${watch ? ` · Restaurants & Bars ${usd(watch.spent)} this month` : ""}</span></div>
+      <div class="tri"><b>${R.other}</b><span>something else${R.open ? ` · ${R.open} not marked yet` : ""}</span></div></div></div>
+    <div class="fm-tile s4"><ul class="fm-meals review">${R.days.map((d) => `<li class="${d.date > C.today ? "later" : ""}"><span class="dn">${dayName(d.date)}</span>
+        <span class="planned">${d.dinner ? esc(d.dinner) : `<span class="sub">Nothing planned</span>`}</span>
+        ${d.date > C.today ? `<span class="sub">Still to come</span>` : `${seg(d, "status", [["cooked", "Cooked"], ["out", "Ate out"], ["other", "Something else"]])}
+        ${d.status === "cooked" && d.dinner ? `<span class="fm-again"><span class="sub">Make again?</span>${seg(d, "again", [["yes", "Yes"], ["maybe", "Maybe"], ["no", "No"]])}</span>` : ""}
+        <input data-nutnote="${d.date}" value="${esc(d.note || "")}" placeholder="A note, e.g. kids loved it, too spicy">`}</li>`).join("")}</ul></div></div>`;
+}
+
 /* ── Health ──────────────────────────────────────────────── */
 
 function health(D, C) {
@@ -573,6 +605,7 @@ function wire(root, D, C) {
   });
   root.addEventListener("change", async (e) => {
     const t = e.target;
+    if (t.dataset.nutnote) { const date = t.dataset.nutnote, note = t.value.trim(); await save("nutrition", (n) => { const meals = { ...(n.meals || {}) }, m = { ...(meals[date] || {}) }; if (note) m.note = note; else delete m.note; meals[date] = m; return { ...n, meals }; }, "meal note"); return; }
     if (t.dataset.act === "todo" && t.checked) await save("home", (h) => ({ ...h, todos: h.todos.map((x) => (x.id === t.dataset.id ? { ...x, done: true, doneAt: todayISO() } : x)) }), "to-do done");
     else if (t.dataset.act === "picksource") {
       const src = (F.pick?.sources || []).find((x) => x.id === t.value); if (!src) return;
@@ -604,6 +637,12 @@ function wire(root, D, C) {
         return { ...c, finance: { ...(c.finance || {}), retirement: { ...rc, people: (rc.people || []).map((p, i) => ({ ...p, birthYear: years[i] ?? null, ssMonthly: ssM[i] ?? null, ssAge: ssA[i] ?? null })),
           retireAge: get("retireAge") ?? rc.retireAge ?? null, monthlyGoal: get("monthlyGoal") ?? rc.monthlyGoal ?? null, realReturn: ret != null ? ret / 100 : rc.realReturn ?? 0.05 } } }; }, "retirement goal");
     }
+    if (act === "nuttab") { F.nutTab = t.dataset.t; return draw(); }
+    if (act === "nutfav") { const empty = [...root.querySelectorAll(".fm-nutplan [data-meal=dinner]")].find((i) => !i.value.trim()); if (!empty) return flash("Every night already has a dinner."); empty.value = t.dataset.v; empty.focus(); return; }
+    if (act === "saveplan") { const vals = [...root.querySelectorAll(".fm-nutplan [data-meal]")].map((i) => [i.dataset.date, i.dataset.meal, i.value.trim()]);
+      flash("Meal plan saved.");
+      return save("nutrition", (n) => { const meals = { ...(n.meals || {}) }; for (const [d, k, v] of vals) { const m = { ...(meals[d] || {}) }; if (v) m[k] = v; else delete m[k]; if (Object.keys(m).length) meals[d] = m; else delete meals[d]; } return { ...n, meals }; }, "meal plan"); }
+    if (act === "nutset") { const { date, k, v } = t.dataset; return save("nutrition", (n) => { const meals = { ...(n.meals || {}) }, m = { ...(meals[date] || {}) }; m[k] = m[k] === v ? undefined : v; if (k === "status" && m.status !== "cooked") delete m.again; meals[date] = JSON.parse(JSON.stringify(m)); return { ...n, meals }; }, "meal review"); }
     if (act === "pastmode") { F.pastMode = t.dataset.m; F.pastWeek = null; return draw(); }
     if (act === "pastmonth") { F.pastMonth = t.dataset.m; return draw(); }
     if (act === "pastweek") { F.pastWeek = t.dataset.w || null; if (t.dataset.tomode) F.pastMode = t.dataset.tomode; if (t.dataset.clear) F.pastQ = ""; window.scrollTo(0, 0); return draw(); }

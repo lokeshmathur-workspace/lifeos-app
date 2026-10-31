@@ -730,6 +730,22 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .fm-choice.small button{padding:8px 10px;font-size:14px}
 .fm-ritlist.big li{grid-template-columns:30px minmax(0,1fr);font-size:16px;padding:8px 0}.fm-ritlist.big .fm-tick{width:28px;height:28px}
 .fm-ritlist.big .fm-tick[aria-pressed="true"]::after{left:8px;top:3px;width:8px;height:13px}
+/* Nutrition */
+.fm-nuthead .fm-monthpick{margin:0}
+.fm-meals{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.fm-meals>li{display:grid;grid-template-columns:110px minmax(0,1fr);gap:6px 12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.fm-meals>li:first-child{border-top:0}
+.fm-meals .dn{font-size:13px;font-weight:700;color:var(--ink-2)}
+.fm-meals input{font-size:15px}
+.fm-meals details{grid-column:2}.fm-meals summary{font-size:12.5px;color:var(--muted);cursor:pointer}
+.fm-mealx{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.fm-meals.review>li>*:not(.dn){grid-column:2}
+.fm-meals.review .planned{font-size:15px;color:var(--ink)}
+.fm-meals.review li.later{opacity:.6}
+.fm-again{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fm-again .fm-choice button{flex:none;padding:6px 16px}
+.fm-fbar.static{position:static;background:none;padding:14px 0 0}
+@media (max-width:560px){.fm-meals>li{grid-template-columns:minmax(0,1fr)}.fm-meals>li>*,.fm-meals details,.fm-meals.review>li>*:not(.dn){grid-column:1}.fm-mealx{grid-template-columns:1fr}}
 /* Retirement: on track? */
 .rt .fm-big3{margin:6px 0 4px}
 .rt-chart{margin:10px 0 0;position:relative}
