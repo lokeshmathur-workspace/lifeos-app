@@ -6,6 +6,7 @@
 import { computeFamily, sundayOf, addDays, daysBetween } from "./compute.js";
 import { FILES } from "./store.js";
 import { payFirstHTML } from "../payfirst.js";
+import { pastView, snapshotOf, snapshotDue } from "./history.js";
 import { fireRoutine, RoutineError } from "../learning/routine.js";
 import { todayISO } from "../dateutil.js";
 import { flash } from "../flash.js";
@@ -17,7 +18,7 @@ const fmtD = (iso, o = { month: "short", day: "numeric" }) => (iso ? new Date(is
 const usd = (n) => (n == null ? "–" : `$${Math.round(n).toLocaleString("en-US")}`);
 const monShort = (ym) => new Date(ym + "-15T12:00:00").toLocaleDateString("en-US", { month: "short" });
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-const TABS = [["hq", "Overview"], ["money", "Money"], ["us", "Us"], ["growth", "Growth"], ["health", "Health"], ["kids", "Kids"], ["home", "Home"]];
+const TABS = [["hq", "Overview"], ["money", "Money"], ["us", "Us"], ["growth", "Growth"], ["health", "Health"], ["kids", "Kids"], ["home", "Home"], ["past", "Looking back"]];
 const KINDS = { book: "Book", podcast: "Podcast", article: "Article", video: "Video", thought: "My own thought" };
 const AREAS = { money: "Money", us: "Us", growth: "Growth", health: "Health", kids: "Kids", home: "Home" };
 const DIRS = { better: ["Better", "up"], worse: ["Slipping", "down"], steady: ["Steady", "flat"] };
@@ -32,7 +33,7 @@ export async function renderFamilyView(store, S, renderApp) {
   const main = $("#main");
   if (!F.loaded) {
     main.innerHTML = `<div class="fam"><p class="fm-empty">Loading the family dashboard…</p></div>`;
-    try { await store.loadAll(); F.loaded = true; }
+    try { await store.loadAll(); F.loaded = true; saveSnapshotIfDue(); }
     catch (e) {
       main.innerHTML = `<div class="fam"><div class="fm-tile"><h3>Can't open the Family repo</h3><p>${esc(e.message)}</p>
         <p class="sub">On GitHub: <b>Settings → Developer settings → Personal access tokens → Fine-grained tokens</b> → open the token this device uses → <b>Edit</b> → Repository access → add <b>Family</b> (Contents: Read and write) → Save. Then try again.</p>
@@ -45,12 +46,24 @@ export async function renderFamilyView(store, S, renderApp) {
 }
 
 const data = () => ctx.store.data();
+// On Growing Together day (or the first time the dashboard opens after it that week), freeze the
+// week's numbers into review/<week>.json so they can be looked back on. Quietly; never blocks.
+const reviewDefault = (wk) => ({ weekStart: wk, status: "notes" });
+async function saveSnapshotIfDue() {
+  try {
+    const D = data(), C = computeFamily(D, todayISO());
+    if (!snapshotDue(D, C)) return;
+    await ctx.store.update(`review/${C.week}.json`, reviewDefault(C.week), (r) => ({ ...r, snapshot: snapshotOf(D, C) }), `family: numbers for the week of ${C.week}`);
+  } catch { /* offline or read-only: try again next time */ }
+}
+const withSnapshot = (wk) => (r) => { const D = data(), C = computeFamily(D, todayISO()); return wk === C.week ? { ...r, snapshot: snapshotOf(D, C) } : r; };
 
 function draw() {
   const F = ctx.S.fam;
   if (ctx.S.famShare) startShareFromLearning(ctx.S.famShare);
   const D = data(), C = computeFamily(D, todayISO());
-  const body = { hq, money, us, growth, health, kids, home }[F.tab] || hq;
+  const past = (D, C) => pastView(D, C, F);
+  const body = { hq, money, us, growth, health, kids, home, past }[F.tab] || hq;
   const main = $("#main");
   main.innerHTML = `<div class="fam">
     <div class="fm-top"><div class="fm-hello"><p class="fm-eyebrow">${esc(C.name("lokesh"))} &amp; ${esc(C.name("archana"))} · family</p><h1>Week of ${fmtD(C.week, { month: "long", day: "numeric" })}</h1><p class="fm-sub">Signed in as ${esc(C.name(F.me))}</p></div></div>
@@ -79,9 +92,10 @@ function latestReview(D) { return (D.reviews || []).at(-1) || null; }
 
 function hq(D, C) {
   const rv = latestReview(D), run = ctx.S.fam.run;
-  const read = !rv ? `<div class="fm-tile s4 coach"><span class="fm-kicker">This week · our read</span>
+  const read = !rv?.headline ? `<div class="fm-tile s4 coach"><span class="fm-kicker">This week · our read</span>
       <h2 class="fm-headline">No weekly read yet.</h2><p class="sub">Claude drafts it from all five areas; you two review it together and keep notes.</p>
-      ${run ? runLine(run) : `<button class="fm-btn pri" data-act="draftread">Draft this week's read</button>`}</div>`
+      ${run ? runLine(run) : `<button class="fm-btn pri" data-act="draftread">Draft this week's read</button>`}
+      ${notesBlock(rv?.weekStart === C.week ? rv : reviewDefault(C.week), D, C)}</div>`
     : `<div class="fm-tile s4 coach">
       <div class="fm-rowsplit"><span class="fm-kicker">Our read · week of ${fmtD(rv.weekStart)}</span>${rv.status === "draft" ? `<span class="fm-chip warn">draft</span>` : `<span class="fm-chip">approved ${fmtD(rv.approvedAt)}</span>`}</div>
       <h2 class="fm-headline">${esc(rv.headline)}</h2>
@@ -549,6 +563,11 @@ async function startRun(kind, arg) {
 
 function wire(root, D, C) {
   const F = ctx.S.fam;
+  root.addEventListener("input", (e) => {
+    const t = e.target; if (!t.matches("[data-pastsearch]")) return;
+    clearTimeout(F.pastTimer);
+    F.pastTimer = setTimeout(() => { F.pastQ = t.value; draw(); const n = document.querySelector("[data-pastsearch]"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250);
+  });
   root.addEventListener("change", async (e) => {
     const t = e.target;
     if (t.dataset.act === "todo" && t.checked) await save("home", (h) => ({ ...h, todos: h.todos.map((x) => (x.id === t.dataset.id ? { ...x, done: true, doneAt: todayISO() } : x)) }), "to-do done");
@@ -571,6 +590,9 @@ function wire(root, D, C) {
     const ensureKid = (k) => { k[kid] = k[kid] || { appointments: [], goals: [], observations: [] }; return k[kid]; };
     if (act === "reload") { ctx.store.reviews.clear(); F.loaded = false; F.run = null; return renderFamilyView(ctx.store, ctx.S, ctx.renderApp); }
     if (act === "tag" || act === "obstype") { const on = act === "obstype" || t.getAttribute("aria-pressed") !== "true"; t.closest(".fm-tags").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t && on))); return; }
+    if (act === "pastmode") { F.pastMode = t.dataset.m; F.pastWeek = null; return draw(); }
+    if (act === "pastmonth") { F.pastMonth = t.dataset.m; return draw(); }
+    if (act === "pastweek") { F.pastWeek = t.dataset.w || null; if (t.dataset.tomode) F.pastMode = t.dataset.tomode; if (t.dataset.clear) F.pastQ = ""; window.scrollTo(0, 0); return draw(); }
     if (act === "usfocus") { F.usFocus = t.dataset.f; F.valDraft = F.compDraft = null; window.scrollTo(0, 0); return draw(); }
     if (act === "usback") { F.usFocus = null; F.valDraft = F.compDraft = null; return draw(); }
     if (act === "pickvalue") { const v = t.dataset.v, d = F.valDraft || []; F.valDraft = d.includes(v) ? d.filter((x) => x !== v) : d.length < 10 ? [...d, v] : d; if (d.length >= 10 && !d.includes(v)) flash("Ten is the most. Tap one to swap it out."); return draw(); }
@@ -606,7 +628,7 @@ function wire(root, D, C) {
     if (act === "opennavya") { ctx.S.view = "navya"; return ctx.renderApp(); }
     if (act === "draftread") return startRun("read", sundayOf(today));
     if (act === "syncmoney") return startRun("finance");
-    if (act === "approveread") { await ctx.store.update(`review/${t.dataset.week}.json`, null, (r) => ({ ...r, status: "approved", approvedAt: new Date().toISOString() }), `family: read ${t.dataset.week} approved`); return draw(); }
+    if (act === "approveread") { await ctx.store.update(`review/${t.dataset.week}.json`, null, (r) => withSnapshot(t.dataset.week)({ ...r, status: "approved", approvedAt: new Date().toISOString() }), `family: read ${t.dataset.week} approved`); return draw(); }
     if (act === "editreview") { F.notesEdit = t.dataset.week; F.logEdit = null; return draw(); }
     if (act === "editlog") { F.logEdit = t.dataset.id; F.notesEdit = null; return draw(); }
     if (act === "cancel") { const back = F.pick?.fromLearning; F.notesEdit = F.logEdit = F.growthEdit = F.reflectEdit = F.discussing = null; F.pick = null; return back ? backToLearning() : draw(); }
@@ -619,7 +641,7 @@ function wire(root, D, C) {
       else if (act === "savelog") { const text = v("[data-logedit=text]"); if (!text) return; mutate = (n) => ({ ...n, log: (n.log || []).map((x) => (x.id === t.dataset.id ? { ...x, text, tag } : x)) }); }
       else mutate = (n) => ({ ...n, log: (n.log || []).filter((x) => x.id !== t.dataset.id) });
       t.disabled = true; F.notesEdit = F.logEdit = null;
-      await ctx.store.update(`review/${t.dataset.week}.json`, null, (r) => ({ ...r, notes: mutate(r.notes || {}) }), `family: read ${t.dataset.week} notes`);
+      await ctx.store.update(`review/${t.dataset.week}.json`, reviewDefault(t.dataset.week), (r) => withSnapshot(t.dataset.week)({ ...r, notes: mutate(r.notes || {}) }), `family: week ${t.dataset.week} notes`);
       flash(act === "dellog" ? "Note deleted." : "Notes saved."); return draw();
     }
     // ── money
