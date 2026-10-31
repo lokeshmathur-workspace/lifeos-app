@@ -730,6 +730,26 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .fm-choice.small button{padding:8px 10px;font-size:14px}
 .fm-ritlist.big li{grid-template-columns:30px minmax(0,1fr);font-size:16px;padding:8px 0}.fm-ritlist.big .fm-tick{width:28px;height:28px}
 .fm-ritlist.big .fm-tick[aria-pressed="true"]::after{left:8px;top:3px;width:8px;height:13px}
+/* Retirement: on track? */
+.rt .fm-big3{margin:6px 0 4px}
+.rt-chart{margin:10px 0 0;position:relative}
+.rt-chart svg{width:100%;height:auto;display:block;overflow:visible}
+.rt-chart .grid{stroke:var(--line);stroke-width:1}
+.rt-chart .ax{fill:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.rt-chart path{fill:none;stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+.rt-chart path.proj{stroke:var(--fam)}.rt-chart path.need{stroke:var(--muted);stroke-dasharray:6 5}
+.rt-chart .projdot{fill:var(--fam);stroke:var(--surface);stroke-width:2}.rt-chart .needdot{fill:var(--surface);stroke:var(--muted);stroke-width:2}
+.rt-chart .lbl{font-size:12px;font-weight:700;fill:var(--ink)}.rt-chart .lbl.need{fill:var(--ink-2);font-weight:600}.rt-chart .lbl.today{fill:var(--ink-2);font-weight:600}
+.rt-chart .hair{stroke:var(--ink-2);stroke-width:1}
+.rt-tip{position:absolute;top:0;width:180px;background:var(--surface);border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:2px;font-size:12.5px;color:var(--ink);pointer-events:none}
+.rt-tip[hidden]{display:none}
+.rt .k{display:inline-block;width:16px;height:0;border-top:2px solid var(--fam);vertical-align:middle;margin-right:6px}.rt .k.need{border-top:2px dashed var(--muted)}
+.rt-legend{display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:6px;font-size:12.5px;color:var(--ink-2)}
+.rt-say{margin:12px 0 0!important;font-family:"Literata",Georgia,serif;font-size:17px;line-height:1.45;color:var(--ink)}
+.rt-foot{display:flex;flex-direction:column;gap:2px;margin-top:8px}
+.rt-set .fam-form.wrap{flex-wrap:wrap;align-items:flex-end;gap:10px}
+.fm-fld.sm{flex:1 1 150px;min-width:0}.fm-fld.sm>span{font-size:12px;color:var(--muted)}.fm-fld.sm em{font-style:normal;color:var(--muted);margin-left:4px}
+.fm-fld.sm:has(em){flex-direction:row;flex-wrap:wrap;align-items:center}.fm-fld.sm:has(em)>span{flex-basis:100%}.fm-fld.sm:has(em) input{flex:1}
 /* Looking back */
 .fm-pasthead input[type=search]{margin-top:10px;font-size:15px;padding:10px 12px}
 .fm-weeks{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:8px}

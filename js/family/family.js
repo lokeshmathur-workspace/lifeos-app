@@ -7,6 +7,7 @@ import { computeFamily, sundayOf, addDays, daysBetween } from "./compute.js";
 import { FILES } from "./store.js";
 import { payFirstHTML } from "../payfirst.js";
 import { pastView, snapshotOf, snapshotDue } from "./history.js";
+import { retireData, retireHTML, wireRetire } from "./retire.js";
 import { fireRoutine, RoutineError } from "../learning/routine.js";
 import { todayISO } from "../dateutil.js";
 import { flash } from "../flash.js";
@@ -72,6 +73,7 @@ function draw() {
     <p class="fm-fresh">Money ${C.money ? `synced ${fmtD(C.money.asOf)}` : "not synced yet"} · <button class="fm-link" data-act="reload">Refresh</button> · app ${APP_VERSION}</p>
   </div>`;
   wire(main.firstElementChild, D, C);
+  if (F.tab === "money") wireRetire(main);
 }
 
 /* ── shared bits ─────────────────────────────────────────── */
@@ -187,6 +189,7 @@ function money(D, C) {
       <div class="fm-btnrow">${sync}</div>${m.flags.length ? `<ul class="fm-check">${m.flags.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : ""}</div>
     ${m.payYourself ? `<div class="fm-tile s4">${payFirstHTML(m.payYourself, ctx.S.fam.pyfRange, { title: "Pay yourselves first", you: "You", kept: "You paid yourselves", taken: "Merchants took", keptHead: "What you paid yourselves", takenHead: "Who took your money", payday: "Pay yourselves first: on payday, move that to the ESPP or cash savings before they get it.", into: "your 401(k)s and savings" })}</div>` : ""}
     ${m.navyaMoney ? `<div class="fm-tile s4">${payFirstHTML(m.navyaMoney, ctx.S.fam.nvRange, { scope: "navya", title: "Navya · pay yourself first", you: "You", kept: "You kept", taken: "Stores took", takers: "stores", earnedLabel: "Money in", keptHead: "What you kept", takenHead: "Who took your money", payday: "Pay yourself first: the day money comes in, move your share to savings before a store gets it.", into: "your savings and investing" })}<p class="sub fm-pyfnote">Written to Navya, for her weekly family meeting. Only here for now; her own dashboard doesn't show it.</p></div>` : ""}
+    ${retireHTML(retireData(D, C.today))}
     <div class="fm-tile s2"><h3>Categories you watch</h3>${watch ? `<ul class="fam-list bars">${watch}</ul>` : empty("Add categories below.")}
       ${m.overWatch ? `<p class="fam-impact">On pace to spend <b>${usd(m.overWatch)}</b> more than ${m.watch.some((w) => w.over && w.budget) ? "planned" : "usual"} in these this month. Put toward your goals instead, that's ${usd(m.overWatch * 12)} a year.</p>` : ""}${watchEdit}</div>
     <div class="fm-tile s2"><h3>Savings, retirement &amp; payoff</h3>${goals ? `<ul class="fam-list bars">${goals}</ul>` : empty("No goals in Monarch yet.")}
@@ -590,6 +593,16 @@ function wire(root, D, C) {
     const ensureKid = (k) => { k[kid] = k[kid] || { appointments: [], goals: [], observations: [] }; return k[kid]; };
     if (act === "reload") { ctx.store.reviews.clear(); F.loaded = false; F.run = null; return renderFamilyView(ctx.store, ctx.S, ctx.renderApp); }
     if (act === "tag" || act === "obstype") { const on = act === "obstype" || t.getAttribute("aria-pressed") !== "true"; t.closest(".fm-tags").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t && on))); return; }
+    if (act === "saveretire") {
+      const b = t.closest(".rt-set"), num = (el) => (el.value.trim() === "" ? null : +el.value.replace(/[$,%\s]/g, ""));
+      const get = (k) => { const el = b.querySelector(`[data-rt=${k}]`); return el ? num(el) : undefined; };
+      const years = [...b.querySelectorAll("[data-rt=birthYear]")].map(num);
+      if (years.some((y) => y != null && (y < 1930 || y > 2010))) return flash("Birth year looks off, e.g. 1977.", true);
+      const ret = get("realReturn");
+      return save("config", (c) => { const rc = c.finance?.retirement || {};
+        return { ...c, finance: { ...(c.finance || {}), retirement: { ...rc, people: (rc.people || []).map((p, i) => ({ ...p, birthYear: years[i] ?? p.birthYear ?? null })),
+          retireAge: get("retireAge") ?? rc.retireAge ?? null, monthlyGoal: get("monthlyGoal") ?? rc.monthlyGoal ?? null, realReturn: ret != null ? ret / 100 : rc.realReturn ?? 0.05 } } }; }, "retirement goal");
+    }
     if (act === "pastmode") { F.pastMode = t.dataset.m; F.pastWeek = null; return draw(); }
     if (act === "pastmonth") { F.pastMonth = t.dataset.m; return draw(); }
     if (act === "pastweek") { F.pastWeek = t.dataset.w || null; if (t.dataset.tomode) F.pastMode = t.dataset.tomode; if (t.dataset.clear) F.pastQ = ""; window.scrollTo(0, 0); return draw(); }
