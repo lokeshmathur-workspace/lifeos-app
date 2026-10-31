@@ -596,11 +596,12 @@ function wire(root, D, C) {
     if (act === "saveretire") {
       const b = t.closest(".rt-set"), num = (el) => (el.value.trim() === "" ? null : +el.value.replace(/[$,%\s]/g, ""));
       const get = (k) => { const el = b.querySelector(`[data-rt=${k}]`); return el ? num(el) : undefined; };
-      const years = [...b.querySelectorAll("[data-rt=birthYear]")].map(num);
+      const years = [...b.querySelectorAll("[data-rt=birthYear]")].map(num), ssM = [...b.querySelectorAll("[data-rt=ssMonthly]")].map(num), ssA = [...b.querySelectorAll("[data-rt=ssAge]")].map(num);
+      if (ssA.some((a) => a != null && (a < 62 || a > 70))) return flash("Social Security can start between 62 and 70.", true);
       if (years.some((y) => y != null && (y < 1930 || y > 2010))) return flash("Birth year looks off, e.g. 1977.", true);
       const ret = get("realReturn");
       return save("config", (c) => { const rc = c.finance?.retirement || {};
-        return { ...c, finance: { ...(c.finance || {}), retirement: { ...rc, people: (rc.people || []).map((p, i) => ({ ...p, birthYear: years[i] ?? p.birthYear ?? null })),
+        return { ...c, finance: { ...(c.finance || {}), retirement: { ...rc, people: (rc.people || []).map((p, i) => ({ ...p, birthYear: years[i] ?? null, ssMonthly: ssM[i] ?? null, ssAge: ssA[i] ?? null })),
           retireAge: get("retireAge") ?? rc.retireAge ?? null, monthlyGoal: get("monthlyGoal") ?? rc.monthlyGoal ?? null, realReturn: ret != null ? ret / 100 : rc.realReturn ?? 0.05 } } }; }, "retirement goal");
     }
     if (act === "pastmode") { F.pastMode = t.dataset.m; F.pastWeek = null; return draw(); }
