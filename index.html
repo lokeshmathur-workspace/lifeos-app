@@ -1287,6 +1287,40 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .fm-donebtn{white-space:nowrap}
 .fm-actadd .fm-choice button{flex:1 1 auto;white-space:nowrap}
 @media (max-width:560px){.fm-act{grid-template-columns:44px minmax(0,1fr)}.fm-actbtns{grid-column:2;justify-content:flex-start}.fm-actdate{width:44px;height:44px}}
+
+/* Growth: experiments, goals, compass fed, our year */
+.fm-vchip.on{background:var(--fam);border-color:var(--fam);color:var(--on-fam)}
+span.fm-vchip{display:inline-block}
+.fm-idea .fm-vchips{margin:0 0 8px}
+.fm-exprow{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.fm-exprow .fm-choice{flex:0 1 auto}.fm-exprow .fm-choice button{flex:0 0 auto;padding:6px 12px}
+.fm-goalcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-top:8px}
+@media (max-width:560px){.fm-goalcols{grid-template-columns:minmax(0,1fr)}}
+.fm-goalcol{display:flex;flex-direction:column;gap:10px;align-items:flex-start}
+.fm-goal{display:flex;flex-direction:column;gap:6px;align-items:flex-start;width:100%;background:var(--fam-soft);border-radius:12px;padding:12px 14px}
+.fm-goal>b{font-size:16px;color:var(--ink);line-height:1.35}
+.fm-saw{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:6px;width:100%}
+.fm-saw li{border-left:3px solid var(--good);padding-left:10px;font-size:14px;color:var(--ink);display:flex;flex-direction:column}
+.fm-fed{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:8px}
+.fm-fed>div{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;background:var(--fam-soft)}
+.fm-fed>div.none{background:var(--surface);border-style:dashed}
+.fm-fed b{font-size:15px;color:var(--ink)}.fm-fed span{font-size:13px;color:var(--muted)}
+.fm-ideabox{border:1px solid var(--line);border-radius:12px;padding:14px 16px;background:var(--surface)}
+.fm-ideabox .fm-idea-title{font-size:20px}
+.fm-claudeq{font-style:italic}
+.fm-yearcols{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}
+@media (max-width:700px){.fm-yearcols{grid-template-columns:minmax(0,1fr)}}
+.fm-yearcols section{display:flex;flex-direction:column;gap:8px}
+.fm-yearlist{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:10px}
+.fm-yearlist li{display:flex;flex-direction:column;gap:2px;border-left:3px solid var(--fam);padding-left:10px}
+.fm-yearlist p{font-size:14.5px;color:var(--ink-2)}
+.fm-fedbars{display:flex;flex-direction:column;gap:6px}
+.fm-fedbars>div{display:grid;grid-template-columns:110px minmax(0,1fr) 24px;gap:8px;align-items:center;font-size:14px;color:var(--ink)}
+.fm-fedbars i{display:block;height:10px;border-radius:5px;background:var(--fam);min-width:2px}
+.fm-fedbars b{text-align:right;font-variant-numeric:tabular-nums}
+.fm-feels{display:flex;gap:4px;flex-wrap:wrap}
+.fm-feel{font-size:11.5px;font-weight:700;padding:3px 7px;border-radius:6px;background:var(--line);color:var(--ink-2)}
+.fm-feel.better{background:var(--good-soft);color:var(--good)}.fm-feel.harder{background:var(--warn-soft);color:var(--warnc)}
 </style>
 </head>
 <body>

@@ -71,7 +71,7 @@ function draw() {
   const D = data(), C = computeFamily(D, todayISO());
   const past = (D, C) => pastView(D, C, F);
   if (F.tab === "health") F.tab = "nutrition"; // the old Health tab
-  const body = F.kidFocus ? kidFocus : { hq, money, us, growth, nutrition, kids, home, past }[F.tab] || hq;
+  const body = F.kidFocus ? kidFocus : F.growFocus ? growthFocus : { hq, money, us, growth, nutrition, kids, home, past }[F.tab] || hq;
   const main = $("#main");
   main.innerHTML = `<div class="fam">
     <div class="fm-top"><div class="fm-hello"><p class="fm-eyebrow">${esc(C.name("lokesh"))} &amp; ${esc(C.name("archana"))} · family</p><h1>Week of ${fmtD(C.week, { month: "long", day: "numeric" })}</h1><p class="fm-sub">Signed in as ${esc(C.name(F.me))}</p></div></div>
@@ -121,7 +121,7 @@ function hq(D, C) {
     ["us", "Us", C.us.daysSinceUs != null ? `time together ${C.us.daysSinceUs === 0 ? "today" : `${C.us.daysSinceUs} days ago`}` : "No time together logged yet", `${C.us.family30} family times in 30 days`],
     ["nutrition", "Nutrition", `${C.nutrition.plan.planned} of 7 dinners planned from ${fmtD(C.nutrition.plan.start)}`, C.nutrition.review.planned || C.nutrition.review.cooked ? `last 7 days: ${C.nutrition.review.cooked} cooked · ${C.nutrition.review.out} out` : ""],
     ["kids", "Kids", C.kids.map((k) => `${k.name}: ${k.appointments.length} coming up`).join(" · ") || "Add the kids", n?.focus ? `Navya's focus: ${n.focus.split(".")[0]}` : ""],
-    ["growth", "Growth", (() => { const open = (D.growth?.items || []).filter((g) => g.status === "open"), mine = open.filter((g) => !(g.reflections || []).some((r) => r.by === ctx.S.fam.me)); return open.length ? `${open.length} to talk about${mine.length ? ` · ${mine.length} waiting for your thoughts` : ""}` : "Nothing waiting to talk about"; })(), `${(D.growth?.items || []).filter((g) => g.status === "discussed").length} talked about so far`],
+    ["growth", "Growth", (() => { const open = (D.growth?.items || []).filter((g) => g.status === "open"), mine = open.filter((g) => !(g.reflections || []).some((r) => r.by === ctx.S.fam.me)); const ex = expsActive(D).length; return open.length ? `${open.length} to talk about${mine.length ? ` · ${mine.length} waiting for your thoughts` : ""}` : ex ? `${ex} experiment${ex === 1 ? "" : "s"} going` : "Nothing waiting to talk about"; })(), `${(D.growth?.items || []).filter((g) => g.status === "discussed").length} talked about so far`],
     ["home", "Home", C.home.upcoming.length ? `${C.home.upcoming.length} family activit${C.home.upcoming.length === 1 ? "y" : "ies"} planned · next ${dayLabel(C.home.upcoming[0].date)}` : "No family activities planned", `${C.home.doneMonth} done this month${C.home.missed.length ? ` · ${C.home.missed.length} to mark` : ""}`],
   ];
   return `<div class="fm-bento">${turnNudge(D, C)}${kidsNudge(D, C)}${read}
@@ -255,6 +255,7 @@ function turnItems(D, C, R, me, other) {
     C.kids.some((k) => !k.unnamed) && (() => { const ks = C.kids.filter((k) => !k.unnamed), mine = ks.filter((k) => kidWeek(D, C, k).glows.some((o) => o.by === me));
       return { f: "notice", kid: true, t: "Notice the kids", sub: mine.length === ks.length ? "A glow for each · add more" : `A glow for ${ks.filter((k) => !mine.includes(k)).map((k) => k.name).join(" and ")}: something they did well`, done: mine.length === ks.length }; })(),
     { f: "meeting", t: `Add to ${TALK}`, sub: added ? "Done · add more" : "A plan for good times, or something on your mind", done: added },
+    ...growthTurnItems(D, C, me),
     rs.length && { f: "rituals", t: "Tick off a ritual", sub: `${kept.length} of ${rs.length} this week`, done: false },
   ].filter(Boolean);
 }
@@ -269,7 +270,7 @@ function turnNudge(D, C) {
 function yourTurnTile(D, C, R, me, other) {
   const M = meetDates(D, C.today), items = turnItems(D, C, R, me, other), left = items.filter((x) => !x.done).length;
   return `<div class="fm-tile s4 fm-turn"><div class="fm-rowsplit"><h3 class="fm-name">Your turn, ${esc(C.name(me))}</h3><span class="sub">${left ? `Before ${TALK}, ${M.isToday ? "today" : M.day}` : "All done for this week"}</span></div>
-    <ul>${items.map((x) => `<li><button type="button" class="fm-turnrow${x.done ? " done" : ""}" data-act="${x.kid ? "kidfocus" : "usfocus"}" data-f="${x.f}"${x.kid ? ' data-type="encourage"' : ""}><span class="ck" aria-hidden="true"></span><span class="tx"><b>${esc(x.t)}</b><span>${esc(x.sub)}</span></span><span class="go" aria-hidden="true">›</span></button></li>`).join("")}</ul></div>`;
+    <ul>${items.map((x) => `<li><button type="button" class="fm-turnrow${x.done ? " done" : ""}" data-act="${x.kid ? "kidfocus" : x.grow ? "growfocus" : "usfocus"}" data-f="${x.f}"${x.kid ? ' data-type="encourage"' : ""}${x.id ? ` data-id="${x.id}"` : ""}><span class="ck" aria-hidden="true"></span><span class="tx"><b>${esc(x.t)}</b><span>${esc(x.sub)}</span></span><span class="go" aria-hidden="true">›</span></button></li>`).join("")}</ul></div>`;
 }
 
 function compassTile(R, C, me, other) {
@@ -296,7 +297,8 @@ function growingTile(D, C, R) {
   const M = meetDates(D, C.today), g = (R.growing || {})[M.next] || {};
   const appr = (R.appreciation || []).filter((a) => a.date > M.last).sort((a, b) => (a.date < b.date ? -1 : 1));
   const acts = C.home.upcoming.filter((a) => a.date <= addDays(M.next, 7)), plans = g.plans || [], issues = g.issues || [];
-  const step = (n, title, hint, body) => `<li><span class="n">${n}</span><div><b>${title}</b>${hint ? `<span class="sub"> · ${hint}</span>` : ""}${body}</div></li>`;
+  let num = 0; const gs = growthStep(D, C, M);
+  const step = (_n, title, hint, body) => `<li><span class="n">${++num}</span><div><b>${title}</b>${hint ? `<span class="sub"> · ${hint}</span>` : ""}${body}</div></li>`;
   const who = (p) => (p.kind === "us" ? "Date" : p.kind === "me" ? esc(C.name(p.by)) : "Family");
   return `<div class="fm-tile s4 fm-sou"><div class="fm-rowsplit"><h3 class="fm-name">${TALK}</h3><span class="sub">${M.isToday ? "Today" : `${M.day}, ${fmtD(M.next)}`} · about 30 minutes, in this order</span></div>
     <ol class="fm-agenda">
@@ -305,6 +307,7 @@ function growingTile(D, C, R) {
       ${C.kids.some((k) => !k.unnamed) ? step(3, "Kids", "wins first, then one thing each", `<ul class="fam-list">${C.kids.filter((k) => !k.unnamed).map((k) => { const w = kidWeek(D, C, k), pl = planOf(D, k.id, M.next, true);
         return `<li><span><b>${esc(k.name)}</b> · ${w.glows.length} glow${w.glows.length === 1 ? "" : "s"}, ${w.grows.length} grow${w.grows.length === 1 ? "" : "s"}</span><span class="sub">${pl ? `working on ${esc(pl.workOn.trait || "a plan")}` : ""}</span></li>`; }).join("")}</ul>
         <div class="btnrow"><button class="fm-btn sm pri" data-act="kidfocus" data-f="talk">Talk about the kids</button></div>`) : ""}
+      ${gs ? step(0, "Growth", gs[0], gs[1]) : ""}
       ${step(C.kids.some((k) => !k.unnamed) ? 4 : 3, "Good times", "plan them before the week fills up", `${plans.length ? `<ul class="fam-list">${plans.map((p) => `<li><span><span class="fm-type">${who(p)}</span>${esc(p.what)}</span><span class="sub">${esc(p.when || "")}</span><button class="fm-link" data-act="delgrowing" data-list="plans" data-id="${p.id}">Remove</button></li>`).join("")}</ul>` : ""}
         <div class="fam-form"><select name="kind"><option value="us">Date</option><option value="family">Family</option><option value="me">Time for me</option></select><input name="what" placeholder="What? e.g. Thai Ginger"><input name="when" placeholder="When?" class="short"><button class="fm-btn sm" data-act="addplan">Add</button></div>`)}
       ${step(C.kids.some((k) => !k.unnamed) ? 5 : 4, "One thing", "last, on purpose", `${issues.length ? issues.map((x) => `<p class="fm-issue">“${esc(x.text)}”<span class="sub"> ${esc(C.name(x.by))}, ${fmtD(x.date)}</span> <button class="fm-link" data-act="delgrowing" data-list="issues" data-id="${x.id}">Remove</button></p>`).join("") + (issues.length > 1 ? `<p class="sub">Pick one for today; the other can wait a week.</p>` : "") : ""}
@@ -655,42 +658,172 @@ function readKidTalk(root) {
 
 /* ── Growth: ideas from Lokesh's reading, podcasts and thinking, to talk about together ── */
 
-function growth(D, C) {
-  const F = ctx.S.fam, G = D.growth?.items || [], me = F.me;
-  const open = G.filter((g) => g.status === "open").sort((a, b) => (a.date < b.date ? 1 : -1));
-  const done = G.filter((g) => g.status === "discussed").sort((a, b) => ((a.discussedAt || a.date) < (b.discussedAt || b.date) ? 1 : -1));
-  const card = (g) => {
-    const editing = F.growthEdit === g.id;
-    if (editing) return shareForm(g);
-    const mine = (g.reflections || []).find((r) => r.by === me), others = (g.reflections || []).filter((r) => r.by !== me);
-    const myEdit = F.reflectEdit === g.id || !mine;
-    return `<div class="fm-tile s4 fm-idea" data-id="${g.id}">
-      <div class="fm-rowsplit"><span class="fm-kicker">${esc(KINDS[g.source?.kind] || "Idea")}${g.source?.name ? ` · ${esc(g.source.name)}` : ""}${g.source?.author ? ` · ${esc(g.source.author)}` : ""}</span><span class="sub">${esc(C.name(g.from))} · ${fmtD(g.date)}</span></div>
-      <h2 class="fm-idea-title">${esc(g.title)}</h2>
-      <p class="fm-idea-text">${esc(g.idea)}</p>
-      ${g.why ? `<p class="fm-why"><b>Why I'm sharing it:</b> ${esc(g.why)}</p>` : ""}
-      ${g.questions?.length ? `<div class="fm-sec"><span class="fm-kicker">To reflect on</span><div class="fm-bubbles">${g.questions.map((q) => `<p class="fm-q">${esc(q)}</p>`).join("")}</div></div>` : ""}
-      ${g.status === "discussed" ? `<div class="fm-focus"><span class="fm-kicker">What we'll take from it · ${fmtD(g.discussedAt)}</span><b>${esc(g.takeaway || "We talked about it.")}</b></div>` : ""}
-      <div class="fm-sec"><span class="fm-kicker">Reflections</span>
-        ${others.map((r) => `<div class="fm-reflect"><span class="sub">${esc(C.name(r.by))} · ${fmtD(r.date)}</span><p>${esc(r.text)}</p></div>`).join("")}
-        ${myEdit ? `<label class="fm-fld"><span>Your reflection${others.length ? "" : " · what it brings up for you"}</span><textarea data-g="reflection" rows="3" placeholder="What do you think? Where does this show up in your life, or ours?">${esc(mine?.text || "")}</textarea></label>
-          <div class="fm-btnrow"><button class="fm-btn sm pri" data-act="savereflect" data-id="${g.id}">Save reflection</button>${mine ? `<button class="fm-btn sm" data-act="cancel">Cancel</button>` : ""}</div>`
-        : `<div class="fm-reflect mine"><span class="sub">You · ${fmtD(mine.date)} · <button class="fm-link" data-act="editreflect" data-id="${g.id}">Edit</button></span><p>${esc(mine.text)}</p></div>`}
-        ${!others.length && !mine ? "" : ""}</div>
-      ${g.status === "open" ? (F.discussing === g.id
-        ? `<div class="fam-form"><input data-g="takeaway" placeholder="What we'll take from it, or try (optional)"><button class="fm-btn sm pri" data-act="discussed" data-id="${g.id}">Save</button><button class="fm-btn sm" data-act="cancel">Cancel</button></div>`
-        : `<div class="fm-btnrow"><button class="fm-btn" data-act="startdiscussed" data-id="${g.id}">We talked about it</button>${g.from === me ? `<button class="fm-link" data-act="editgrowth" data-id="${g.id}">Edit</button><button class="fm-link" data-act="delgrowth" data-id="${g.id}">Delete</button>` : ""}</div>`) : ""}
-    </div>`;
-  };
-  return `<div class="fm-bento">
-    <div class="fm-tile s4"><div class="fm-rowsplit"><div><h3>Grow together</h3><p class="sub">One idea at a time from a book, a podcast or your own thinking: what it is, why it matters to you, and a question to reflect on. Talk about it, then note what you'll take from it.</p></div>
-      ${F.growthEdit === "new" ? "" : `<button class="fm-btn pri" data-act="newgrowth">Share an idea</button>`}</div>
-      ${F.growthEdit === "new" ? shareForm(null) : ""}</div>
-    ${open.length ? open.map(card).join("") : `<div class="fm-tile s4"><p class="sub">Nothing waiting to talk about.</p></div>`}
-    ${done.length ? `<div class="fm-tile s4"><details class="fm-more"><summary>Talked about (${done.length})</summary>${done.map((g) => `<div class="fm-note past"><div class="fm-rowsplit"><b>${esc(g.title)}</b><span class="sub">${fmtD(g.discussedAt)}</span></div><p class="sub">${esc(KINDS[g.source?.kind] || "")}${g.source?.name ? ` · ${esc(g.source.name)}` : ""}</p>${g.takeaway ? `<p class="talked">${esc(g.takeaway)}</p>` : ""}<button class="fm-link" data-act="opengrowth" data-id="${g.id}">Open</button></div>`).join("")}</details></div>` : ""}
-    ${F.openGrowth ? (() => { const g = done.find((x) => x.id === F.openGrowth); return g ? card(g) : ""; })() : ""}
+/* ── Growth: ideas to talk about, experiments that come of them, what each of us is working on, our year ── */
+
+const CHECK_IN = [["7", "1 week"], ["14", "2 weeks"], ["30", "1 month"]];
+const EXP_RESULTS = { keep: "Keep it", change: "Change it", drop: "Drop it" };
+const GOAL_FEEL = { better: "Better", same: "About the same", harder: "Harder" };
+const compassNames = (D) => (D.rel?.compass?.values || []).map((v) => v.name);
+const growthItems = (D) => D.growth?.items || [];
+const growthGoals = (D) => D.growth?.goals || [];
+const thisMonth = (C) => C.today.slice(0, 7);
+// Experiments waiting for a verdict at this Growing Together.
+const expsDue = (D, M) => growthItems(D).filter((g) => g.experiment && !g.experiment.result && g.experiment.until <= M.next);
+const expsActive = (D) => growthItems(D).filter((g) => g.experiment && !g.experiment.result);
+// Claude's suggested questions stay with whoever shared the idea until they keep them.
+const questionsShown = (g, me) => g.questions?.length && (g.questionsBy !== "claude" || g.questionsOk || g.from === me);
+const valueChips = (vals, sel, act) => `<div class="fm-vchips">${vals.map((v) => `<button type="button" class="fm-vchip" data-act="${act}" data-v="${esc(v)}" aria-pressed="${sel.includes(v)}">${esc(v)}</button>`).join("")}</div>`;
+
+// Your turn: reflect on each idea waiting; once a month, check in on your goal.
+function growthTurnItems(D, C, me) {
+  const out = growthItems(D).filter((g) => g.status === "open").map((g) => { const mine = (g.reflections || []).some((r) => r.by === me);
+    return { f: "reflect", grow: true, id: g.id, t: g.from === me ? "Reflect on your idea" : `Reflect on ${C.name(g.from)}'s idea`, sub: mine ? "Done · you'll talk about it together" : g.title, done: mine }; });
+  for (const goal of growthGoals(D).filter((x) => x.person === me && x.status === "active")) {
+    const did = (goal.checkins || []).some((c) => c.month === thisMonth(C));
+    if (!did && +C.today.slice(8, 10) < 21) continue; // asks in the last part of the month
+    out.push({ f: "checkin", grow: true, id: goal.id, t: "Check in on your goal", sub: did ? `Done for ${fmtD(C.today, { month: "long" })}` : goal.text, done: did });
+  }
+  return out;
+}
+
+function growthStep(D, C, M) {
+  const open = growthItems(D).filter((g) => g.status === "open"), due = expsDue(D, M);
+  if (!open.length && !due.length) return null;
+  const both = (g) => ["lokesh", "archana"].every((p) => (g.reflections || []).some((r) => r.by === p));
+  return [`${due.length ? `${due.length} experiment${due.length === 1 ? "" : "s"} to check · ` : ""}${open.length} idea${open.length === 1 ? "" : "s"}`,
+    `${due.length ? `<ul class="fam-list">${due.map((g) => `<li class="fm-exprow"><span><b>${esc(g.experiment.what)}</b><span class="sub"> · since ${fmtD(g.experiment.from)}. Did we do it?</span></span><span class="fm-choice small">${Object.entries(EXP_RESULTS).map(([k, l]) => `<button type="button" data-act="exresult" data-id="${g.id}" data-r="${k}">${l}</button>`).join("")}</span></li>`).join("")}</ul>` : ""}
+    ${open.length ? `<ul class="fam-list">${open.map((g) => `<li><span><b>${esc(g.title)}</b><span class="sub"> · ${both(g) ? "you've both reflected" : `waiting for ${["lokesh", "archana"].filter((p) => !(g.reflections || []).some((r) => r.by === p)).map((p) => esc(C.name(p))).join(" and ")}`}</span></span><button class="fm-btn sm${both(g) ? " pri" : ""}" data-act="growfocus" data-f="talk" data-id="${g.id}">Talk about it</button></li>`).join("")}</ul>` : ""}`];
+}
+
+function ideaCard(D, C, g) {
+  const F = ctx.S.fam, me = F.me, mine = (g.reflections || []).find((r) => r.by === me), others = (g.reflections || []).filter((r) => r.by !== me);
+  if (F.growthEdit === g.id) return `<div class="fm-tile s4 fm-idea">${shareForm(g)}</div>`;
+  const claudeQ = g.questionsBy === "claude" && !g.questionsOk;
+  return `<div class="fm-tile s4 fm-idea" data-id="${g.id}">
+    <div class="fm-rowsplit"><span class="fm-kicker">${esc(KINDS[g.source?.kind] || "Idea")}${g.source?.name ? ` · ${esc(g.source.name)}` : ""}${g.source?.author ? ` · ${esc(g.source.author)}` : ""}</span><span class="sub">${esc(C.name(g.from))} · ${fmtD(g.date)}</span></div>
+    <h2 class="fm-idea-title">${esc(g.title)}</h2>
+    ${g.values?.length ? `<div class="fm-vchips">${g.values.map((v) => `<span class="fm-vchip on">${esc(v)}</span>`).join("")}</div>` : ""}
+    <p class="fm-idea-text">${esc(g.idea)}</p>
+    ${g.why ? `<p class="fm-why"><b>Why I'm sharing it:</b> ${esc(g.why)}</p>` : ""}
+    ${g.questionsPending ? `<p class="sub fm-claudeq">Claude is suggesting a few questions to reflect on… <button class="fm-link" data-act="reload">Check now</button></p>` : ""}
+    ${questionsShown(g, me) ? `<div class="fm-sec"><span class="fm-kicker">To reflect on${g.questionsBy === "claude" ? " · suggested by Claude" : ""}</span><div class="fm-bubbles">${g.questions.map((q) => `<p class="fm-q">${esc(q)}</p>`).join("")}</div>
+      ${claudeQ && g.from === me ? `<div class="fm-btnrow"><button class="fm-btn sm pri" data-act="qok" data-id="${g.id}">Keep these</button><button class="fm-btn sm" data-act="editgrowth" data-id="${g.id}">Edit</button><span class="sub">${esc(C.name(me === "lokesh" ? "archana" : "lokesh"))} sees them once you keep them.</span></div>` : ""}</div>` : ""}
+    ${g.status === "discussed" ? `<div class="fm-focus"><span class="fm-kicker">What we'll take from it · ${fmtD(g.discussedAt)}</span><b>${esc(g.takeaway || "We talked about it.")}</b>${g.experiment ? `<p class="sub">Experiment: ${esc(g.experiment.what)}${g.experiment.result ? ` · ${EXP_RESULTS[g.experiment.result]}` : ` · check in ${fmtD(g.experiment.until)}`}</p>` : ""}</div>` : ""}
+    <div class="fm-sec"><span class="fm-kicker">Reflections</span>
+      ${mine ? `<div class="fm-reflect mine"><span class="sub">You · ${fmtD(mine.date)}${g.status === "open" ? ` · <button class="fm-link" data-act="growfocus" data-f="reflect" data-id="${g.id}">Edit</button>` : ""}</span><p>${esc(mine.text)}</p></div>` : ""}
+      ${others.map((r) => (mine || g.status !== "open" ? `<div class="fm-reflect"><span class="sub">${esc(C.name(r.by))} · ${fmtD(r.date)}</span><p>${esc(r.text)}</p></div>` : `<p class="fm-locked">${esc(C.name(r.by))} has written a reflection. Write yours to read it.</p>`)).join("")}
+      ${!mine && g.status === "open" ? `<div class="btnrow"><button class="fm-btn sm pri" data-act="growfocus" data-f="reflect" data-id="${g.id}">Write my reflection</button></div>` : ""}</div>
+    ${g.status === "open" ? `<div class="fm-btnrow"><button class="fm-btn" data-act="growfocus" data-f="talk" data-id="${g.id}">Talk about it</button>${g.from === me ? `<button class="fm-link" data-act="editgrowth" data-id="${g.id}">Edit</button><button class="fm-link" data-act="delgrowth" data-id="${g.id}">Delete</button>` : ""}</div>` : ""}
   </div>`;
 }
+
+function goalsTile(D, C) {
+  const me = ctx.S.fam.me;
+  const col = (p) => { const gs = growthGoals(D).filter((x) => x.person === p && x.status === "active");
+    return `<div class="fm-goalcol"><span class="fm-kicker">${esc(C.name(p))}</span>
+      ${gs.length ? gs.map((x) => { const ci = (x.checkins || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1))[0], saw = (x.sightings || []).slice().sort((a, b) => (a.date < b.date ? 1 : -1));
+        return `<div class="fm-goal"><b>${esc(x.text)}</b>${x.value ? `<span class="fm-vchip on">${esc(x.value)}</span>` : ""}
+          <span class="sub">Since ${fmtD(x.started, { month: "short", year: "numeric" })}${ci ? ` · ${fmtD(ci.date, { month: "long" })}: ${GOAL_FEEL[ci.feel] || ""}` : ""}</span>
+          ${saw.length ? `<ul class="fm-saw">${saw.slice(0, 3).map((s) => `<li><span class="sub">${esc(C.name(s.by))} saw it · ${fmtD(s.date)}</span>${esc(s.text)}</li>`).join("")}</ul>` : ""}
+          <div class="fm-btnrow">${p === me ? `<button class="fm-btn sm" data-act="growfocus" data-f="checkin" data-id="${x.id}">${(x.checkins || []).some((c) => c.month === thisMonth(C)) ? "Update this month" : `Check in for ${fmtD(C.today, { month: "long" })}`}</button><button class="fm-link" data-act="goalstatus2" data-id="${x.id}" data-s="done">Done with it</button><button class="fm-link" data-act="goalstatus2" data-id="${x.id}" data-s="dropped">Drop</button>`
+            : `<button class="fm-btn sm pri" data-act="growfocus" data-f="saw" data-id="${x.id}">I saw it</button>`}</div></div>`; }).join("")
+        : `<p class="sub">${p === me ? "Nothing yet. What's one thing you want to grow in?" : "Nothing yet."}</p>`}
+      ${p === me && gs.length < 2 ? `<button class="fm-btn sm${gs.length ? "" : " pri"}" data-act="growfocus" data-f="goal">${gs.length ? "Add another" : "Choose one"}</button>` : ""}</div>`; };
+  return `<div class="fm-tile s4 fm-goals"><div class="fm-rowsplit"><h3>What we're each working on</h3><span class="sub">One or two things each · check in once a month</span></div>
+    <div class="fm-goalcols">${col("lokesh")}${col("archana")}</div>
+    <p class="fm-hint">When you see the other doing it, tap “I saw it”. Being noticed is half of changing.</p></div>`;
+}
+
+function growth(D, C) {
+  const F = ctx.S.fam, G = growthItems(D), M = meetDates(D, C.today), comp = compassNames(D);
+  const open = G.filter((g) => g.status === "open").sort((a, b) => (a.date < b.date ? 1 : -1));
+  const done = G.filter((g) => g.status === "discussed").sort((a, b) => ((a.discussedAt || a.date) < (b.discussedAt || b.date) ? 1 : -1));
+  const active = expsActive(D), past = G.filter((g) => g.experiment?.result).sort((a, b) => (a.experiment.resultAt < b.experiment.resultAt ? 1 : -1));
+  const fed = comp.map((v) => [v, G.filter((g) => g.status === "discussed" && (g.values || []).includes(v)).length, G.filter((g) => g.experiment?.result === "keep" && (g.values || []).includes(v)).length]);
+  return `<div class="fm-bento">
+    <div class="fm-tile s4"><div class="fm-rowsplit"><div><h3>Grow together</h3><p class="sub">One idea at a time from a book, a podcast or your own thinking. You each reflect, talk about it at ${TALK}, and try something small because of it.</p></div>
+      <div class="fm-btnrow">${F.growthEdit === "new" ? "" : `<button class="fm-btn pri" data-act="newgrowth">Share an idea</button>`}<button class="fm-btn" data-act="growfocus" data-f="year">Our year</button></div></div>
+      ${F.growthEdit === "new" ? shareForm(null) : ""}</div>
+    ${active.length || past.length ? `<div class="fm-tile s4 fm-exps"><div class="fm-rowsplit"><h3>Experiments we're trying</h3><span class="sub">${active.length} going · ${past.filter((g) => g.experiment.result === "keep").length} kept</span></div>
+      ${active.length ? `<ul class="fam-list">${active.map((g) => { const isDue = g.experiment.until <= M.next;
+        return `<li class="fm-exprow"><span><b>${esc(g.experiment.what)}</b><span class="sub"> · from “${esc(g.title)}” · ${isDue ? `check in at ${TALK}` : `check in ${fmtD(g.experiment.until)}`}</span></span>${isDue ? `<span class="fm-choice small">${Object.entries(EXP_RESULTS).map(([k, l]) => `<button type="button" data-act="exresult" data-id="${g.id}" data-r="${k}">${l}</button>`).join("")}</span>` : ""}</li>`; }).join("")}</ul>` : `<p class="sub">Nothing on the go.</p>`}
+      ${past.length ? `<details class="fm-more"><summary>Tried before (${past.length})</summary><ul class="fam-list">${past.map((g) => `<li><span>${esc(g.experiment.what)}</span><span class="sub">${EXP_RESULTS[g.experiment.result]} · ${fmtD(g.experiment.resultAt)}</span></li>`).join("")}</ul></details>` : ""}</div>` : ""}
+    ${open.length ? open.map((g) => ideaCard(D, C, g)).join("") : `<div class="fm-tile s4"><p class="sub">Nothing waiting to talk about.</p></div>`}
+    ${goalsTile(D, C)}
+    ${comp.length ? `<div class="fm-tile s4"><div class="fm-rowsplit"><h3>Our compass, fed</h3><span class="sub">Ideas talked about · experiments kept, by value</span></div>
+      <div class="fm-fed">${fed.map(([v, n, k]) => `<div class="${n ? "" : "none"}"><b>${esc(v)}</b><span>${n} idea${n === 1 ? "" : "s"}${k ? ` · ${k} kept` : ""}</span></div>`).join("")}</div>
+      ${fed.some(([, n]) => !n) ? `<p class="sub">Nothing yet for ${fed.filter(([, n]) => !n).map(([v]) => esc(v)).join(", ")}. Worth looking for one.</p>` : ""}</div>` : ""}
+    ${done.length ? `<div class="fm-tile s4"><details class="fm-more"><summary>Talked about (${done.length})</summary>${done.map((g) => `<div class="fm-note past"><div class="fm-rowsplit"><b>${esc(g.title)}</b><span class="sub">${fmtD(g.discussedAt)}</span></div>${g.takeaway ? `<p>${esc(g.takeaway)}</p>` : ""}<button class="fm-link" data-act="opengrowth" data-id="${g.id}">${F.openGrowth === g.id ? "Close" : "Open"}</button></div>`).join("")}</details></div>` : ""}
+    ${F.openGrowth ? (() => { const g = done.find((x) => x.id === F.openGrowth); return g ? ideaCard(D, C, g) : ""; })() : ""}
+  </div>`;
+}
+
+// One job per screen: reflect · talk about an idea · choose a goal · check in · I saw it · our year.
+function growthFocus(D, C) {
+  const F = ctx.S.fam, f = F.growFocus, me = F.me, other = me === "lokesh" ? "archana" : "lokesh", comp = compassNames(D);
+  const head = (t, sub) => `<button class="fm-back" data-act="growback">‹ Back</button><h2 class="fm-ftitle">${t}</h2>${sub ? `<p class="fm-fsub">${sub}</p>` : ""}`;
+  const bar = (left, btn) => `<div class="fm-fbar"><span>${left}</span>${btn}</div>`;
+  const g = growthItems(D).find((x) => x.id === F.growId), goal = growthGoals(D).find((x) => x.id === F.growId);
+  const ideaBlock = (x) => `<div class="fm-ideabox"><span class="fm-kicker">${esc(KINDS[x.source?.kind] || "Idea")}${x.source?.name ? ` · ${esc(x.source.name)}` : ""} · from ${esc(C.name(x.from))}</span><p class="fm-idea-title">${esc(x.title)}</p><p class="fm-idea-text">${esc(x.idea)}</p>${x.why ? `<p class="fm-why"><b>Why:</b> ${esc(x.why)}</p>` : ""}
+    ${questionsShown(x, me) ? `<div class="fm-bubbles">${x.questions.map((q) => `<p class="fm-q">${esc(q)}</p>`).join("")}</div>` : ""}</div>`;
+  let body = "";
+  if (f === "reflect" && g) {
+    const mine = (g.reflections || []).find((r) => r.by === me);
+    body = head("Your reflection", `What does it bring up for you? ${esc(C.name(other))} sees it once you've both written one.`) + ideaBlock(g)
+      + `<textarea name="reflection" rows="6" placeholder="Where does this show up in your life, or ours?">${esc(mine?.text || "")}</textarea>`
+      + bar("", `<button class="fm-btn pri" data-act="savereflect" data-id="${g.id}">Save</button>`);
+  } else if (f === "talk" && g) {
+    const d = (F.talkDraft = F.talkDraft || { takeaway: g.takeaway || "", what: g.experiment?.what || "", days: "14", values: (g.values || []).slice() });
+    body = head("Talk about it", "Read both reflections, talk, then write down what you'll take from it.") + ideaBlock(g)
+      + `<div class="fm-answers">${["lokesh", "archana"].map((p) => { const r = (g.reflections || []).find((x) => x.by === p); return `<div><b>${esc(C.name(p))}</b><p>${r ? esc(r.text) : `<span class="sub">No reflection written.</span>`}</p></div>`; }).join("")}</div>
+      <label class="fm-fld"><b>What we'll take from it</b><textarea data-gt="takeaway" rows="3" placeholder="e.g. We play our own game: fewer comparisons with other families.">${esc(d.takeaway)}</textarea></label>
+      <label class="fm-fld"><b>Try it as a small experiment (optional)</b><input data-gt="what" value="${esc(d.what)}" placeholder="e.g. No phones at dinner"></label>
+      <div><span class="sub">Check in at ${TALK} after</span><div class="fm-choice small" role="group">${CHECK_IN.map(([k, l]) => `<button type="button" data-act="talkdays" data-k="${k}" aria-pressed="${d.days === k}">${l}</button>`).join("")}</div></div>
+      ${comp.length ? `<div><span class="fm-kicker">Which compass value does it serve?</span>${valueChips(comp, d.values, "talkvalue")}</div>` : ""}`
+      + bar("", `<button class="fm-btn pri" data-act="savetalk" data-id="${g.id}">Save</button>`);
+  } else if (f === "goal") {
+    const vals = [...new Set([...comp, ...Object.values(STRENGTHS).flat()])], d = (F.goalDraft = F.goalDraft || { value: "" });
+    body = head("One thing I'm working on", `Something you want to grow in this season. ${esc(C.name(other))} will see it and can tell you when they notice it.`)
+      + `<textarea name="goaltext" rows="3" placeholder="e.g. Stay calm in the morning rush. Finish my certification. Put the phone away after 9.">${esc(d.text || "")}</textarea>
+      <span class="fm-kicker">It's about (optional)</span>${valueChips(vals, [d.value], "goalvalue")}`
+      + bar("", `<button class="fm-btn pri" data-act="savegoal">Save</button>`);
+  } else if (f === "checkin" && goal) {
+    const cur = (goal.checkins || []).find((c) => c.month === thisMonth(C)), feel = (F.feel = F.feel || cur?.feel || "");
+    body = head(`${fmtD(C.today, { month: "long" })} check-in`, esc(goal.text))
+      + `<span class="fm-kicker">How's it going?</span><div class="fm-choice" role="group">${Object.entries(GOAL_FEEL).map(([k, l]) => `<button type="button" data-act="goalfeel" data-k="${k}" aria-pressed="${feel === k}">${l}</button>`).join("")}</div>
+      <textarea name="ciNote" rows="4" placeholder="What helped, what got in the way? (optional)">${esc(cur?.note || "")}</textarea>`
+      + bar("", `<button class="fm-btn pri" data-act="savecheckin" data-id="${goal.id}"${feel ? "" : " disabled"}>Save</button>`);
+  } else if (f === "saw" && goal) {
+    body = head(`You saw ${esc(C.name(goal.person))} do it`, `“${esc(goal.text)}”`)
+      + `<textarea name="sawText" rows="4" placeholder="What did you see? e.g. Stayed calm when we were late for school."></textarea>`
+      + bar("", `<button class="fm-btn pri" data-act="savesaw" data-id="${goal.id}">Save</button>`);
+  } else if (f === "year") body = yearView(D, C, head);
+  return `<div class="fm-focusscreen${f === "year" ? " wide" : ""}">${body}</div>`;
+}
+
+// Our year in growth: for the year-end retreat.
+function yearView(D, C, head) {
+  const F = ctx.S.fam, G = growthItems(D), goals = growthGoals(D), comp = compassNames(D);
+  const yrOf = (d) => (d || "").slice(0, 4);
+  const years = [...new Set([C.today.slice(0, 4), ...G.map((g) => yrOf(g.discussedAt || g.date)), ...goals.map((x) => yrOf(x.started))])].filter(Boolean).sort().reverse();
+  const y = F.growYear || years[0];
+  const talked = G.filter((g) => g.status === "discussed" && yrOf(g.discussedAt) === y);
+  const exps = G.filter((g) => g.experiment && yrOf(g.experiment.from) === y);
+  const gl = goals.filter((x) => yrOf(x.started) <= y && (x.status === "active" || yrOf(x.endedAt) >= y));
+  const fed = comp.map((v) => [v, talked.filter((g) => (g.values || []).includes(v)).length]).sort((a, b) => b[1] - a[1]);
+  const max = Math.max(1, ...fed.map(([, n]) => n));
+  const stat = (n, l) => `<div class="tri"><b>${n}</b><span>${l}</span></div>`;
+  return head(`Our year in growth · ${y}`, "What you learned together, what you tried and kept, and how each of you grew. Made for your year-end retreat.")
+    + (years.length > 1 ? `<div class="fm-choice small" role="group">${years.map((yy) => `<button type="button" data-act="growyear" data-y="${yy}" aria-pressed="${yy === y}">${yy}</button>`).join("")}</div>` : "")
+    + `<div class="fm-big3">${stat(talked.length, "ideas talked about")}${stat(exps.filter((g) => g.experiment.result === "keep").length, `experiments kept of ${exps.length}`)}${stat(gl.filter((x) => x.status === "done").length, `goals reached of ${gl.length}`)}</div>
+    <div class="fm-yearcols"><section><span class="fm-kicker">What we learned</span>${talked.length ? `<ul class="fm-yearlist">${talked.map((g) => `<li><b>${esc(g.title)}</b><span class="sub">${fmtD(g.discussedAt)}${g.source?.name ? ` · ${esc(g.source.name)}` : ""}</span>${g.takeaway ? `<p>${esc(g.takeaway)}</p>` : ""}</li>`).join("")}</ul>` : `<p class="sub">No ideas talked about yet this year.</p>`}</section>
+    <section><span class="fm-kicker">What we tried</span>${exps.length ? `<ul class="fm-yearlist">${exps.map((g) => `<li><b>${esc(g.experiment.what)}</b><span class="sub">${g.experiment.result ? EXP_RESULTS[g.experiment.result] : "still trying"}</span></li>`).join("")}</ul>` : `<p class="sub">No experiments yet.</p>`}
+      ${comp.length ? `<span class="fm-kicker">Compass values we fed</span><div class="fm-fedbars">${fed.map(([v, n]) => `<div><span>${esc(v)}</span><i style="width:${Math.round((n / max) * 100)}%"></i><b>${n}</b></div>`).join("")}</div>` : ""}</section></div>
+    <span class="fm-kicker">How each of us grew</span><div class="fm-goalcols">${["lokesh", "archana"].map((p) => `<div class="fm-goalcol"><b>${esc(C.name(p))}</b>${gl.filter((x) => x.person === p).map((x) => { const cs = (x.checkins || []).filter((c) => c.month.startsWith(y)).sort((a, b) => (a.month < b.month ? -1 : 1));
+      return `<div class="fm-goal"><b>${esc(x.text)}</b><span class="sub">${x.status === "done" ? "Reached" : x.status === "dropped" ? "Set aside" : "Still working on it"} · seen ${((n) => `${n} time${n === 1 ? "" : "s"}`)((x.sightings || []).filter((s) => yrOf(s.date) === y).length)}</span>
+        ${cs.length ? `<div class="fm-feels">${cs.map((c) => `<span class="fm-feel ${c.feel}" title="${esc(fmtD(c.month + "-15", { month: "long" }))}: ${GOAL_FEEL[c.feel]}">${fmtD(c.month + "-15", { month: "short" })}</span>`).join("")}</div>` : ""}</div>`; }).join("") || `<p class="sub">No goals this year.</p>`}</div>`).join("")}</div>`;
+}
+const readTalk = (root) => { const d = ctx.S.fam.talkDraft; if (!d) return; root.ownerDocument.querySelectorAll(".fm-focusscreen [data-gt]").forEach((el) => { d[el.dataset.gt] = el.value; }); };
 
 // Arrived from a Learning source screen: open the share form with that source (and the idea that
 // was tapped) filled in, and list the source's other insights and thoughts to pick from.
@@ -719,7 +852,8 @@ function shareForm(g) {
     <div class="fam-form"><select data-g="kind">${kinds}</select><input data-g="sourcename" placeholder="Book / podcast / article name" value="${esc(g?.source?.name || pick.src?.title || "")}"><input data-g="author" class="short" placeholder="Author or host" value="${esc(g?.source?.author || pick.src?.author || "")}"></div>
     <label class="fm-fld"><span>The idea · in your own words</span><textarea data-g="idea" rows="4">${esc(g?.idea || pick.idea || "")}</textarea></label>
     <label class="fm-fld"><span>Why you're sharing it · how it relates to us (optional)</span><textarea data-g="why" rows="2">${esc(g?.why || "")}</textarea></label>
-    <label class="fm-fld"><span>Questions to reflect on · one per line</span><textarea data-g="questions" rows="3" placeholder="e.g. Where are we playing someone else's game?">${esc((g?.questions || []).join("\n"))}</textarea></label>
+    <label class="fm-fld"><span>Questions to reflect on · one per line${g ? "" : " · leave empty and Claude suggests some"}</span><textarea data-g="questions" rows="3" placeholder="e.g. Where are we playing someone else's game?">${esc((g?.questions || []).join("\n"))}</textarea></label>
+    ${compassNames(data()).length ? `<div class="fm-fld"><span>Which compass value does it speak to? (optional)</span>${valueChips(compassNames(data()), g?.values || [], "sharevalue")}</div>` : ""}
     <div class="fm-btnrow"><button class="fm-btn pri" data-act="savegrowth" data-id="${g?.id || "new"}">${g ? "Save" : "Share with " + esc(ctx.S.fam.me === "lokesh" ? "Archana" : "Lokesh")}</button><button class="fm-btn" data-act="cancel">Cancel</button></div>
   </div>`;
 }
@@ -852,7 +986,7 @@ function wire(root, D, C) {
     if (!t || t.disabled || t.tagName === "SELECT" || t.type === "checkbox") return;
     // A search still waiting to redraw would wipe what's typed next (e.g. a dish's ingredients): settle it now.
     if (F.pastTimer) { clearTimeout(F.pastTimer); F.pastTimer = null; const ps = root.querySelector("[data-pastsearch]"), ds = root.querySelector("[data-dishsearch]"); if (ps) F.pastQ = ps.value; if (ds) F.pickQ = ds.value; }
-    if (t.dataset.tab) { F.tab = t.dataset.tab; F.notesEdit = F.logEdit = null; F.kidFocus = null; draw(); window.scrollTo(0, 0); return; }
+    if (t.dataset.tab) { F.tab = t.dataset.tab; F.notesEdit = F.logEdit = null; F.kidFocus = null; F.growFocus = null; draw(); window.scrollTo(0, 0); return; }
     if (t.dataset.val !== undefined && t.closest(".fm-seg")) { t.closest(".fm-seg").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t))); return; }
     const act = t.dataset.act, box = form(t), today = todayISO();
     const kid = t.closest(".fam-kid")?.dataset.kid;
@@ -1040,24 +1174,46 @@ function wire(root, D, C) {
       if (!title || !idea) return flash("Add a short title and the idea.", true);
       const fields = { title, idea, why: v("why"), questions: v("questions").split("\n").map((x) => x.trim()).filter(Boolean),
         source: { kind: v("kind") || "thought", ...(v("sourcename") ? { name: v("sourcename") } : {}), ...(v("author") ? { author: v("author") } : {}), ...(F.pick?.src && t.dataset.id === "new" ? { ref: F.pick.src.id } : {}) } };
-      const id = t.dataset.id, fromLearning = !!F.pick?.fromLearning;
+      const vals = [...b.querySelectorAll("[data-act=sharevalue][aria-pressed=true]")].map((x) => x.dataset.v); if (b.querySelector("[data-act=sharevalue]")) fields.values = vals;
+      const id = t.dataset.id, fromLearning = !!F.pick?.fromLearning, newIdea = id === "new", nid = newId(), ask = newIdea && !fields.questions.length;
       F.growthEdit = null; F.pick = null;
-      if (fromLearning) { await ctx.store.update(FILES.growth[0], FILES.growth[1], (gr) => ({ ...gr, items: [...(gr.items || []), { id: newId(), date: today, from: F.me, ...fields, status: "open", reflections: [] }] }), "family: shared an idea"); return backToLearning("Shared with Archana. It's in Family → Growth."); }
-      return save("growth", (gr) => ({ ...gr, items: id === "new" ? [...(gr.items || []), { id: newId(), date: today, from: F.me, ...fields, status: "open", reflections: [] }] : (gr.items || []).map((x) => (x.id === id ? { ...x, ...fields } : x)) }), id === "new" ? "shared an idea" : "idea edited");
+      const item = { id: nid, date: today, from: F.me, ...fields, status: "open", reflections: [], ...(ask ? { questionsPending: true } : {}) };
+      // No questions? Claude suggests a few (the routine, Mode G); they show to the sharer first.
+      const askClaude = async () => { if (!ask) return; try { await fireRoutine(`family growth ${nid}`); } catch (e) { flash(e instanceof RoutineError ? `Shared. Claude couldn't suggest questions: ${e.message}` : "Shared. Claude couldn't suggest questions right now.", true); } };
+      if (fromLearning) { await ctx.store.update(FILES.growth[0], FILES.growth[1], (gr) => ({ ...gr, items: [...(gr.items || []), item] }), "family: shared an idea"); await askClaude(); return backToLearning(`Shared with ${C.name(F.me === "lokesh" ? "archana" : "lokesh")}. It's in Family → Growth.`); }
+      await save("growth", (gr) => ({ ...gr, items: newIdea ? [...(gr.items || []), item] : (gr.items || []).map((x) => { if (x.id !== id) return x; const n = { ...x, ...fields }; if (x.questionsBy === "claude") { delete n.questionsBy; delete n.questionsOk; } return n; }) }), newIdea ? "shared an idea" : "idea edited");
+      if (ask) { flash("Shared. Claude is suggesting a few questions; they'll show here for you to keep or change."); await askClaude(); }
+      return;
     }
     if (act === "delgrowth") return save("growth", (gr) => ({ ...gr, items: (gr.items || []).filter((x) => x.id !== t.dataset.id) }), "idea removed");
-    if (act === "editreflect") { F.reflectEdit = t.dataset.id; return draw(); }
-    if (act === "savereflect") {
-      const text = t.closest(".fm-idea").querySelector("[data-g=reflection]")?.value?.trim(); if (!text) return;
-      F.reflectEdit = null;
-      return save("growth", (gr) => ({ ...gr, items: gr.items.map((x) => (x.id !== t.dataset.id ? x : { ...x, reflections: [...(x.reflections || []).filter((r) => r.by !== F.me), { id: newId(), by: F.me, date: today, text }] })) }), "reflection");
-    }
-    if (act === "startdiscussed") { F.discussing = t.dataset.id; return draw(); }
-    if (act === "discussed") {
-      const takeaway = t.closest(".fm-idea").querySelector("[data-g=takeaway]")?.value?.trim() || "";
-      F.discussing = null;
-      return save("growth", (gr) => ({ ...gr, items: gr.items.map((x) => (x.id === t.dataset.id ? { ...x, status: "discussed", discussedAt: today, ...(takeaway ? { takeaway } : {}) } : x)) }), "talked about an idea");
-    }
+    if (act === "growfocus") { F.growFocus = t.dataset.f; F.growId = t.dataset.id || null; F.talkDraft = F.goalDraft = null; F.feel = null; window.scrollTo(0, 0); return draw(); }
+    if (act === "growback") { F.growFocus = null; F.talkDraft = F.goalDraft = null; F.feel = null; return draw(); }
+    if (act === "growyear") { F.growYear = t.dataset.y; return draw(); }
+    const scr = root.ownerDocument.querySelector(".fm-focusscreen"), sv = (n) => scr?.querySelector(`[name=${n}]`)?.value?.trim() || "";
+    const gdone = (msg) => { F.growFocus = null; F.talkDraft = F.goalDraft = null; F.feel = null; if (msg) flash(msg); };
+    const setItem = (id, fn, msg) => save("growth", (gr) => ({ ...gr, items: (gr.items || []).map((x) => (x.id === id ? fn(x) : x)) }), msg);
+    const setGoal = (id, fn, msg) => save("growth", (gr) => ({ ...gr, goals: (gr.goals || []).map((x) => (x.id === id ? fn(x) : x)) }), msg);
+    if (act === "savereflect") { const text = sv("reflection"); if (!text) return; gdone("Reflection saved.");
+      return setItem(t.dataset.id, (x) => ({ ...x, reflections: [...(x.reflections || []).filter((r) => r.by !== F.me), { id: newId(), by: F.me, date: today, text }] }), "reflection"); }
+    if (act === "talkdays") { readTalk(root); F.talkDraft.days = t.dataset.k; return draw(); }
+    if (act === "talkvalue") { readTalk(root); const d = F.talkDraft, v = t.dataset.v; d.values = d.values.includes(v) ? d.values.filter((x) => x !== v) : [...d.values, v]; return draw(); }
+    if (act === "savetalk") { readTalk(root); const d = F.talkDraft, what = d.what.trim(); gdone(what ? `Saved. You'll check in on it at ${TALK} in ${CHECK_IN.find(([k]) => k === d.days)[1]}.` : "Saved.");
+      return setItem(t.dataset.id, (x) => { const n = { ...x, status: "discussed", discussedAt: today, takeaway: d.takeaway.trim(), values: d.values };
+        if (!n.takeaway) delete n.takeaway; if (what) n.experiment = { what, from: today, until: addDays(today, +d.days) }; else delete n.experiment; return n; }, "talked about an idea"); }
+    if (act === "exresult") { const r = t.dataset.r; flash(r === "keep" ? "Kept. It's part of how you live now." : r === "change" ? "Noted. Share a new version as an idea when you're ready." : "Dropped. Trying was the point.");
+      return setItem(t.dataset.id, (x) => ({ ...x, experiment: { ...x.experiment, result: r, resultAt: today } }), "experiment check-in"); }
+    if (act === "qok") return setItem(t.dataset.id, (x) => ({ ...x, questionsOk: true }), "kept Claude's questions");
+    if (act === "sharevalue") { t.setAttribute("aria-pressed", String(t.getAttribute("aria-pressed") !== "true")); return; }
+    if (act === "goalvalue") { F.goalDraft = { ...F.goalDraft, text: sv("goaltext"), value: F.goalDraft?.value === t.dataset.v ? "" : t.dataset.v }; return draw(); }
+    if (act === "savegoal") { const text = sv("goaltext"); if (!text) return flash("What's the one thing?", true); const value = F.goalDraft?.value || ""; gdone(`Saved. ${C.name(F.me === "lokesh" ? "archana" : "lokesh")} can see it now.`);
+      return save("growth", (gr) => ({ ...gr, goals: [...(gr.goals || []), { id: newId(), person: F.me, text, ...(value ? { value } : {}), started: today, status: "active", sightings: [], checkins: [] }] }), "a goal I'm working on"); }
+    if (act === "goalfeel") { const note = sv("ciNote"); F.feel = t.dataset.k; draw(); const n = root.ownerDocument.querySelector("[name=ciNote]"); if (n) n.value = note; return; }
+    if (act === "savecheckin") { const m = today.slice(0, 7), feel = F.feel, note = sv("ciNote"); if (!feel) return; gdone("Checked in.");
+      return setGoal(t.dataset.id, (x) => ({ ...x, checkins: [...(x.checkins || []).filter((c) => c.month !== m), { month: m, date: today, feel, ...(note ? { note } : {}) }] }), "goal check-in"); }
+    if (act === "savesaw") { const text = sv("sawText"); if (!text) return; gdone("Saved. They'll see you noticed.");
+      return setGoal(t.dataset.id, (x) => ({ ...x, sightings: [...(x.sightings || []), { id: newId(), by: F.me, date: today, text }] }), "saw it"); }
+    if (act === "goalstatus2") { const st = t.dataset.s; flash(st === "done" ? "Well done. It moves to your year." : "Set aside.");
+      return setGoal(t.dataset.id, (x) => ({ ...x, status: st, endedAt: today }), st === "done" ? "goal reached" : "goal set aside"); }
     // ── home
     if (act === "actidea") { const i = root.querySelector("#actadd [name=awhat]"); i.value = t.dataset.v; i.focus(); return; }
     if (act === "actday") { t.closest("[role=group]").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t))); root.querySelector("[data-pickdate]").hidden = t.dataset.k !== "pick"; F.actDay = t.dataset.k; return; }
