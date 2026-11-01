@@ -33,7 +33,11 @@ export function paydays(c, from, to) {
 // off the paystubs, `stubs` and `perPaycheck`) and credit-line paydown (paid minus new draws). Shown only once a sync has run.
 export function payFirstData(m, pf, today) {
   if (!m?.payYourself) return null;
-  const year = today.slice(0, 4), monthStart = today.slice(0, 8) + "01";
+  // The paycheck figures follow the month the Monarch numbers are for (so both sides match), and
+  // count the whole month: they're fixed amounts off the paystubs, not "so far".
+  const ym = m.payYourself.month || m.month || today.slice(0, 7), year = ym.slice(0, 4), monthStart = `${ym}-01`;
+  const monthEnd = `${ym}-${String(new Date(+year, +ym.slice(5, 7), 0).getDate()).padStart(2, "0")}`;
+  const md = (d) => new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const contrib = (pf?.contributions || []).map((c) => {
     // Paystub figures for this year: [{date, amount (that paycheck), ytd}]. Between stubs the year-
     // to-date is the last stub's plus perPaycheck for each payday since; before the first stub it
@@ -48,8 +52,13 @@ export function payFirstData(m, pf, today) {
         : per * paydays(c, `${year}-01-01`, d).length;
       return Math.max(0, c.annualCap ? Math.min(v, c.annualCap) : v);
     };
-    const ytd = upTo(today), before = monthStart > `${year}-01-01` ? upTo(addDays(monthStart, -1)) : 0;
-    return { label: c.label, kind: c.kind || "retirement", note: c.note, month: r0(Math.max(0, ytd - before)), ytd: r0(ytd) };
+    const ytd = upTo(monthEnd), before = monthStart > `${year}-01-01` ? upTo(addDays(monthStart, -1)) : 0;
+    // Where the figure comes from: the paystubs for that month, or the last paystub's amount per paycheck.
+    const inMonth = stubs.filter((x) => x.date >= monthStart && x.date <= monthEnd), lastStub = [...stubs].reverse().find((x) => x.date <= monthEnd);
+    const src = inMonth.length ? `${inMonth.length > 1 ? "paystubs" : "paystub"} ${inMonth.map((x) => md(x.date)).join(" & ")}`
+      : lastStub ? `${paydays(c, monthStart, monthEnd).length} paychecks at the ${md(lastStub.date)} paystub's amount` : "per paycheck";
+    const srcYear = lastStub ? `year to date on the ${md(lastStub.date)} paystub${paydays(c, addDays(lastStub.date, 1), monthEnd).length ? `, plus ${paydays(c, addDays(lastStub.date, 1), monthEnd).length} paychecks since` : ""}` : "per paycheck";
+    return { label: c.label, kind: c.kind || "retirement", paystub: true, note: [c.note, src].filter(Boolean).join(" · "), noteYear: [c.note, srcYear].filter(Boolean).join(" · "), month: r0(Math.max(0, ytd - before)), ytd: r0(ytd) };
   });
   const paydown = (m.creditLines || []).map((cl) => {
     const net = (mo) => (mo.paid || 0) - (mo.drawn || 0);
