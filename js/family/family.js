@@ -27,7 +27,10 @@ const KINDS = { book: "Book", podcast: "Podcast", article: "Article", video: "Vi
 const AREAS = { money: "Money", us: "Us", growth: "Growth", health: "Nutrition", nutrition: "Nutrition", kids: "Kids", home: "Home" };
 const DIRS = { better: ["Better", "up"], worse: ["Slipping", "down"], steady: ["Steady", "flat"] };
 const LOG_TAGS = { progress: "Made a change", notyet: "Not yet" };
-const TRAITS = ["Kindness", "Honesty", "Responsibility", "Respect", "Patience", "Effort", "Gratitude", "Self-control", "Listening", "Sharing", "Confidence", "Resilience"];
+// Character Lab's three kinds of strengths, in words a family uses.
+const STRENGTHS = { Heart: ["Kindness", "Gratitude", "Honesty", "Fairness", "Respect", "Sharing"], Mind: ["Curiosity", "Listening", "Creativity", "Open-mindedness"],
+  Will: ["Effort", "Self-control", "Patience", "Responsibility", "Resilience", "Confidence"] };
+const GLOW = { encourage: "Glow", correct: "Grow" };
 
 let ctx = null; // { store, S, renderApp }
 
@@ -68,7 +71,7 @@ function draw() {
   const D = data(), C = computeFamily(D, todayISO());
   const past = (D, C) => pastView(D, C, F);
   if (F.tab === "health") F.tab = "nutrition"; // the old Health tab
-  const body = { hq, money, us, growth, nutrition, kids, home, past }[F.tab] || hq;
+  const body = F.kidFocus ? kidFocus : { hq, money, us, growth, nutrition, kids, home, past }[F.tab] || hq;
   const main = $("#main");
   main.innerHTML = `<div class="fam">
     <div class="fm-top"><div class="fm-hello"><p class="fm-eyebrow">${esc(C.name("lokesh"))} &amp; ${esc(C.name("archana"))} · family</p><h1>Week of ${fmtD(C.week, { month: "long", day: "numeric" })}</h1><p class="fm-sub">Signed in as ${esc(C.name(F.me))}</p></div></div>
@@ -121,7 +124,7 @@ function hq(D, C) {
     ["growth", "Growth", (() => { const open = (D.growth?.items || []).filter((g) => g.status === "open"), mine = open.filter((g) => !(g.reflections || []).some((r) => r.by === ctx.S.fam.me)); return open.length ? `${open.length} to talk about${mine.length ? ` · ${mine.length} waiting for your thoughts` : ""}` : "Nothing waiting to talk about"; })(), `${(D.growth?.items || []).filter((g) => g.status === "discussed").length} talked about so far`],
     ["home", "Home", `${C.home.todos.length} to-dos open · ${C.home.chores.filter((c) => c.due).length} chores due`, `${C.home.done7} done this week`],
   ];
-  return `<div class="fm-bento">${turnNudge(D, C)}${read}
+  return `<div class="fm-bento">${turnNudge(D, C)}${kidsNudge(D, C)}${read}
     <div class="fm-tile s2"><h3>Coming up · next 2 weeks</h3>${up.length ? `<ul class="fam-list">${up.map((u) => `<li class="${u.overdue ? "late" : ""}"><span class="d">${fmtD(u.date)}</span><span><span class="fm-type">${u.icon}</span>${esc(u.text)}</span></li>`).join("")}</ul>` : empty("Nothing in the next two weeks.")}</div>
     <div class="fm-tile s2"><h3>How each area is going</h3><div class="fm-rows">${rows.map(([t, title, big, sub]) => `<button class="fm-row fam-row" data-tab="${t}"><span class="nm">${title}</span><b>${esc(big)}</b><span class="sub">${esc(sub)}</span><span class="go">→</span></button>`).join("")}</div></div>
   </div>`;
@@ -249,6 +252,8 @@ function turnItems(D, C, R, me, other) {
     !R.compass?.values?.length && { f: "values", t: "Pick your values", sub: mine.length ? `${mine.length} picked · tap to change` : "About 2 minutes", done: mine.length > 0 },
     { f: "question", t: "Answer this week's question", sub: q.answers?.[me] ? "Done · unlocks when you've both answered" : q.text, done: !!q.answers?.[me] },
     { f: "thanks", t: "Say thank you", sub: thanked ? "Done this week · add another" : `Something ${C.name(other)} or the kids did this week`, done: thanked },
+    C.kids.some((k) => !k.unnamed) && (() => { const ks = C.kids.filter((k) => !k.unnamed), mine = ks.filter((k) => kidWeek(D, C, k).glows.some((o) => o.by === me));
+      return { f: "notice", kid: true, t: "Notice the kids", sub: mine.length === ks.length ? "A glow for each · add more" : `A glow for ${ks.filter((k) => !mine.includes(k)).map((k) => k.name).join(" and ")}: something they did well`, done: mine.length === ks.length }; })(),
     { f: "meeting", t: `Add to ${TALK}`, sub: added ? "Done · add more" : "A plan for good times, or something on your mind", done: added },
     rs.length && { f: "rituals", t: "Tick off a ritual", sub: `${kept.length} of ${rs.length} this week`, done: false },
   ].filter(Boolean);
@@ -264,7 +269,7 @@ function turnNudge(D, C) {
 function yourTurnTile(D, C, R, me, other) {
   const M = meetDates(D, C.today), items = turnItems(D, C, R, me, other), left = items.filter((x) => !x.done).length;
   return `<div class="fm-tile s4 fm-turn"><div class="fm-rowsplit"><h3 class="fm-name">Your turn, ${esc(C.name(me))}</h3><span class="sub">${left ? `Before ${TALK}, ${M.isToday ? "today" : M.day}` : "All done for this week"}</span></div>
-    <ul>${items.map((x) => `<li><button type="button" class="fm-turnrow${x.done ? " done" : ""}" data-act="usfocus" data-f="${x.f}"><span class="ck" aria-hidden="true"></span><span class="tx"><b>${esc(x.t)}</b><span>${esc(x.sub)}</span></span><span class="go" aria-hidden="true">›</span></button></li>`).join("")}</ul></div>`;
+    <ul>${items.map((x) => `<li><button type="button" class="fm-turnrow${x.done ? " done" : ""}" data-act="${x.kid ? "kidfocus" : "usfocus"}" data-f="${x.f}"${x.kid ? ' data-type="encourage"' : ""}><span class="ck" aria-hidden="true"></span><span class="tx"><b>${esc(x.t)}</b><span>${esc(x.sub)}</span></span><span class="go" aria-hidden="true">›</span></button></li>`).join("")}</ul></div>`;
 }
 
 function compassTile(R, C, me, other) {
@@ -297,9 +302,12 @@ function growingTile(D, C, R) {
     <ol class="fm-agenda">
       ${step(1, "Appreciation", "say them out loud", appr.length ? `<ul class="fam-list quotes">${appr.map((a) => `<li><span><b>${esc(C.name(a.from))} → ${esc(C.name(a.to))}:</b> ${esc(a.text)}</span></li>`).join("")}</ul>` : `<p class="sub">None written since last time. Bring one each.</p>`)}
       ${step(2, "Home", `${todos.length} open`, todos.length ? `<ul class="fam-list">${todos.slice(0, 4).map((t) => `<li><span>${esc(t.text)}</span><span class="sub">${esc(C.name(t.who))}${t.due ? ` · ${fmtD(t.due)}` : ""}</span></li>`).join("")}</ul><p class="sub">Who owns what this week?</p>` : `<p class="sub">Nothing open on the Home tab.</p>`)}
-      ${step(3, "Good times", "plan them before the week fills up", `${plans.length ? `<ul class="fam-list">${plans.map((p) => `<li><span><span class="fm-type">${who(p)}</span>${esc(p.what)}</span><span class="sub">${esc(p.when || "")}</span><button class="fm-link" data-act="delgrowing" data-list="plans" data-id="${p.id}">Remove</button></li>`).join("")}</ul>` : ""}
+      ${C.kids.some((k) => !k.unnamed) ? step(3, "Kids", "wins first, then one thing each", `<ul class="fam-list">${C.kids.filter((k) => !k.unnamed).map((k) => { const w = kidWeek(D, C, k), pl = planOf(D, k.id, M.next, true);
+        return `<li><span><b>${esc(k.name)}</b> · ${w.glows.length} glow${w.glows.length === 1 ? "" : "s"}, ${w.grows.length} grow${w.grows.length === 1 ? "" : "s"}</span><span class="sub">${pl ? `working on ${esc(pl.workOn.trait || "a plan")}` : ""}</span></li>`; }).join("")}</ul>
+        <div class="btnrow"><button class="fm-btn sm pri" data-act="kidfocus" data-f="talk">Talk about the kids</button></div>`) : ""}
+      ${step(C.kids.some((k) => !k.unnamed) ? 4 : 3, "Good times", "plan them before the week fills up", `${plans.length ? `<ul class="fam-list">${plans.map((p) => `<li><span><span class="fm-type">${who(p)}</span>${esc(p.what)}</span><span class="sub">${esc(p.when || "")}</span><button class="fm-link" data-act="delgrowing" data-list="plans" data-id="${p.id}">Remove</button></li>`).join("")}</ul>` : ""}
         <div class="fam-form"><select name="kind"><option value="us">Date</option><option value="family">Family</option><option value="me">Time for me</option></select><input name="what" placeholder="What? e.g. Thai Ginger"><input name="when" placeholder="When?" class="short"><button class="fm-btn sm" data-act="addplan">Add</button></div>`)}
-      ${step(4, "One thing", "last, on purpose", `${issues.length ? issues.map((x) => `<p class="fm-issue">“${esc(x.text)}”<span class="sub"> ${esc(C.name(x.by))}, ${fmtD(x.date)}</span> <button class="fm-link" data-act="delgrowing" data-list="issues" data-id="${x.id}">Remove</button></p>`).join("") + (issues.length > 1 ? `<p class="sub">Pick one for today; the other can wait a week.</p>` : "") : ""}
+      ${step(C.kids.some((k) => !k.unnamed) ? 5 : 4, "One thing", "last, on purpose", `${issues.length ? issues.map((x) => `<p class="fm-issue">“${esc(x.text)}”<span class="sub"> ${esc(C.name(x.by))}, ${fmtD(x.date)}</span> <button class="fm-link" data-act="delgrowing" data-list="issues" data-id="${x.id}">Remove</button></p>`).join("") + (issues.length > 1 ? `<p class="sub">Pick one for today; the other can wait a week.</p>` : "") : ""}
         <div class="fam-form"><input name="issue" placeholder="Something on your mind? It waits here for ${TALK}."><button class="fm-btn sm" data-act="raiseissue">Add</button></div>
         <p class="fm-hint">One topic. One of you talks while the other listens and says back what they heard, then swap. Understand each other first; solve second.</p>`)}
     </ol>
@@ -507,28 +515,142 @@ function health(D, C) {
   return `<div class="fm-bento">${C.health.map(card).join("")}</div>`;
 }
 
-/* ── Kids ────────────────────────────────────────────────── */
+/* ── Kids: who we hope they become, what we noticed this week, and the talk about it ── */
+
+// What works at each age (CDC, Gottman, Ross Greene, the research on teens and autonomy).
+const KID_TIPS = {
+  young: [
+    ["Name it, praise it", "Right away, and say exactly what you saw: “You waited for your turn. That was patient.” It teaches more than “good job.”"],
+    ["Big feelings first", "Get down to eye level. Name the feeling (“You're frustrated the tower fell”), then the limit (“Throwing isn't okay”), then what to do instead (“You can ask for help”)."],
+    ["Teach, then practise", "When everyone's calm, show what to do instead and practise it as a game. One behavior at a time; a sticker chart helps at this age."],
+  ],
+  teen: [
+    ["Ask first", "“I've noticed ___. What's up?” Listen more than you talk, and say back what you heard before you answer."],
+    ["Your concern, and why", "One or two sentences: health, safety, fairness or learning. Give the reason; “because I said so” teaches nothing."],
+    ["Solve it together", "“How can we fix this so it works for both of us?” Let them suggest first. Agree, try it for a week, check back."],
+    ["Private, specific, no comparing", "Correct in private, never in front of friends or next to a sibling. Praise effort and character, not only results."],
+  ],
+};
+const stageOf = (k) => (k.stage === "teen" ? "teen" : "young");
+const STAGE_LINE = { young: "Young child: praise right away, teach and practise", teen: "Teen: explain why, solve it together" };
+const RESULTS = { helped: "It helped", keep: "Keep going", change: "Try something else" };
+
+// The week a kid's notes count toward: since the last Growing Together, up to today.
+function kidWeek(D, C, k) {
+  const M = meetDates(D, C.today), obs = (k.observations || []).filter((o) => o.date > M.last && o.date <= C.today);
+  return { M, obs, glows: obs.filter((o) => o.type === "encourage"), grows: obs.filter((o) => o.type === "correct") };
+}
+const talksOf = (D, id) => D.kids?.[id]?.talks || {};
+// The plan from the latest talk on or before `upTo` (or strictly before it).
+function planOf(D, id, upTo, strict) {
+  const T = talksOf(D, id), w = Object.keys(T).filter((x) => (strict ? x < upTo : x <= upTo) && T[x].workOn?.plan).sort().at(-1);
+  return w ? { week: w, ...T[w] } : null;
+}
+const hopesOf = (D, id) => D.kids?.[id]?.hopes || [];
+// Values to choose from: the family compass first, then heart, mind and will.
+function valueGroups(D) {
+  const comp = (D.rel?.compass?.values || []).map((v) => v.name);
+  return [...(comp.length ? [["From our compass", comp]] : []), ...Object.entries(STRENGTHS).map(([g, list]) => [`Strengths of ${g.toLowerCase()}`, list.filter((x) => !comp.includes(x))])];
+}
+
+function kidsNudge(D, C) {
+  return C.kids.filter((k) => !k.unnamed).map((k) => { const w = kidWeek(D, C, k);
+    if (w.grows.length <= w.glows.length) return "";
+    return `<button class="fm-nudge warm" data-act="kidfocus" data-f="notice" data-kid="${k.id}" data-type="encourage"><b>${esc(k.name)}: ${w.grows.length} grow${w.grows.length === 1 ? "" : "s"}, ${w.glows.length} glow${w.glows.length === 1 ? "" : "s"} since ${fmtD(w.M.last)}.</b> Look for something ${esc(k.name)} does right, and say it out loud. <span aria-hidden="true">›</span></button>`; }).join("");
+}
+
+const obsLine = (o, C, mine) => `<li class="${o.type === "encourage" ? "glow" : "grow"}"><div class="meta"><span class="tg">${GLOW[o.type]}${o.trait ? ` · ${esc(o.trait)}` : ""}</span><span>${fmtD(o.date, { weekday: "short" })} · ${esc(C.name(o.by))}</span>${mine ? `<button class="fm-link" data-act="delobs" data-id="${o.id}">Remove</button>` : ""}</div>${o.note ? `<p>${esc(o.note)}</p>` : ""}</li>`;
+
+function kidTile(D, C, k) {
+  const F = ctx.S.fam, w = kidWeek(D, C, k), st = stageOf(k), hopes = hopesOf(D, k.id), plan = planOf(D, k.id, C.today);
+  const counts = (n, label, cls) => `<div class="fm-gg ${cls}"><b>${n}</b><span>${label}${n === 1 ? "" : "s"}</span></div>`;
+  return `<div class="fm-tile s2 fam-kid fm-kidcard" data-kid="${k.id}">
+    <div class="fm-rowsplit"><h3 class="fm-name">${esc(k.name)}</h3><span class="sub">${STAGE_LINE[st]}</span></div>
+    <div class="fm-hopes"><div class="fm-rowsplit"><span class="fm-kicker">Who we hope ${esc(k.name)} becomes</span><button class="fm-link" data-act="kidfocus" data-f="hopes" data-kid="${k.id}">${hopes.length ? "Change" : "Choose"}</button></div>
+      ${hopes.length ? `<div class="fm-vchips">${hopes.map((h) => `<span class="fm-vchip on">${esc(h)}</span>`).join("")}</div>` : `<p class="sub">Choose up to 3 values to focus on this season.</p>`}</div>
+    <div class="fm-ggrow">${counts(w.glows.length, "glow", "glow")}${counts(w.grows.length, "grow", "grow")}<span class="sub">since the talk on ${fmtD(w.M.last)}</span></div>
+    <div class="fm-choice"><button type="button" data-act="kidfocus" data-f="notice" data-kid="${k.id}" data-type="encourage">+ Glow · did well</button><button type="button" data-act="kidfocus" data-f="notice" data-kid="${k.id}" data-type="correct">+ Grow · to work on</button></div>
+    ${plan ? `<div class="fm-working"><span class="fm-kicker">Working on${plan.workOn.trait ? ` · ${esc(plan.workOn.trait)}` : ""}</span><p>${esc(plan.workOn.plan)}</p><span class="sub">From ${fmtD(plan.week)}'s talk</span></div>` : ""}
+    ${w.obs.length ? `<ul class="fm-obs">${w.obs.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).map((o) => obsLine(o, C, o.by === F.me)).join("")}</ul>` : `<p class="sub">Nothing noticed yet this week.</p>`}
+    <details class="fm-more fm-tips"><summary>Words that help at this age</summary><dl>${KID_TIPS[st].map(([h, t]) => `<dt>${h}</dt><dd>${t}</dd>`).join("")}</dl></details>
+  </div>`;
+}
+
+function kidLogistics(C, k) {
+  const n = C.navya;
+  const navyaLine = k.dashboard === "navya" ? `<div class="fam-navya">${n ? `<span>GPA <b>${n.gpa?.toFixed?.(2) ?? "–"}</b></span><span>Social <b>${n.social != null ? `${Math.floor(n.social / 60)}h ${String(n.social % 60).padStart(2, "0")}m` : "–"}/day</b></span><span>Calls <b>${n.calls ?? "–"}%</b></span>${n.focus ? `<p><b>Navya's focus this week:</b> ${esc(n.focus)}</p>` : ""}` : `<span class="sub">Navya's dashboard isn't reachable from this device.</span>`}
+      <button class="fm-btn sm" data-act="opennavya">Open Navya's dashboard →</button></div>` : "";
+  return `<div class="fm-tile s2 fam-kid" data-kid="${k.id}"><div class="fm-rowsplit"><h3>${esc(k.name)} · school, appointments, goals</h3>${k.unnamed ? `<span class="fam-form"><input name="kidname" placeholder="Their name" class="short"><button class="fm-btn sm pri" data-act="namekid">Save name</button></span>` : ""}</div>
+    ${navyaLine}
+    <h4>Appointments &amp; logistics</h4>${k.appointments.length ? `<ul class="fam-list">${k.appointments.map((a) => `<li><span class="d">${fmtD(a.date)}${a.time ? ` ${esc(a.time)}` : ""}</span><span>${esc(a.what)}</span><button class="fm-link" data-act="kiddone" data-id="${a.id}">Done</button></li>`).join("")}</ul>` : empty("Nothing coming up.")}
+    <div class="fam-form"><input type="date" name="date" class="short"><input name="time" placeholder="Time" class="tiny"><input name="what" placeholder="e.g. Dentist, school form due"><button class="fm-btn sm pri" data-act="addkidappt">Add</button></div>
+    <h4>Developmental goals</h4>${k.goals.length ? `<ul class="fam-list">${k.goals.map((g) => `<li><span>${g.area ? `<b>${esc(g.area)}:</b> ` : ""}${esc(g.text)}</span><select data-act="goalstatus" data-id="${g.id}">${["working", "better", "done"].map((s) => `<option value="${s}"${g.status === s ? " selected" : ""}>${s === "working" ? "Working on it" : s === "better" ? "Getting better" : "Done"}</option>`).join("")}</select></li>`).join("")}</ul>` : empty("What you're helping them grow in.")}
+    <div class="fam-form"><input name="area" placeholder="Area, e.g. Independence" class="short"><input name="text" placeholder="The goal"><button class="fm-btn sm pri" data-act="addkidgoal">Add</button></div></div>`;
+}
 
 function kids(D, C) {
-  const n = C.navya;
-  return `<div class="fm-bento">${C.kids.map((k) => {
-    const navyaLine = k.dashboard === "navya" ? `<div class="fam-navya">${n ? `<span>GPA <b>${n.gpa?.toFixed?.(2) ?? "–"}</b></span><span>Social <b>${n.social != null ? `${Math.floor(n.social / 60)}h ${String(n.social % 60).padStart(2, "0")}m` : "–"}/day</b></span><span>Calls <b>${n.calls ?? "–"}%</b></span>${n.focus ? `<p><b>Her focus this week:</b> ${esc(n.focus)}</p>` : ""}` : `<span class="sub">Her dashboard isn't reachable from this device.</span>`}
-      <button class="fm-btn sm" data-act="opennavya">Open Navya's dashboard →</button></div>` : "";
-    const obs = k.observations.slice(0, 8);
-    return `<div class="fm-tile s4 fam-kid" data-kid="${k.id}"><div class="fm-rowsplit"><h3 class="fm-name">${esc(k.name)}</h3>${k.unnamed ? `<span class="fam-form"><input name="kidname" placeholder="Their name" class="short"><button class="fm-btn sm pri" data-act="namekid">Save name</button></span>` : ""}</div>
-      ${navyaLine}
-      <div class="fam-cols">
-        <div><h4>Appointments &amp; logistics</h4>${k.appointments.length ? `<ul class="fam-list">${k.appointments.map((a) => `<li><span class="d">${fmtD(a.date)}${a.time ? ` ${esc(a.time)}` : ""}</span><span>${esc(a.what)}</span><button class="fm-link" data-act="kiddone" data-id="${a.id}">Done</button></li>`).join("")}</ul>` : empty("Nothing coming up.")}
-          <div class="fam-form"><input type="date" name="date" class="short"><input name="time" placeholder="Time" class="tiny"><input name="what" placeholder="e.g. Dentist, school form due"><button class="fm-btn sm pri" data-act="addkidappt">Add</button></div></div>
-        <div><h4>Developmental goals</h4>${k.goals.length ? `<ul class="fam-list">${k.goals.map((g) => `<li><span>${g.area ? `<b>${esc(g.area)}:</b> ` : ""}${esc(g.text)}</span><select data-act="goalstatus" data-id="${g.id}">${["working", "better", "done"].map((s) => `<option value="${s}"${g.status === s ? " selected" : ""}>${s === "working" ? "Working on it" : s === "better" ? "Getting better" : "Done"}</option>`).join("")}</select></li>`).join("")}</ul>` : empty("What you're helping them grow in.")}
-          <div class="fam-form"><input name="area" placeholder="Area, e.g. Independence" class="short"><input name="text" placeholder="The goal"><button class="fm-btn sm pri" data-act="addkidgoal">Add</button></div></div>
-      </div>
-      <h4>Character, values &amp; behavior</h4>
-      ${k.traits.length ? `<div class="fam-traits">${k.traits.map((t) => `<span class="fm-pill">${esc(t.trait)}${t.encourage ? ` <b class="good">+${t.encourage}</b>` : ""}${t.correct ? ` <b class="bad">−${t.correct}</b>` : ""}</span>`).join("")}</div><p class="sub">Last 30 days: ${k.encourage30} to encourage, ${k.correct30} to correct.</p>` : ""}
-      <div class="fam-form"><input name="trait" list="fam-traits" placeholder="Trait or value, e.g. Patience" class="short"><span class="fm-tags"><button type="button" data-act="obstype" data-type="encourage" aria-pressed="true">Encourage</button><button type="button" data-act="obstype" data-type="correct" aria-pressed="false">Correct</button></span><input name="note" placeholder="What you saw"><button class="fm-btn sm pri" data-act="addobs">Add</button></div>
-      ${obs.length ? `<ul class="fm-log">${obs.map((o) => `<li class="${o.type === "encourage" ? "tag-progress" : "tag-notyet"}"><div class="meta"><span>${fmtD(o.date)} · ${esc(C.name(o.by))}</span><span class="tg">${o.type === "encourage" ? "Encourage" : "Correct"}${o.trait ? ` · ${esc(o.trait)}` : ""}</span>${o.by === ctx.S.fam.me ? `<button class="fm-link" data-act="delobs" data-id="${o.id}">Remove</button>` : ""}</div><p>${esc(o.note)}</p></li>`).join("")}</ul>` : ""}
-    </div>`;
-  }).join("")}<datalist id="fam-traits">${TRAITS.map((t) => `<option value="${t}">`).join("")}</datalist></div>`;
+  const named = C.kids.filter((k) => !k.unnamed), M = meetDates(D, C.today);
+  return `<div class="fm-bento">${kidsNudge(D, C)}
+    <div class="fm-tile s4 fm-kidhead"><div class="fm-rowsplit"><div><span class="fm-kicker">Character, values &amp; behavior</span><p class="fm-mission">Kids grow toward what we notice.</p></div>
+      <button class="fm-btn pri" data-act="kidfocus" data-f="talk">Talk about the kids</button></div>
+      <p class="sub">Log a <b>glow</b> when you see a value lived, a <b>grow</b> when something needs work. On ${M.isToday ? "today's" : `${M.day}'s`} ${TALK} you look at them together: call out the wins, pick one thing each to work on. Just the two of you for now.</p></div>
+    ${named.map((k) => kidTile(D, C, k)).join("")}
+    ${C.kids.map((k) => kidLogistics(C, k)).join("")}
+  </div>`;
+}
+
+// One job per screen: note what you saw · choose their values · the weekly talk.
+function kidFocus(D, C) {
+  const F = ctx.S.fam, f = F.kidFocus, named = C.kids.filter((k) => !k.unnamed), M = meetDates(D, C.today);
+  const head = (t, sub) => `<button class="fm-back" data-act="kidback">‹ Back</button><h2 class="fm-ftitle">${t}</h2>${sub ? `<p class="fm-fsub">${sub}</p>` : ""}`;
+  const bar = (left, btn) => `<div class="fm-fbar"><span>${left}</span>${btn}</div>`;
+  const chips = (list, sel, act, extra = "") => `<div class="fm-vchips big">${list.map((v) => `<button type="button" class="fm-vchip" data-act="${act}" data-v="${esc(v)}" ${extra} aria-pressed="${sel.includes(v)}">${esc(v)}</button>`).join("")}</div>`;
+  let body = "";
+  if (f === "notice") {
+    const n = F.kn, k = named.find((x) => x.id === n.kid) || named[0], st = stageOf(k), hopes = hopesOf(D, k.id), glow = n.type === "encourage";
+    const tip = glow ? (st === "teen" ? `Tell ${esc(k.name)} too, specifically and maybe privately: “I saw how you…”` : `Tell ${esc(k.name)} right away, by name: “You shared without being asked. That was kind.”`)
+      : (st === "teen" ? `If it can wait, let it. Bring it to ${TALK} and plan the conversation: ask first, then your concern, then solve it together.` : "In the moment: name the feeling, then the limit, then what to do instead. Then note it here.");
+    body = head("I noticed…", `Takes 20 seconds. You'll both see it at ${TALK}.`)
+      + `<div class="fm-choice" role="group">${named.map((x) => `<button type="button" data-act="knset" data-k="kid" data-v="${x.id}" aria-pressed="${x.id === k.id}">${esc(x.name)}</button>`).join("")}</div>
+      <div class="fm-choice gg" role="group"><button type="button" class="g" data-act="knset" data-k="type" data-v="encourage" aria-pressed="${glow}">Glow · did well</button><button type="button" class="r" data-act="knset" data-k="type" data-v="correct" aria-pressed="${!glow}">Grow · to work on</button></div>
+      <span class="fm-kicker">Which value?</span>
+      ${hopes.length ? `<div><span class="sub">What you're focusing on with ${esc(k.name)}</span>${chips(hopes, [n.trait], "knset", 'data-k="trait"')}</div>` : ""}
+      <details class="fm-more"${hopes.length ? "" : " open"}><summary>${hopes.length ? "Something else" : "Choose one"}</summary>${valueGroups(D).map(([g, list]) => `<div class="fm-vgroup"><span class="sub">${g}</span>${chips(list.filter((x) => !hopes.includes(x)), [n.trait], "knset", 'data-k="trait"')}</div>`).join("")}</details>
+      <textarea name="note" rows="3" placeholder="${glow ? "What did you see? e.g. Helped clear the table without being asked." : "What happened? e.g. Grabbed the iPad and yelled when it was time to stop."}">${esc(n.note || "")}</textarea>
+      <p class="fm-hint">${tip}</p>`
+      + bar("", `<button class="fm-btn pri" data-act="savenotice">Save</button>`);
+  } else if (f === "hopes") {
+    const k = named.find((x) => x.id === F.kidId) || named[0], d = (F.hopeDraft = F.hopeDraft || hopesOf(D, k.id).slice());
+    body = head(`Who we hope ${esc(k.name)} becomes`, `Choose up to 3 values to focus on with ${esc(k.name)} this season. Do it together; change them when ${esc(k.name)} grows into them.`)
+      + valueGroups(D).map(([g, list]) => `<div class="fm-vgroup"><span class="fm-kicker">${g}</span>${chips(list, d, "hopepick")}</div>`).join("")
+      + `<p class="fm-hint">Heart, mind and will are Character Lab's three kinds of strengths: how we treat others, how we think, and how we get things done.</p>`
+      + bar(`<b>${d.length}</b> of 3 chosen`, `<button class="fm-btn pri" data-act="savehopes"${d.length ? "" : " disabled"}>Save</button>`);
+  } else if (f === "talk") {
+    const dr = (F.ktDraft = F.ktDraft || Object.fromEntries(named.map((k) => { const t = talksOf(D, k.id)[M.next] || {}; return [k.id, { callOut: t.callOut || "", trait: t.workOn?.trait || "", plan: t.workOn?.plan || "" }]; })));
+    body = head("Talk about the kids", `${M.isToday ? "Today" : `${M.day}, ${fmtD(M.next)}`} · about 10 minutes. Wins first, then one thing each to work on. Just the two of you for now.`)
+      + named.map((k) => {
+        const w = kidWeek(D, C, k), st = stageOf(k), prev = planOf(D, k.id, M.next, true), d = dr[k.id], hopes = hopesOf(D, k.id);
+        const opts = [...new Set([...hopes, ...valueGroups(D).flatMap(([, l]) => l)])];
+        return `<section class="fm-kidtalk" data-kid="${k.id}"><div class="fm-rowsplit"><h3 class="fm-name">${esc(k.name)}</h3><span class="sub">${w.glows.length} glow${w.glows.length === 1 ? "" : "s"} · ${w.grows.length} grow${w.grows.length === 1 ? "" : "s"}</span></div>
+          ${prev ? `<div class="fm-working"><span class="fm-kicker">Last time · ${esc(prev.workOn.trait || "working on")}</span><p>${esc(prev.workOn.plan)}</p><span class="sub">How did it go?</span>
+            <div class="fm-choice small" role="group">${Object.entries(RESULTS).map(([r, l]) => `<button type="button" data-act="ktresult" data-kid="${k.id}" data-w="${prev.week}" data-r="${r}" aria-pressed="${prev.result === r}">${l}</button>`).join("")}</div></div>` : ""}
+          <span class="fm-kicker">1 · Wins to call out</span>
+          ${w.glows.length ? `<ul class="fm-obs">${w.glows.map((o) => obsLine(o, C, false)).join("")}</ul>` : `<p class="sub">No glows logged this week. What did ${esc(k.name)} do well? Start there.</p>`}
+          <label class="fm-fld"><b>How we'll say it to ${esc(k.name)}</b><input data-kt="callOut" value="${esc(d.callOut)}" placeholder="${st === "teen" ? "e.g. On the drive to practice: “I noticed how you helped your teammate.”" : "e.g. At bedtime: “You were so patient waiting for your turn today.”"}"></label>
+          <span class="fm-kicker">2 · One thing to work on</span>
+          ${w.grows.length ? `<ul class="fm-obs">${w.grows.map((o) => obsLine(o, C, false)).join("")}</ul>` : `<p class="sub">Nothing to work on logged. It's fine to skip this one.</p>`}
+          <label class="fm-fld"><b>Which value</b><select data-kt="trait"><option value="">Choose…</option>${opts.map((v) => `<option${v === d.trait ? " selected" : ""}>${esc(v)}</option>`).join("")}</select></label>
+          <label class="fm-fld"><b>Our plan</b><textarea data-kt="plan" rows="3" placeholder="${st === "teen" ? `e.g. ${esc(C.name("lokesh"))} talks with ${esc(k.name)} on Tuesday: ask what's going on first, share our concern about sleep, then agree a plan together.` : `e.g. Practise “my turn, your turn” with a timer after dinner; a sticker each time ${esc(k.name)} waits.`}">${esc(d.plan)}</textarea></label>
+          <details class="fm-more fm-tips"><summary>${st === "teen" ? "How to have the talk" : "What works at this age"}</summary><dl>${KID_TIPS[st].map(([h, t]) => `<dt>${h}</dt><dd>${t}</dd>`).join("")}</dl></details>
+        </section>`; }).join("")
+      + bar("No shaming, no comparing.", `<button class="fm-btn pri" data-act="savekidtalk">Save</button>`);
+  }
+  return `<div class="fm-focusscreen">${body}</div>`;
+}
+// The talk screen's boxes, read back into the draft before it redraws.
+function readKidTalk(root) {
+  const F = ctx.S.fam; if (!F.ktDraft) return;
+  root.ownerDocument.querySelectorAll(".fm-kidtalk").forEach((sec) => { const d = F.ktDraft[sec.dataset.kid]; if (!d) return; sec.querySelectorAll("[data-kt]").forEach((el) => { d[el.dataset.kt] = el.value.trim(); }); });
 }
 
 /* ── Growth: ideas from Lokesh's reading, podcasts and thinking, to talk about together ── */
@@ -659,7 +781,7 @@ function wire(root, D, C) {
   root.addEventListener("input", (e) => {
     const t = e.target, sel = t.matches("[data-pastsearch]") ? "[data-pastsearch]" : t.matches("[data-dishsearch]") ? "[data-dishsearch]" : null; if (!sel) return;
     clearTimeout(F.pastTimer);
-    F.pastTimer = setTimeout(() => { if (sel === "[data-pastsearch]") F.pastQ = t.value; else F.pickQ = t.value; draw(); const n = document.querySelector(sel); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250);
+    F.pastTimer = setTimeout(() => { F.pastTimer = null; if (sel === "[data-pastsearch]") F.pastQ = t.value; else F.pickQ = t.value; draw(); const n = document.querySelector(sel); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250);
   });
   root.addEventListener("change", async (e) => {
     const t = e.target;
@@ -677,7 +799,9 @@ function wire(root, D, C) {
   root.addEventListener("click", async (e) => {
     const t = e.target.closest("[data-tab],[data-act],[data-val]");
     if (!t || t.disabled || t.tagName === "SELECT" || t.type === "checkbox") return;
-    if (t.dataset.tab) { F.tab = t.dataset.tab; F.notesEdit = F.logEdit = null; draw(); window.scrollTo(0, 0); return; }
+    // A search still waiting to redraw would wipe what's typed next (e.g. a dish's ingredients): settle it now.
+    if (F.pastTimer) { clearTimeout(F.pastTimer); F.pastTimer = null; const ps = root.querySelector("[data-pastsearch]"), ds = root.querySelector("[data-dishsearch]"); if (ps) F.pastQ = ps.value; if (ds) F.pickQ = ds.value; }
+    if (t.dataset.tab) { F.tab = t.dataset.tab; F.notesEdit = F.logEdit = null; F.kidFocus = null; draw(); window.scrollTo(0, 0); return; }
     if (t.dataset.val !== undefined && t.closest(".fm-seg")) { t.closest(".fm-seg").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t))); return; }
     const act = t.dataset.act, box = form(t), today = todayISO();
     const kid = t.closest(".fam-kid")?.dataset.kid;
@@ -828,11 +952,25 @@ function wire(root, D, C) {
     if (act === "addkidappt") { const b = t.closest(".fam-form"), what = val(b, "what"), date = val(b, "date"); if (!what || !date) return flash("Add a date and what it is.", true); return save("kids", (k) => { ensureKid(k).appointments.push({ id: newId(), date, ...(val(b, "time") ? { time: val(b, "time") } : {}), what, done: false }); return k; }, `${kid} appointment`); }
     if (act === "kiddone") return save("kids", (k) => { ensureKid(k).appointments = k[kid].appointments.map((a) => (a.id === t.dataset.id ? { ...a, done: true } : a)); return k; }, `${kid} appointment done`);
     if (act === "addkidgoal") { const b = t.closest(".fam-form"), text = val(b, "text"); if (!text) return; return save("kids", (k) => { ensureKid(k).goals.push({ id: newId(), area: val(b, "area"), text, status: "working" }); return k; }, `${kid} goal`); }
-    if (act === "addobs") {
-      const b = t.closest(".fam-form"), note = val(b, "note"), trait = val(b, "trait"); if (!note && !trait) return;
-      const type = b.querySelector("[data-act=obstype][aria-pressed=true]")?.dataset.type || "encourage";
-      return save("kids", (k) => { ensureKid(k).observations.push({ id: newId(), date: today, by: F.me, trait, type, note }); return k; }, `${kid} observation`);
-    }
+    if (act === "kidfocus") { const first = C.kids.find((k) => !k.unnamed); if (!first) return flash("Add the kids' names first.", true);
+      F.kidFocus = t.dataset.f; F.kidId = t.dataset.kid || first.id; F.kn = { kid: t.dataset.kid || first.id, type: t.dataset.type || "encourage", trait: null, note: "" }; F.hopeDraft = F.ktDraft = null; window.scrollTo(0, 0); return draw(); }
+    if (act === "kidback") { F.kidFocus = null; F.hopeDraft = F.ktDraft = null; return draw(); }
+    if (act === "knset") { const n = F.kn; n.note = root.ownerDocument.querySelector(".fm-focusscreen [name=note]")?.value || ""; const { k, v } = t.dataset;
+      if (k === "trait") n.trait = n.trait === v ? null : v; else { n[k] = v; if (k === "kid") n.trait = null; } return draw(); }
+    if (act === "savenotice") { const n = F.kn, note = root.ownerDocument.querySelector(".fm-focusscreen [name=note]")?.value?.trim() || "";
+      if (!note && !n.trait) return flash("Choose a value or write what you saw.", true);
+      const who = n.kid; F.kidFocus = null; flash(n.type === "encourage" ? `Glow saved for ${C.name(who)}.` : `Saved. You'll look at it together at ${TALK}.`);
+      return save("kids", (k) => { k[who] = k[who] || { appointments: [], goals: [], observations: [] }; k[who].observations = [...(k[who].observations || []), { id: newId(), date: today, by: F.me, trait: n.trait || "", type: n.type, note }]; return k; }, `${who} ${GLOW[n.type].toLowerCase()}`); }
+    if (act === "hopepick") { const v = t.dataset.v, d = F.hopeDraft || []; if (!d.includes(v) && d.length >= 3) { flash("Three is the most. Tap one to swap it out."); return; } F.hopeDraft = d.includes(v) ? d.filter((x) => x !== v) : [...d, v]; return draw(); }
+    if (act === "savehopes") { const who = F.kidId, h = F.hopeDraft || []; F.kidFocus = null; F.hopeDraft = null; flash("Saved.");
+      return save("kids", (k) => { k[who] = { appointments: [], goals: [], observations: [], ...(k[who] || {}), hopes: h }; return k; }, `${who} values to focus on`); }
+    if (act === "ktresult") { readKidTalk(root); const { kid: who, w, r } = t.dataset;
+      return save("kids", (k) => { const T = { ...(k[who].talks || {}) }; T[w] = { ...T[w], result: T[w].result === r ? undefined : r }; if (!T[w].result) delete T[w].result; k[who].talks = T; return k; }, `${who} follow-up`); }
+    if (act === "savekidtalk") { readKidTalk(root); const M = meetDates(D, today), dr = F.ktDraft || {}; F.kidFocus = null; F.ktDraft = null; flash(`Saved for ${TALK}.`);
+      return save("kids", (k) => { for (const [who, d] of Object.entries(dr)) { const kd = (k[who] = k[who] || { appointments: [], goals: [], observations: [] }), T = { ...(kd.talks || {}) };
+        const entry = { ...(T[M.next] || {}), callOut: d.callOut, ...(d.plan || d.trait ? { workOn: { trait: d.trait, plan: d.plan } } : {}) };
+        if (!entry.callOut) delete entry.callOut; if (!d.plan && !d.trait) delete entry.workOn;
+        if (Object.keys(entry).length) T[M.next] = entry; else delete T[M.next]; kd.talks = T; } return k; }, `kids talk ${M.next}`); }
     if (act === "delobs") return save("kids", (k) => { ensureKid(k).observations = k[kid].observations.filter((o) => o.id !== t.dataset.id); return k; }, `${kid} observation removed`);
     // ── growth
     if (act === "newgrowth") { F.growthEdit = "new"; F.pick = {}; return draw(); }

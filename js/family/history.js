@@ -29,7 +29,9 @@ export function snapshotOf(D, C) {
     health,
     nutrition: C.nutrition ? { planned: C.nutrition.review.planned, cooked: C.nutrition.review.cooked, out: C.nutrition.review.out } : null,
     home: { done: C.home.done7, open: C.home.todos.length },
-    kids: { appointments: C.kids.reduce((s, k) => s + k.appointments.length, 0) },
+    kids: { appointments: C.kids.reduce((s, k) => s + k.appointments.length, 0),
+      ...Object.fromEntries(C.kids.filter((k) => !k.unnamed).map((k) => { const o = (k.observations || []).filter((x) => x.date >= wk && x.date <= addDays(wk, 6));
+        return [k.id, { glows: o.filter((x) => x.type === "encourage").length, grows: o.filter((x) => x.type === "correct").length }]; })) },
   };
 }
 
@@ -46,6 +48,8 @@ function rows(s, C) {
     ["Rituals kept", s.us ? s.us.ritualsKept : null, (x) => (x == null ? "–" : `${x} of ${s.us.ritualsTotal}`), 1]]]);
   if (s.nutrition) r.push(["Nutrition", [["Dinners planned", s.nutrition.planned, n, 1], ["Cooked at home", s.nutrition.cooked, n, 1], ["Ate out", s.nutrition.out, n, -1]]]);
   else r.push(["Health", Object.entries(s.health || {}).flatMap(([id, h]) => [[`${C.name(id)}: sleep`, h?.sleep, (x) => (x == null ? "–" : `${x}h`), 1], [`${C.name(id)}: exercise days`, h?.exercise, n, 1]])]);
+  const kidRows = C.kids.filter((k) => s.kids?.[k.id]).flatMap((k) => [[`${k.name}: glows`, s.kids[k.id].glows, n, 1], [`${k.name}: grows`, s.kids[k.id].grows, n, 0]]);
+  if (kidRows.length) r.push(["Kids", kidRows]);
   r.push(["Home", [["To-dos done this week", s.home?.done, n, 1], ["To-dos open", s.home?.open, n, -1]]]);
   return r;
 }

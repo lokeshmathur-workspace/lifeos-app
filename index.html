@@ -1238,6 +1238,32 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .nv-seg button[aria-pressed="true"]{background:rgba(184,255,60,.16);border-color:var(--lime);color:var(--lime)}
 .nv-fld{display:flex;flex-direction:column;gap:4px;margin-top:10px;font-size:12px;font-weight:700;color:var(--nink-2)}
 .nv-fresh{color:var(--nmuted);font-size:12px;margin:4px 0 0}
+
+/* Kids: glows and grows */
+.fm-nudge.warm{background:var(--warn-soft);color:var(--warnc);border:1px solid color-mix(in srgb,var(--warnc) 35%,transparent)}
+.fm-kidhead .fm-mission{margin:4px 0 8px!important;font-size:22px}
+.fm-kidcard{display:flex;flex-direction:column;gap:12px}
+.fm-hopes .fm-vchip.on{background:var(--fam);border-color:var(--fam);color:var(--on-fam)}
+.fm-ggrow{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.fm-gg{display:flex;align-items:baseline;gap:6px;padding:8px 14px;border-radius:10px;font-variant-numeric:tabular-nums}
+.fm-gg b{font-size:24px;line-height:1}.fm-gg span{font-size:13px;font-weight:600}
+.fm-gg.glow{background:var(--good-soft);color:var(--good)}.fm-gg.grow{background:var(--warn-soft);color:var(--warnc)}
+.fm-working{background:var(--fam-soft);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.fm-working p{font-size:15px;line-height:1.45;color:var(--ink)}
+.fm-working .fm-choice{margin-top:4px}
+.fm-obs{margin:0;padding:0;list-style:none;display:flex;flex-direction:column}
+.fm-obs li{padding:8px 0 8px 12px;border-top:1px solid var(--line);border-left:3px solid var(--line-2);display:flex;flex-direction:column;gap:2px}
+.fm-obs li:first-child{border-top:0}
+.fm-obs li.glow{border-left-color:var(--good)}.fm-obs li.grow{border-left-color:var(--warnc)}
+.fm-obs .meta{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.fm-obs .tg{font-weight:700}.fm-obs li.glow .tg{color:var(--good)}.fm-obs li.grow .tg{color:var(--warnc)}
+.fm-obs p{font-size:15px;line-height:1.45;color:var(--ink)}
+.fm-tips dl{margin:8px 0 0;display:grid;gap:8px}.fm-tips dt{font-weight:700;font-size:14px;color:var(--ink)}.fm-tips dd{margin:0;font-size:14px;line-height:1.5;color:var(--ink-2)}
+.fm-choice.gg button.g[aria-pressed="true"]{background:var(--good);border-color:var(--good);color:var(--on-fam)}
+.fm-choice.gg button.r[aria-pressed="true"]{background:var(--warnc);border-color:var(--warnc);color:var(--on-fam)}
+.fm-vgroup{display:flex;flex-direction:column;gap:2px;margin-top:8px}
+.fm-kidtalk{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--surface)}
+.fm-kidtalk select{font-size:16px;padding:10px 12px;border-radius:10px}
 </style>
 </head>
 <body>
