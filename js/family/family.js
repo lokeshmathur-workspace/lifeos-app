@@ -9,7 +9,8 @@ import { payFirstHTML } from "../payfirst.js";
 import { pastView, snapshotOf, snapshotDue } from "./history.js";
 import { retireData, retireHTML, wireRetire } from "./retire.js";
 import { CUISINES } from "./dishes.js";
-import { SLOTS, QUICK, allDishes, dishById, groceryList, groceryText, fmtAmount } from "./grocery.js";
+import { SLOTS, QUICK, UNITS, allDishes, dishById, groceryList, groceryText, fmtAmount, dishText } from "./grocery.js";
+import { AISLES } from "./dishes.js";
 import { fireRoutine, RoutineError } from "../learning/routine.js";
 import { todayISO } from "../dateutil.js";
 import { flash } from "../flash.js";
@@ -419,11 +420,19 @@ function dishPicker(D, C, F) {
   if (!F.pickAll && tab !== "Looked up" && tab !== "Favorites") list = list.filter((d) => (d.meals || []).includes(P.slot));
   if (q) list = allDishes(D).filter((d) => d.name.toLowerCase().includes(q));
   const sel = F.pickSel ? dishById(D, F.pickSel) : null;
-  const panel = sel ? `<div class="fm-dishpanel"><span class="fm-kicker">${esc(sel.cuisine || "")}${sel.source === "lookup" ? " · looked up on the web" : ""}</span><h3 class="fm-name">${esc(sel.name)}</h3>
+  const editing = sel && F.editDish === sel.id, draft = editing ? (F.editDraft = F.editDraft || (sel.ingredients || []).map((g) => ({ ...g }))) : null;
+  const opt = (list, v, lab = (x) => x || "count") => list.map((x) => `<option value="${esc(x)}"${x === (v || "") ? " selected" : ""}>${esc(lab(x))}</option>`).join("");
+  const panel = editing ? `<div class="fm-dishpanel"><span class="fm-kicker">Editing ingredients · for 4</span><h3 class="fm-name">${esc(sel.name)}</h3>
+      <ul class="fm-ingedit">${draft.map((g, i) => `<li data-row="${i}"><input data-f="item" value="${esc(g.item)}" placeholder="Ingredient"><input data-f="qty" inputmode="decimal" value="${esc(g.qty ?? "")}" placeholder="Qty">
+        <select data-f="unit">${opt(UNITS, g.unit)}</select><select data-f="aisle">${opt(AISLES, g.aisle, (x) => x)}</select><button type="button" class="fm-link" data-act="ingdel" data-i="${i}" aria-label="Remove">Remove</button></li>`).join("")}</ul>
+      <button type="button" class="fm-btn sm" data-act="ingadd">+ Add an ingredient</button>
+      <div class="btnrow"><button class="fm-btn pri" data-act="saveings">Save</button><button class="fm-btn" data-act="canceledit">Cancel</button>${sel.edited ? `<button class="fm-link" data-act="resetings">Back to the original</button>` : ""}</div></div>`
+    : sel ? `<div class="fm-dishpanel"><span class="fm-kicker">${esc(sel.cuisine || "")}${sel.source === "lookup" ? " · looked up on the web" : ""}</span><h3 class="fm-name">${esc(sel.name)}</h3>
       <ul class="fm-ings">${(sel.ingredients || []).map((g) => `<li><span>${esc(g.item)}</span><span class="sub">${esc(fmtAmount(g.qty, g.unit))}</span></li>`).join("")}</ul>
       ${sel.url ? `<p class="sub">Source: <a href="${esc(sel.url)}" target="_blank" rel="noopener">${esc(sel.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0])}</a></p>` : ""}
       <button class="fm-btn pri" data-act="adddish" data-id="${esc(sel.id)}">${cur[P.slot] ? `Replace ${esc(cur[P.slot])} with this` : `Add to ${label.toLowerCase()}, ${dayName(P.date)}`}</button>
-      <p class="sub">Its ingredients go on the week's grocery list.</p></div>`
+      <p class="sub">Its ingredients go on the week's grocery list.</p>
+      <div class="btnrow"><button class="fm-btn sm" data-act="editdish" data-id="${esc(sel.id)}">Edit ingredients</button><button class="fm-btn sm" data-act="copyings" data-id="${esc(sel.id)}">Copy ingredients</button>${sel.edited ? `<span class="sub">You've edited this one.</span>` : ""}</div></div>`
     : `<div class="fm-dishpanel empty"><p class="sub">Tap a dish to see its ingredients here.</p></div>`;
   const pend = lookups.filter((l) => l.status === "pending"), done = lookups.filter((l) => l.status !== "pending").slice(0, 3);
   return `<div class="fm-focusscreen wide"><button class="fm-back" data-act="pickback">‹ Back to the week</button>
@@ -619,6 +628,12 @@ async function save(key, mutate, msg) {
   draw();
 }
 const form = (t) => t.closest(".fam-form, .fam-health, .fam-kid") || document;
+// The ingredient editor's rows, read back into the draft before it redraws.
+function readIngs(root, F) {
+  if (!F.editDraft) return;
+  root.ownerDocument.querySelectorAll(".fm-ingedit li").forEach((li) => { const g = F.editDraft[+li.dataset.row]; if (!g) return;
+    li.querySelectorAll("[data-f]").forEach((el) => { g[el.dataset.f] = el.value; }); });
+}
 // The compass screen's text boxes, read back into the draft before it redraws.
 function readCompass(root, d) {
   if (!d) return;
@@ -684,7 +699,23 @@ function wire(root, D, C) {
     if (act === "pickback") { F.nutPick = null; F.pickSel = null; return draw(); }
     if (act === "picktab") { F.pickTab = t.dataset.t; F.pickQ = ""; return draw(); }
     if (act === "pickall") { F.pickAll = !F.pickAll; return draw(); }
-    if (act === "pickdish") { F.pickSel = t.dataset.id; return draw(); }
+    if (act === "pickdish") { F.pickSel = t.dataset.id; F.editDish = null; F.editDraft = null; return draw(); }
+    if (act === "editdish") { F.editDish = t.dataset.id; F.editDraft = null; return draw(); }
+    if (act === "canceledit") { F.editDish = null; F.editDraft = null; return draw(); }
+    if (act === "ingadd" || act === "ingdel") { readIngs(root, F); if (act === "ingadd") F.editDraft.push({ item: "", qty: 1, unit: "", aisle: "Other" }); else F.editDraft.splice(+t.dataset.i, 1); return draw(); }
+    if (act === "copyings") { const d = dishById(D, t.dataset.id); try { await navigator.clipboard.writeText(dishText(d)); flash("Ingredients copied."); } catch { flash("Couldn't copy on this device.", true); } return; }
+    if (act === "saveings" || act === "resetings") {
+      if (act === "saveings") readIngs(root, F);
+      const id = F.editDish || F.pickSel, ds = dishById(D, id);
+      const ings = act === "resetings" ? null : F.editDraft.filter((g) => g.item.trim()).map((g) => ({ item: g.item.trim().toLowerCase(), qty: +g.qty || 0, unit: g.unit || "", aisle: AISLES.includes(g.aisle) ? g.aisle : "Other" }));
+      if (ings && !ings.length) return flash("Keep at least one ingredient.", true);
+      F.editDish = null; F.editDraft = null;
+      await ctx.store.update(FILES.recipes[0], FILES.recipes[1], (r) => {
+        if (ds.source === "lookup") return { ...r, dishes: (r.dishes || []).map((x) => (x.id === id ? { ...x, ingredients: ings || x.ingredients } : x)) };
+        const ov = { ...(r.overrides || {}) }; if (ings) ov[id] = { ingredients: ings }; else delete ov[id]; return { ...r, overrides: ov };
+      }, `family: ${act === "resetings" ? "original ingredients for" : "edited ingredients of"} ${ds.name}`);
+      flash(act === "resetings" ? "Back to the original ingredients." : "Ingredients saved. The grocery list uses them from now on."); return draw();
+    }
     if (act === "adddish" || act === "quickmeal" || act === "nutclear") {
       const P = act === "nutclear" ? { date: t.dataset.date, slot: t.dataset.slot } : F.nutPick, ds = act === "adddish" ? dishById(D, t.dataset.id) : null;
       const name = act === "quickmeal" ? t.dataset.v : ds?.name || null;

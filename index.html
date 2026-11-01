@@ -771,6 +771,11 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .fm-quick{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
 .fm-lookup{margin-top:12px;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
 .fm-lookup>.fm-btn{align-self:flex-start}
+.fm-ingedit{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+.fm-ingedit li{display:grid;grid-template-columns:minmax(0,2fr) 64px minmax(0,1fr) minmax(0,1.4fr) auto;gap:6px;align-items:center}
+.fm-ingedit input,.fm-ingedit select{font-size:14px;padding:6px 8px;min-width:0}
+@media (max-width:560px){.fm-ingedit li{grid-template-columns:minmax(0,1fr) 70px;border-bottom:1px solid var(--line);padding-bottom:8px}.fm-ingedit li [data-f=item]{grid-column:1/-1}}
+.fm-dishpanel .btnrow{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .fm-pend{list-style:none;margin:4px 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:14px}
 .fm-pend li{display:flex;justify-content:space-between;gap:10px}
 /* Retirement: on track? */

@@ -6,10 +6,15 @@ import { STARTER_DISHES, AISLES } from "./dishes.js";
 export const SLOTS = [["breakfast", "Breakfast"], ["lunch", "Lunch"], ["dinner", "Dinner"]];
 export const QUICK = ["Leftovers", "Eating out"];
 
+export const UNITS = ["", "cup", "tbsp", "tsp", "lb", "oz", "clove", "can", "pack", "bunch", "head", "jar", "bottle", "loaf", "bag", "box", "stalk", "pint", "tub", "inch", "pinch"];
+// Starter dishes you've edited keep their changes in recipes.json → overrides (the original stays in the app).
 export function allDishes(D) {
+  const ov = D.recipes?.overrides || {};
+  const starter = STARTER_DISHES.map((d) => (ov[d.id]?.ingredients ? { ...d, ingredients: ov[d.id].ingredients, edited: true } : d));
   const looked = (D.recipes?.dishes || []).map((d) => ({ ...d, source: "lookup" }));
-  return [...STARTER_DISHES, ...looked];
+  return [...starter, ...looked];
 }
+export const dishText = (d) => [`${d.name} (for 4)`, ...(d.ingredients || []).map((g) => `- ${g.item}${g.qty ? `: ${fmtAmount(g.qty, g.unit)}` : ""}`)].join("\n");
 export const dishById = (D, id) => allDishes(D).find((d) => d.id === id) || null;
 
 const keyOf = (item) => item.toLowerCase().replace(/\s+/g, " ").trim();
