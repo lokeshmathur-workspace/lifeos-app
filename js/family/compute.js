@@ -132,12 +132,12 @@ export function computeFamily(D, today) {
   const span = (start) => Array.from({ length: 7 }, (_, i) => { const date = addDays(start, i); return { date, ...(NM[date] || {}) }; });
   const rev = span(addDays(nextMeet, -7)), plan = span(nextMeet);
   const fav = {};
-  for (const m of Object.values(NM)) if (m.dinner && m.again === "yes") fav[m.dinner] = (fav[m.dinner] || 0) + 1;
+  for (const m of Object.values(NM)) if (m.dinner && m.again === "yes") { const k = m.dinnerId || m.dinner; fav[k] = fav[k] || { name: m.dinner, id: m.dinnerId || null, n: 0 }; fav[k].n++; }
   out.nutrition = {
     plan: { start: nextMeet, days: plan, planned: plan.filter((d) => d.dinner).length },
     review: { start: addDays(nextMeet, -7), days: rev, planned: rev.filter((d) => d.dinner).length, cooked: rev.filter((d) => d.status === "cooked").length,
       out: rev.filter((d) => d.status === "out").length, other: rev.filter((d) => d.status === "other").length, open: rev.filter((d) => d.date <= today && !d.status).length },
-    favorites: Object.entries(fav).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([name]) => name),
+    favorites: Object.values(fav).sort((a, b) => b.n - a.n).slice(0, 16),
   };
 
   // ── us & relationships ──

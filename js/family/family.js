@@ -8,6 +8,8 @@ import { FILES } from "./store.js";
 import { payFirstHTML } from "../payfirst.js";
 import { pastView, snapshotOf, snapshotDue } from "./history.js";
 import { retireData, retireHTML, wireRetire } from "./retire.js";
+import { CUISINES } from "./dishes.js";
+import { SLOTS, QUICK, allDishes, dishById, groceryList, groceryText, fmtAmount } from "./grocery.js";
 import { fireRoutine, RoutineError } from "../learning/routine.js";
 import { todayISO } from "../dateutil.js";
 import { flash } from "../flash.js";
@@ -406,19 +408,60 @@ function us(D, C) {
 /* ── Nutrition: plan the week's meals, review last week's ── */
 
 const dayName = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+// Choosing a dish for one meal: cuisines, favorites and looked-up dishes, ingredients beside the
+// list, and a web lookup (by the routine) for anything that isn't there.
+function dishPicker(D, C, F) {
+  const P = F.nutPick, label = SLOTS.find(([k]) => k === P.slot)[1], q = (F.pickQ || "").trim().toLowerCase();
+  const cur = (D.nutrition?.meals || {})[P.date] || {}, favIds = C.nutrition.favorites.map((f) => f.id).filter(Boolean);
+  const looked = (D.recipes?.dishes || []), lookups = (D.recipes?.lookups || []).slice().reverse();
+  const tabs = [...CUISINES, "Favorites", ...(looked.length ? ["Looked up"] : [])], tab = F.pickTab || "Indian";
+  let list = allDishes(D).filter((d) => (tab === "Favorites" ? favIds.includes(d.id) : tab === "Looked up" ? d.source === "lookup" : d.cuisine === tab && (d.source === "starter" || d.confirmed)));
+  if (!F.pickAll && tab !== "Looked up" && tab !== "Favorites") list = list.filter((d) => (d.meals || []).includes(P.slot));
+  if (q) list = allDishes(D).filter((d) => d.name.toLowerCase().includes(q));
+  const sel = F.pickSel ? dishById(D, F.pickSel) : null;
+  const panel = sel ? `<div class="fm-dishpanel"><span class="fm-kicker">${esc(sel.cuisine || "")}${sel.source === "lookup" ? " · looked up on the web" : ""}</span><h3 class="fm-name">${esc(sel.name)}</h3>
+      <ul class="fm-ings">${(sel.ingredients || []).map((g) => `<li><span>${esc(g.item)}</span><span class="sub">${esc(fmtAmount(g.qty, g.unit))}</span></li>`).join("")}</ul>
+      ${sel.url ? `<p class="sub">Source: <a href="${esc(sel.url)}" target="_blank" rel="noopener">${esc(sel.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0])}</a></p>` : ""}
+      <button class="fm-btn pri" data-act="adddish" data-id="${esc(sel.id)}">${cur[P.slot] ? `Replace ${esc(cur[P.slot])} with this` : `Add to ${label.toLowerCase()}, ${dayName(P.date)}`}</button>
+      <p class="sub">Its ingredients go on the week's grocery list.</p></div>`
+    : `<div class="fm-dishpanel empty"><p class="sub">Tap a dish to see its ingredients here.</p></div>`;
+  const pend = lookups.filter((l) => l.status === "pending"), done = lookups.filter((l) => l.status !== "pending").slice(0, 3);
+  return `<div class="fm-focusscreen wide"><button class="fm-back" data-act="pickback">‹ Back to the week</button>
+    <h2 class="fm-ftitle">${label} · ${dayName(P.date)}</h2>${cur[P.slot] ? `<p class="fm-fsub">Now: ${esc(cur[P.slot])}</p>` : ""}
+    <div class="fm-monthpick">${tabs.map((t) => `<button type="button" data-act="picktab" data-t="${t}" aria-pressed="${!q && tab === t}">${t}</button>`).join("")}</div>
+    <input type="search" data-dishsearch value="${esc(F.pickQ || "")}" placeholder="Search every dish">
+    <div class="fm-dpick"><div class="fm-dishes">
+      ${list.length ? `<ul class="fm-dishlist">${list.map((d) => `<li><button type="button" data-act="pickdish" data-id="${esc(d.id)}" aria-pressed="${F.pickSel === d.id}"><b>${esc(d.name)}</b><span class="sub">${esc(d.cuisine || "")} · ${(d.meals || []).join(", ")}</span></button></li>`).join("")}</ul>`
+        : `<p class="sub">${tab === "Favorites" && !q ? "Dinners you mark “make again” in the review show up here." : "No dishes here."}</p>`}
+      ${!q && tab !== "Looked up" && tab !== "Favorites" ? `<button class="fm-link" data-act="pickall">${F.pickAll ? `Only ${label.toLowerCase()} dishes` : `Show all ${tab} dishes`}</button>` : ""}
+      <div class="fm-quick">${QUICK.map((x) => `<button type="button" class="fm-vchip" data-act="quickmeal" data-v="${x}">${x}</button>`).join("")}</div>
+      <div class="fm-lookup"><b>Not on the list?</b><p class="sub">Type the dish; Claude looks up its ingredients on the web (takes a few minutes). You'll see them before anything is added.</p>
+        <div class="fam-form"><input name="lookupname" placeholder="e.g. Malai kofta"><button class="fm-btn sm pri" data-act="lookupdish">Look up ingredients</button></div>
+        ${pend.length ? `<ul class="fm-pend">${pend.map((l) => `<li><span>Looking up <b>${esc(l.name)}</b>…</span><span class="sub">started ${fmtD(l.requestedAt)}</span></li>`).join("")}</ul><button class="fm-btn sm" data-act="checklookups">Check now</button>` : ""}
+        ${done.length ? `<ul class="fm-pend">${done.map((l) => `<li>${l.status === "ready" && l.dishId ? `<button class="fm-link" data-act="pickdish" data-id="${esc(l.dishId)}">${esc(l.name)}: ingredients ready</button>` : `<span>${esc(l.name)}: ${esc(l.note || "couldn't find a recipe")}</span>`}</li>`).join("")}</ul>` : ""}</div>
+    </div>${panel}</div></div>`;
+}
+
 function nutrition(D, C) {
   const F = ctx.S.fam, N = C.nutrition, tab = F.nutTab || "plan";
   const range = (st) => `${fmtD(st)} – ${fmtD(addDays(st, 6))}`;
   const head = `<div class="fm-tile s4 fm-nuthead"><div class="fm-rowsplit"><h3 class="fm-name">Family nutrition</h3>
       <span class="fm-monthpick" role="group"><button type="button" data-act="nuttab" data-t="plan" aria-pressed="${tab === "plan"}">Plan the week</button><button type="button" data-act="nuttab" data-t="review" aria-pressed="${tab === "review"}">Review last week</button></span></div>
     <p class="sub">${tab === "plan" ? `Meals for ${range(N.plan.start)}, from Growing Together to the next one.` : `How ${range(N.review.start)} went.`}</p></div>`;
+  if (F.nutPick) return dishPicker(D, C, F);
   if (tab === "plan") {
+    const slotBtn = (d, slot, label) => { const name = d[slot], ds = d[`${slot}Id`] ? dishById(D, d[`${slot}Id`]) : null;
+      return `<div class="fm-slot"><span class="sl">${label}</span><button type="button" class="fm-slotbtn${name ? " set" : ""}" data-act="nutpick" data-date="${d.date}" data-slot="${slot}">${name ? esc(name) : "+ Choose"}${name && !ds && !QUICK.includes(name) ? `<i class="nolist">no ingredients</i>` : ""}</button>${name ? `<button type="button" class="fm-link" data-act="nutclear" data-date="${d.date}" data-slot="${slot}" aria-label="Clear">Clear</button>` : ""}</div>`; };
+    const G = (D.nutrition?.grocery || {})[N.plan.start] || {}, have = G.have || [], extra = G.extra || [], list = groceryList(D, N.plan.days);
+    const count = list.reduce((t, a) => t + a.items.length, 0) + extra.length, left = list.reduce((t, a) => t + a.items.filter((i) => !have.includes(i.key)).length, 0) + extra.filter((x) => !have.includes(`x:${x.id}`)).length;
     return `<div class="fm-bento">${head}
-      ${N.favorites.length ? `<div class="fm-tile s4"><span class="fm-kicker">Your favorites</span><p class="sub">Tap one to put it on the next open night.</p><div class="fm-vchips">${N.favorites.map((f) => `<button type="button" class="fm-vchip" data-act="nutfav" data-v="${esc(f)}">${esc(f)}</button>`).join("")}</div></div>` : ""}
-      <div class="fm-tile s4 fm-nutplan"><ul class="fm-meals">${N.plan.days.map((d) => `<li><span class="dn">${dayName(d.date)}</span>
-          <input data-meal="dinner" data-date="${d.date}" value="${esc(d.dinner || "")}" placeholder="Dinner">
-          <details${d.lunch || d.breakfast ? " open" : ""}><summary>Lunch, breakfast</summary><div class="fm-mealx"><input data-meal="lunch" data-date="${d.date}" value="${esc(d.lunch || "")}" placeholder="Lunch"><input data-meal="breakfast" data-date="${d.date}" value="${esc(d.breakfast || "")}" placeholder="Breakfast"></div></details></li>`).join("")}</ul>
-        <div class="fm-fbar static"><span>${N.plan.planned} of 7 dinners planned</span><button class="fm-btn pri" data-act="saveplan">Save the plan</button></div></div></div>`;
+      <div class="fm-tile s2 fm-nutplan"><span class="fm-kicker">The week's meals</span><ul class="fm-meals">${N.plan.days.map((d) => `<li><span class="dn">${dayName(d.date)}</span><div class="fm-slots">${SLOTS.map(([k, l]) => slotBtn(d, k, l)).join("")}</div></li>`).join("")}</ul></div>
+      <div class="fm-tile s2 fm-grocery" id="grocery"><div class="fm-rowsplit"><span class="fm-kicker">Grocery shopping list</span><span class="sub">${count ? `${left} to buy · ${count - left} have` : ""}</span></div>
+        ${count ? list.map((a) => `<h5>${esc(a.aisle)}</h5><ul class="fm-glist">${a.items.map((it) => `<li class="${have.includes(it.key) ? "have" : ""}"><button type="button" class="fm-tick" data-act="grochave" data-k="${esc(it.key)}" aria-pressed="${have.includes(it.key)}" aria-label="Have it"></button><span><b>${esc(it.item)}</b>${it.amounts ? ` · ${esc(it.amounts)}` : ""}<span class="for">${esc(it.for.join(", "))}</span></span></li>`).join("")}</ul>`).join("")
+          + (extra.length ? `<h5>Also</h5><ul class="fm-glist">${extra.map((x) => `<li class="${have.includes(`x:${x.id}`) ? "have" : ""}"><button type="button" class="fm-tick" data-act="grochave" data-k="x:${x.id}" aria-pressed="${have.includes(`x:${x.id}`)}" aria-label="Have it"></button><span><b>${esc(x.item)}</b></span><button class="fm-link" data-act="grocdel" data-id="${x.id}">Remove</button></li>`).join("")}</ul>` : "")
+          : `<p class="sub">Choose dishes for the week and their ingredients collect here, by aisle. Tick what you already have.</p>`}
+        <div class="fam-form"><input name="grocitem" placeholder="Add something else, e.g. coffee"><button class="fm-btn sm" data-act="grocadd">Add</button></div>
+        ${count ? `<div class="btnrow"><button class="fm-btn sm pri" data-act="groccopy">Copy the list</button>${typeof navigator !== "undefined" && navigator.share ? `<button class="fm-btn sm" data-act="grocshare">Share</button>` : ""}<span class="sub">Paste it into your shopping list or app.</span></div>` : ""}</div></div>`;
   }
   const R = N.review, watch = (C.money?.watch || []).find((w) => /restaurant/i.test(w.category));
   const seg = (d, key, opts) => `<span class="fm-choice small" role="group">${opts.map(([v, l]) => `<button type="button" data-act="nutset" data-date="${d.date}" data-k="${key}" data-v="${v}" aria-pressed="${d[key] === v}">${l}</button>`).join("")}</span>`;
@@ -599,9 +642,9 @@ async function startRun(kind, arg) {
 function wire(root, D, C) {
   const F = ctx.S.fam;
   root.addEventListener("input", (e) => {
-    const t = e.target; if (!t.matches("[data-pastsearch]")) return;
+    const t = e.target, sel = t.matches("[data-pastsearch]") ? "[data-pastsearch]" : t.matches("[data-dishsearch]") ? "[data-dishsearch]" : null; if (!sel) return;
     clearTimeout(F.pastTimer);
-    F.pastTimer = setTimeout(() => { F.pastQ = t.value; draw(); const n = document.querySelector("[data-pastsearch]"); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250);
+    F.pastTimer = setTimeout(() => { if (sel === "[data-pastsearch]") F.pastQ = t.value; else F.pickQ = t.value; draw(); const n = document.querySelector(sel); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250);
   });
   root.addEventListener("change", async (e) => {
     const t = e.target;
@@ -637,6 +680,40 @@ function wire(root, D, C) {
         return { ...c, finance: { ...(c.finance || {}), retirement: { ...rc, people: (rc.people || []).map((p, i) => ({ ...p, birthYear: years[i] ?? null, ssMonthly: ssM[i] ?? null, ssAge: ssA[i] ?? null })),
           retireAge: get("retireAge") ?? rc.retireAge ?? null, monthlyGoal: get("monthlyGoal") ?? rc.monthlyGoal ?? null, realReturn: ret != null ? ret / 100 : rc.realReturn ?? 0.05, includeSocialSecurity: ssOn !== false } } }; }, "retirement goal");
     }
+    if (act === "nutpick") { F.nutPick = { date: t.dataset.date, slot: t.dataset.slot }; F.pickSel = (D.nutrition?.meals || {})[t.dataset.date]?.[`${t.dataset.slot}Id`] || null; F.pickQ = ""; F.pickAll = false; window.scrollTo(0, 0); return draw(); }
+    if (act === "pickback") { F.nutPick = null; F.pickSel = null; return draw(); }
+    if (act === "picktab") { F.pickTab = t.dataset.t; F.pickQ = ""; return draw(); }
+    if (act === "pickall") { F.pickAll = !F.pickAll; return draw(); }
+    if (act === "pickdish") { F.pickSel = t.dataset.id; return draw(); }
+    if (act === "adddish" || act === "quickmeal" || act === "nutclear") {
+      const P = act === "nutclear" ? { date: t.dataset.date, slot: t.dataset.slot } : F.nutPick, ds = act === "adddish" ? dishById(D, t.dataset.id) : null;
+      const name = act === "quickmeal" ? t.dataset.v : ds?.name || null;
+      if (act !== "nutclear") { F.nutPick = null; F.pickSel = null; flash(`${name} added${ds ? "; ingredients are on the grocery list" : ""}.`); }
+      if (ds?.source === "lookup" && !ds.confirmed) await ctx.store.update(FILES.recipes[0], FILES.recipes[1], (r) => ({ ...r, dishes: (r.dishes || []).map((x) => (x.id === ds.id ? { ...x, confirmed: true } : x)) }), `family: added ${ds.name} to our dishes`);
+      return save("nutrition", (n) => { const meals = { ...(n.meals || {}) }, m = { ...(meals[P.date] || {}) };
+        if (name) { m[P.slot] = name; if (ds) m[`${P.slot}Id`] = ds.id; else delete m[`${P.slot}Id`]; } else { delete m[P.slot]; delete m[`${P.slot}Id`]; }
+        if (Object.keys(m).length) meals[P.date] = m; else delete meals[P.date]; return { ...n, meals }; }, "meal plan");
+    }
+    if (act === "lookupdish") { const name = val(box, "lookupname"); if (!name) return;
+      const id = "l" + newId(), slot = F.nutPick?.slot || null;
+      await ctx.store.update(FILES.recipes[0], FILES.recipes[1], (r) => ({ ...r, lookups: [...(r.lookups || []), { id, name, slot, requestedAt: new Date().toISOString(), status: "pending" }] }), `family: look up ${name}`);
+      try { await fireRoutine(`family dish ${id}`); flash(`Looking up ${name}. It'll show here in a few minutes; tap Check now.`); }
+      catch (e) { flash(e instanceof RoutineError ? e.message : `Couldn't start the lookup: ${e.message}`, true); }
+      return draw(); }
+    if (act === "checklookups") { await ctx.store.refresh?.(FILES.recipes[0]); F.loaded = false; return renderFamilyView(ctx.store, ctx.S, ctx.renderApp); }
+    if (act === "grochave" || act === "grocadd" || act === "grocdel") {
+      const wk = C.nutrition.plan.start, item = act === "grocadd" ? val(box, "grocitem") : null; if (act === "grocadd" && !item) return;
+      return save("nutrition", (n) => { const g = { ...(n.grocery || {}) }, w = { have: [], extra: [], ...(g[wk] || {}) };
+        if (act === "grochave") w.have = w.have.includes(t.dataset.k) ? w.have.filter((x) => x !== t.dataset.k) : [...w.have, t.dataset.k];
+        if (act === "grocadd") w.extra = [...w.extra, { id: newId(), item }];
+        if (act === "grocdel") { w.extra = w.extra.filter((x) => x.id !== t.dataset.id); w.have = w.have.filter((x) => x !== `x:${t.dataset.id}`); }
+        g[wk] = w; return { ...n, grocery: g }; }, "grocery list"); }
+    if (act === "groccopy" || act === "grocshare") {
+      const N = C.nutrition, G = (D.nutrition?.grocery || {})[N.plan.start] || {};
+      const text = groceryText(groceryList(D, N.plan.days), G.have || [], G.extra || [], `Groceries for ${fmtD(N.plan.start)} – ${fmtD(addDays(N.plan.start, 6))}`);
+      if (act === "grocshare") { try { await navigator.share({ title: "Grocery list", text }); } catch {} return; }
+      try { await navigator.clipboard.writeText(text); flash("Copied. Paste it into your shopping list."); } catch { flash("Couldn't copy on this device.", true); }
+      return; }
     if (act === "nuttab") { F.nutTab = t.dataset.t; return draw(); }
     if (act === "nutfav") { const empty = [...root.querySelectorAll(".fm-nutplan [data-meal=dinner]")].find((i) => !i.value.trim()); if (!empty) return flash("Every night already has a dinner."); empty.value = t.dataset.v; empty.focus(); return; }
     if (act === "saveplan") { const vals = [...root.querySelectorAll(".fm-nutplan [data-meal]")].map((i) => [i.dataset.date, i.dataset.meal, i.value.trim()]);

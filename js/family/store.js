@@ -20,6 +20,7 @@ export const FILES = {
   money: ["finance/monarch.json", null],
   health: ["health.json", { entries: [] }],
   nutrition: ["nutrition.json", { meals: {} }],
+  recipes: ["recipes.json", { dishes: [], lookups: [] }],
   rel: ["relationships.json", { goals: [], learnings: [], together: [], people: [], appreciation: [] }],
   kids: ["kids.json", {}],
   home: ["home.json", { todos: [], chores: [], appointments: [] }],

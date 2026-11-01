@@ -746,6 +746,33 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .fm-again .fm-choice button{flex:none;padding:6px 16px}
 .fm-fbar.static{position:static;background:none;padding:14px 0 0}
 @media (max-width:560px){.fm-meals>li{grid-template-columns:minmax(0,1fr)}.fm-meals>li>*,.fm-meals details,.fm-meals.review>li>*:not(.dn){grid-column:1}.fm-mealx{grid-template-columns:1fr}}
+/* Nutrition: meals, dish picker, grocery list */
+.fm-slots{display:flex;flex-direction:column;gap:6px}
+.fm-slot{display:grid;grid-template-columns:76px minmax(0,1fr) auto;gap:8px;align-items:center}
+.fm-slot .sl{font-size:12px;color:var(--muted)}
+.fm-slotbtn{text-align:left;background:var(--surface);border:1px dashed var(--line-2);border-radius:8px;padding:8px 10px;font-size:14px;color:var(--muted);min-width:0;overflow:hidden;text-overflow:ellipsis}
+.fm-slotbtn.set{border-style:solid;color:var(--ink);font-weight:600}
+.fm-slotbtn .nolist{display:block;font-style:normal;font-weight:400;font-size:11.5px;color:var(--muted)}
+.fm-grocery h5{margin:12px 0 4px;font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.fm-glist{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px}
+.fm-glist li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:10px;align-items:start;font-size:14px;color:var(--ink)}
+.fm-glist .for{display:block;font-size:12px;color:var(--muted)}
+.fm-glist li.have b{text-decoration:line-through;color:var(--muted);font-weight:500}
+.fm-focusscreen.wide{max-width:1000px}
+.fm-dpick{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:700px){.fm-dpick{grid-template-columns:minmax(0,1fr)}.fm-dishpanel{order:-1;position:static!important}.fm-dishpanel.empty{display:none}}
+.fm-dishlist{list-style:none;margin:0 0 8px;padding:0;display:flex;flex-direction:column;gap:6px}
+.fm-dishlist button{width:100%;text-align:left;display:flex;flex-direction:column;gap:2px;background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;color:var(--ink);font-size:15px}
+.fm-dishlist button[aria-pressed="true"]{border-color:var(--fam);box-shadow:0 0 0 2px var(--fam-soft)}
+.fm-dishpanel{position:sticky;top:12px;background:var(--surface);border:1px solid var(--line);border-top:3px solid var(--fam);border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.fm-ings{list-style:none;margin:0;padding:0}
+.fm-ings li{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:14px;color:var(--ink)}.fm-ings li:first-child{border-top:0}
+.fm-dishpanel .fm-btn{align-self:flex-start}
+.fm-quick{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.fm-lookup{margin-top:12px;border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:6px}
+.fm-lookup>.fm-btn{align-self:flex-start}
+.fm-pend{list-style:none;margin:4px 0;padding:0;display:flex;flex-direction:column;gap:4px;font-size:14px}
+.fm-pend li{display:flex;justify-content:space-between;gap:10px}
 /* Retirement: on track? */
 .fm-check{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);flex-basis:100%}
 .rt .fm-big3{margin:6px 0 4px}
