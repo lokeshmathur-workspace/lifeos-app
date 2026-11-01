@@ -33,7 +33,8 @@ export function retireData(D, today) {
   // Social Security (today's $): lowers what savings must cover once it starts; until then savings
   // cover the full goal, so the years between retiring and claiming are added on top.
   const ageAtRetire = (p) => rc.retireAge - (age - (p.birthYear ? year - p.birthYear : age));
-  const ss = (rc.people || []).filter((p) => p.ssMonthly > 0).map((p) => ({ name: p.name, monthly: p.ssMonthly, startAge: p.ssAge || 67,
+  const ssSaved = (rc.people || []).filter((p) => p.ssMonthly > 0), ssOn = rc.includeSocialSecurity !== false;
+  const ss = (ssOn ? ssSaved : []).map((p) => ({ name: p.name, monthly: p.ssMonthly, startAge: p.ssAge || 67,
     bridgeYears: Math.max(0, (p.ssAge || 67) - ageAtRetire(p)), guessedAge: !p.birthYear }));
   const ssTotal = ss.reduce((t, x) => t + x.monthly, 0), bridge = ss.reduce((t, x) => t + x.monthly * 12 * x.bridgeYears, 0);
   const target = rc.monthlyGoal ? Math.max(0, rc.monthlyGoal - ssTotal) * 12 / 0.04 + bridge : null;
@@ -46,7 +47,7 @@ export function retireData(D, today) {
   const extraYearly = target != null && end < target && annuity ? Math.ceil(((target - end) / annuity) / 100) * 100 : 0;
   let laterAge = null;
   if (target != null && end < target) for (let k = 1, b = end; k <= 15; k++) { b = b * (1 + r) + yearly; if (b >= target) { laterAge = rc.retireAge + k; break; } }
-  return { ss, ssTotal, bridge, rc, age, n, r, balance, accounts, fromMonarch: !accounts.length && fromMonarch.length > 0, yearly, target, pts, end, neededNow,
+  return { ss, ssOn, ssSaved, ssTotal, bridge, rc, age, n, r, balance, accounts, fromMonarch: !accounts.length && fromMonarch.length > 0, yearly, target, pts, end, neededNow,
     monthlyNow: balance != null ? (balance * 0.04) / 12 : null, monthlyAt: (end * 0.04) / 12, extraYearly, laterAge };
 }
 
@@ -96,6 +97,7 @@ export function retireHTML(R) {
       <label class="fm-fld sm"><span>Monthly income you want (today's $)</span><input data-rt="monthlyGoal" inputmode="numeric" value="${esc(rc.monthlyGoal ?? "")}"></label>
       <label class="fm-fld sm"><span>Return after inflation</span><input data-rt="realReturn" inputmode="decimal" value="${esc(rc.realReturn != null ? Math.round(rc.realReturn * 1000) / 10 : 5)}"><em>%</em></label>
       <button class="fm-btn sm pri" data-act="saveretire">Save</button></div>
+      <label class="fm-check"><input type="checkbox" data-rt="includeSocialSecurity"${rc.includeSocialSecurity !== false ? " checked" : ""}> Count Social Security in the plan</label>
       <p class="sub">Social Security: your estimate in today's dollars at the age you plan to claim, from ssa.gov → my Social Security. Savings cover the whole goal until it starts.</p>
       <p class="sub">5% after inflation is a common middle-of-the-road assumption for a stock-heavy mix; 4% is cautious, 6% optimistic. The 4% rule: withdrawing 4% of savings in the first year (then adjusting for inflation) has historically lasted about 30 years.</p></details>`;
   if (R.missing) return `<div class="fm-tile s4 rt"><h3>Retirement: on track?</h3><p class="sub">Add your birth years, the age you'd like to retire and the monthly income you want, and this shows where you are against where you need to be.</p>${settings.replace("<details", "<details open")}</div>`;
@@ -108,7 +110,7 @@ export function retireHTML(R) {
     ${chart(R)}
     ${R.target != null ? `<p class="rt-say">${ahead ? `You're on track: at ${R.rc.retireAge} you'd have about <b>${big(R.end)}</b>, which with Social Security covers <b>${usd(R.rc.monthlyGoal)}</b> a month.`
       : `On today's pace you'd reach <b>${big(R.end)}</b> at ${R.rc.retireAge}: ${usd(R.monthlyAt)} a month from savings${R.ssTotal ? ` plus ${usd(R.ssTotal)} Social Security, ${usd(R.monthlyAt + R.ssTotal)} in all` : ""}, short of ${usd(R.rc.monthlyGoal)}. To close the gap: put in about <b>${usd(R.extraYearly)} more a year</b>${R.laterAge ? `, or retire at <b>${R.laterAge}</b>` : ""}.`}</p>` : ""}
-    ${R.ssTotal ? `<p class="sub">Social Security counted: ${R.ss.map((x) => `${esc(x.name)} ${usd(x.monthly)} a month from ${x.startAge}${x.guessedAge ? " (age assumed same as Lokesh's until a birth year is added)" : ""}`).join(" · ")}.</p>` : `<p class="sub">Social Security isn't counted yet. Add your estimates under Goal and assumptions.</p>`}
+    ${R.ssTotal ? `<p class="sub">Social Security counted: ${R.ss.map((x) => `${esc(x.name)} ${usd(x.monthly)} a month from ${x.startAge}${x.guessedAge ? " (age assumed same as Lokesh's until a birth year is added)" : ""}`).join(" · ")}.</p>` : R.ssSaved.length && !R.ssOn ? `<p class="sub">Social Security is left out for now (saved: ${R.ssSaved.map((p) => `${esc(p.name)} ${usd(p.ssMonthly)} from ${p.ssAge || 67}`).join(" · ")}). Turn it on under Goal and assumptions.</p>` : `<p class="sub">Social Security isn't counted yet. Add your estimates under Goal and assumptions.</p>`}
     <div class="rt-foot"><span class="sub">Saving <b>${usd(R.yearly)}</b> a year for retirement${R.rc.yearlyContribution == null ? " (this year's paycheck contributions, matches included)" : ""}.</span>
       <span class="sub">${R.accounts.length ? `Balances: ${R.accounts.map((a) => `${esc(a.label)} ${big(a.balance)}`).join(" · ")}${R.accounts[0].asOf ? `, as of ${fmtD(R.accounts.map((a) => a.asOf).sort()[0])}` : ""}` : R.fromMonarch ? "Balances from Monarch." : "No balances yet."}</span></div>
     ${settings}</div>`;
