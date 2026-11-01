@@ -1264,6 +1264,29 @@ body.partner .seg button:not([data-v="navya"]):not([data-v="family"]),body.partn
 .fm-vgroup{display:flex;flex-direction:column;gap:2px;margin-top:8px}
 .fm-kidtalk{display:flex;flex-direction:column;gap:10px;border:1px solid var(--line);border-radius:14px;padding:16px;background:var(--surface)}
 .fm-kidtalk select{font-size:16px;padding:10px 12px;border-radius:10px}
+
+/* Home: family activities */
+.fm-actadd{display:flex;flex-direction:column;gap:12px}
+.fm-actadd .fm-big{font-size:17px;padding:13px 14px;border-radius:10px;width:100%}
+.fm-ideas{display:flex;flex-wrap:wrap;gap:6px}
+.fm-actmore{display:flex;flex-wrap:wrap;gap:10px}.fm-actmore [hidden]{display:none!important}
+.fm-actmore .fm-fld.sm{margin-top:0}
+.fm-acts{margin:4px 0 10px;padding:0;list-style:none;display:flex;flex-direction:column}
+.fm-act{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.fm-act:first-child{border-top:0}
+.fm-actdate{display:flex;flex-direction:column;align-items:center;justify-content:center;width:48px;height:48px;border-radius:10px;background:var(--fam-soft);color:var(--fam);font-variant-numeric:tabular-nums}
+.fm-actdate b{font-size:19px;line-height:1}.fm-actdate span{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+.fm-actdate.idea{font-size:20px}
+.fm-act.done .fm-actdate{background:var(--good-soft);color:var(--good)}
+.fm-act.missed .fm-actdate{background:var(--warn-soft);color:var(--warnc)}
+.fm-acttx{display:flex;flex-direction:column;gap:2px;min-width:0}.fm-acttx b{font-size:16px;color:var(--ink)}
+.fm-act.done .fm-acttx b{color:var(--ink-2)}
+.fm-actbtns{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.fm-cal{text-decoration:none;white-space:nowrap}
+.fm-cal.added{background:var(--good-soft);border-color:var(--good-soft);color:var(--good)}
+.fm-donebtn{white-space:nowrap}
+.fm-actadd .fm-choice button{flex:1 1 auto;white-space:nowrap}
+@media (max-width:560px){.fm-act{grid-template-columns:44px minmax(0,1fr)}.fm-actbtns{grid-column:2;justify-content:flex-start}.fm-actdate{width:44px;height:44px}}
 </style>
 </head>
 <body>

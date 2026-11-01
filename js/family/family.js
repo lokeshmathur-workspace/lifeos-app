@@ -122,7 +122,7 @@ function hq(D, C) {
     ["nutrition", "Nutrition", `${C.nutrition.plan.planned} of 7 dinners planned from ${fmtD(C.nutrition.plan.start)}`, C.nutrition.review.planned || C.nutrition.review.cooked ? `last 7 days: ${C.nutrition.review.cooked} cooked · ${C.nutrition.review.out} out` : ""],
     ["kids", "Kids", C.kids.map((k) => `${k.name}: ${k.appointments.length} coming up`).join(" · ") || "Add the kids", n?.focus ? `Navya's focus: ${n.focus.split(".")[0]}` : ""],
     ["growth", "Growth", (() => { const open = (D.growth?.items || []).filter((g) => g.status === "open"), mine = open.filter((g) => !(g.reflections || []).some((r) => r.by === ctx.S.fam.me)); return open.length ? `${open.length} to talk about${mine.length ? ` · ${mine.length} waiting for your thoughts` : ""}` : "Nothing waiting to talk about"; })(), `${(D.growth?.items || []).filter((g) => g.status === "discussed").length} talked about so far`],
-    ["home", "Home", `${C.home.todos.length} to-dos open · ${C.home.chores.filter((c) => c.due).length} chores due`, `${C.home.done7} done this week`],
+    ["home", "Home", C.home.upcoming.length ? `${C.home.upcoming.length} family activit${C.home.upcoming.length === 1 ? "y" : "ies"} planned · next ${dayLabel(C.home.upcoming[0].date)}` : "No family activities planned", `${C.home.doneMonth} done this month${C.home.missed.length ? ` · ${C.home.missed.length} to mark` : ""}`],
   ];
   return `<div class="fm-bento">${turnNudge(D, C)}${kidsNudge(D, C)}${read}
     <div class="fm-tile s2"><h3>Coming up · next 2 weeks</h3>${up.length ? `<ul class="fam-list">${up.map((u) => `<li class="${u.overdue ? "late" : ""}"><span class="d">${fmtD(u.date)}</span><span><span class="fm-type">${u.icon}</span>${esc(u.text)}</span></li>`).join("")}</ul>` : empty("Nothing in the next two weeks.")}</div>
@@ -295,13 +295,13 @@ function compassTile(R, C, me, other) {
 function growingTile(D, C, R) {
   const M = meetDates(D, C.today), g = (R.growing || {})[M.next] || {};
   const appr = (R.appreciation || []).filter((a) => a.date > M.last).sort((a, b) => (a.date < b.date ? -1 : 1));
-  const todos = (D.home?.todos || []).filter((t) => !t.done), plans = g.plans || [], issues = g.issues || [];
+  const acts = C.home.upcoming.filter((a) => a.date <= addDays(M.next, 7)), plans = g.plans || [], issues = g.issues || [];
   const step = (n, title, hint, body) => `<li><span class="n">${n}</span><div><b>${title}</b>${hint ? `<span class="sub"> · ${hint}</span>` : ""}${body}</div></li>`;
   const who = (p) => (p.kind === "us" ? "Date" : p.kind === "me" ? esc(C.name(p.by)) : "Family");
   return `<div class="fm-tile s4 fm-sou"><div class="fm-rowsplit"><h3 class="fm-name">${TALK}</h3><span class="sub">${M.isToday ? "Today" : `${M.day}, ${fmtD(M.next)}`} · about 30 minutes, in this order</span></div>
     <ol class="fm-agenda">
       ${step(1, "Appreciation", "say them out loud", appr.length ? `<ul class="fam-list quotes">${appr.map((a) => `<li><span><b>${esc(C.name(a.from))} → ${esc(C.name(a.to))}:</b> ${esc(a.text)}</span></li>`).join("")}</ul>` : `<p class="sub">None written since last time. Bring one each.</p>`)}
-      ${step(2, "Home", `${todos.length} open`, todos.length ? `<ul class="fam-list">${todos.slice(0, 4).map((t) => `<li><span>${esc(t.text)}</span><span class="sub">${esc(C.name(t.who))}${t.due ? ` · ${fmtD(t.due)}` : ""}</span></li>`).join("")}</ul><p class="sub">Who owns what this week?</p>` : `<p class="sub">Nothing open on the Home tab.</p>`)}
+      ${step(2, "Family activities", `${acts.length} in the coming week`, `${acts.length ? `<ul class="fam-list">${acts.map((a) => `<li><span class="d">${dayLabel(a.date)}</span><span>${esc(a.what)}${a.time ? ` · ${timeLabel(a.time)}` : ""}</span><span class="sub">${a.calendarAt ? "in Outlook" : "not in Outlook yet"}</span></li>`).join("")}</ul>` : `<p class="sub">Nothing planned for the family this week.</p>`}${C.home.missed.length ? `<p class="sub">${C.home.missed.length} past activit${C.home.missed.length === 1 ? "y" : "ies"} to mark done or not.</p>` : ""}<div class="btnrow"><button class="fm-btn sm" data-tab="home">Plan one</button></div>`)}
       ${C.kids.some((k) => !k.unnamed) ? step(3, "Kids", "wins first, then one thing each", `<ul class="fam-list">${C.kids.filter((k) => !k.unnamed).map((k) => { const w = kidWeek(D, C, k), pl = planOf(D, k.id, M.next, true);
         return `<li><span><b>${esc(k.name)}</b> · ${w.glows.length} glow${w.glows.length === 1 ? "" : "s"}, ${w.grows.length} grow${w.grows.length === 1 ? "" : "s"}</span><span class="sub">${pl ? `working on ${esc(pl.workOn.trait || "a plan")}` : ""}</span></li>`; }).join("")}</ul>
         <div class="btnrow"><button class="fm-btn sm pri" data-act="kidfocus" data-f="talk">Talk about the kids</button></div>`) : ""}
@@ -726,20 +726,72 @@ function shareForm(g) {
 
 /* ── Home ────────────────────────────────────────────────── */
 
+/* ── Home: family activities — plan them, put them on the Outlook calendar, mark them done ── */
+
+const ACT_IDEAS = ["Movie night", "Board games", "Pizza night", "Park", "Bike ride", "Hike", "Library", "Bowling", "Visit family", "Cook together"];
+const wkday = (iso) => new Date(iso + "T12:00:00").getDay();
+const nextDow = (today, dow) => addDays(today, (dow - wkday(today) + 7) % 7);
+const dayLabel = (iso) => new Date(iso + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+const timeLabel = (t) => { if (!t) return ""; const [h, m] = t.split(":").map(Number); return `${((h + 11) % 12) + 1}${m ? `:${String(m).padStart(2, "0")}` : ""}${h < 12 ? "am" : "pm"}`; };
+// Quick day choices: this weekend, next Saturday, a date, or someday.
+function dayChoices(today) {
+  const sat = nextDow(today, 6), sun = addDays(sat, 1), lbl = (d, w) => (d === today ? `Today, ${w}` : `${w} ${fmtD(d)}`);
+  return [["sat", lbl(sat, "Sat"), sat], ["sun", lbl(sun, "Sun"), sun], ["nsat", `Sat ${fmtD(addDays(sat, 7))}`, addDays(sat, 7)], ["pick", "Pick a date", null], ["someday", "Someday", null]];
+}
+// A new Outlook event, already filled in: you only tap Save (and pick the family calendar).
+export function outlookLink(a) {
+  const p = new URLSearchParams({ path: "/calendar/action/compose", rru: "addevent", subject: a.what });
+  if (a.time) {
+    const [h, m] = a.time.split(":").map(Number), end = h + 2 > 23 ? "23:59" : `${String(h + 2).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    p.set("startdt", `${a.date}T${a.time}:00`); p.set("enddt", `${a.date}T${end}:00`);
+  } else { p.set("startdt", a.date); p.set("enddt", addDays(a.date, 1)); p.set("allday", "true"); }
+  if (a.where) p.set("location", a.where);
+  p.set("body", "Family activity, planned on our family dashboard.");
+  return `https://outlook.live.com/calendar/0/deeplink/compose?${[...p].map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&")}`;
+}
+
+function actRow(a, C, kind) {
+  const meta = [timeLabel(a.time), a.where].filter(Boolean).map(esc).join(" · ");
+  const cal = a.date && kind !== "done" ? `<a class="fm-btn sm fm-cal${a.calendarAt ? " added" : ""}" href="${esc(outlookLink(a))}" target="_blank" rel="noopener" data-act="actcal" data-id="${a.id}">${a.calendarAt ? "In Outlook ✓" : "Add to Outlook"}</a>` : "";
+  const actions = kind === "upcoming" ? `${cal}<button class="fm-btn sm fm-donebtn" data-act="actdone" data-id="${a.id}">✓ Done</button>`
+    : kind === "missed" ? `<button class="fm-btn sm pri" data-act="actdone" data-id="${a.id}">We did it</button><button class="fm-btn sm" data-act="actskip" data-id="${a.id}">Didn't happen</button>`
+    : kind === "idea" ? `<button class="fm-btn sm" data-act="actschedule" data-id="${a.id}">Plan it</button>`
+    : `<button class="fm-link" data-act="actundo" data-id="${a.id}">Undo</button>`;
+  return `<li class="fm-act ${kind}">
+    ${a.date ? `<span class="fm-actdate"><b>${new Date(a.date + "T12:00:00").getDate()}</b><span>${new Date(a.date + "T12:00:00").toLocaleDateString("en-US", { weekday: "short" })}</span></span>` : `<span class="fm-actdate idea" aria-hidden="true">✦</span>`}
+    <span class="fm-acttx"><b>${esc(a.what)}</b><span class="sub">${a.date && kind !== "upcoming" ? `${dayLabel(a.date)}${meta ? " · " : ""}` : ""}${meta}${kind === "done" && a.status === "skipped" ? " · didn't happen" : ""}</span></span>
+    <span class="fm-actbtns">${actions}${kind !== "done" ? `<button class="fm-link" data-act="actedit" data-id="${a.id}">Edit</button>` : ""}</span></li>`;
+}
+
 function home(D, C) {
-  const H = C.home, today = todayISO();
+  const F = ctx.S.fam, H = C.home, today = C.today, ed = F.actEdit ? (D.home?.activities || []).find((a) => a.id === F.actEdit) : null;
+  const choices = dayChoices(today), sel = ed ? (ed.date || F.actPick ? "pick" : "someday") : F.actDay || "sat";
+  const byMonth = H.upcoming.reduce((m, a) => { const k = a.date.slice(0, 7); (m[k] = m[k] || []).push(a); return m; }, {});
   return `<div class="fm-bento">
-    <div class="fm-tile s2"><h3>To-dos · ${H.todos.length} open</h3>
-      <div class="fam-form"><input name="text" placeholder="Add a to-do"><input type="date" name="due" class="short">${whoSelect(C)}<button class="fm-btn sm pri" data-act="addtodo">Add</button></div>
-      ${H.todos.length ? `<ul class="fam-list checks">${H.todos.map((t) => `<li class="${t.due && t.due < today ? "late" : ""}"><label><input type="checkbox" data-act="todo" data-id="${t.id}"> ${esc(t.text)}</label><span class="sub">${esc(C.name(t.who || "both"))}${t.due ? ` · ${fmtD(t.due)}` : ""}</span></li>`).join("")}</ul>` : empty("All done.")}
-      ${H.done7 ? `<p class="sub">${H.done7} done this week.</p>` : ""}</div>
-    <div class="fm-tile s2"><h3>Chores</h3>
-      ${H.chores.length ? `<ul class="fam-list">${H.chores.map((c) => `<li class="${c.due ? "late" : ""}"><span><b>${esc(c.text)}</b> · ${esc(C.name(c.who || "both"))} · ${c.every}</span><span class="sub">${c.due ? "due" : `next ${fmtD(c.next)}`}</span><button class="fm-link" data-act="chore" data-id="${c.id}">Done today</button></li>`).join("")}</ul>` : empty("Recurring jobs around the house.")}
-      <div class="fam-form"><input name="text" placeholder="e.g. Change HVAC filter">${whoSelect(C)}<select name="every"><option value="weekly">Weekly</option><option value="daily">Daily</option><option value="monthly">Monthly</option></select><button class="fm-btn sm pri" data-act="addchore">Add</button></div></div>
-    <div class="fm-tile s4"><h3>Appointments &amp; things to get done</h3>
-      ${H.appointments.length ? `<ul class="fam-list">${H.appointments.map((a) => `<li><span class="d">${fmtD(a.date)}${a.time ? ` ${esc(a.time)}` : ""}</span><span>${esc(a.what)} · ${esc(C.name(a.who || "both"))}</span><button class="fm-link" data-act="appdone" data-id="${a.id}">Done</button></li>`).join("")}</ul>` : empty("Doctor's visits, car service, contractor, renewals: anything with a date.")}
-      <div class="fam-form"><input type="date" name="date" class="short"><input name="time" placeholder="Time" class="tiny"><input name="what" placeholder="What">${whoSelect(C)}<button class="fm-btn sm pri" data-act="addappt">Add</button></div></div>
+    <div class="fm-tile s4 fm-actadd" id="actadd"><div class="fm-rowsplit"><h3 class="fm-name">${ed ? (F.actPick ? "Pick a date" : "Change this activity") : "Plan a family activity"}</h3>${ed ? `<button class="fm-link" data-act="acteditcancel">Cancel</button>` : `<span class="sub">Then add it to the Outlook family calendar</span>`}</div>
+      <input name="awhat" class="fm-big" placeholder="What? e.g. Pumpkin patch, movie night, hike" value="${esc(ed?.what || "")}">
+      ${ed ? "" : `<div class="fm-ideas">${ACT_IDEAS.map((x) => `<button type="button" class="fm-vchip" data-act="actidea" data-v="${esc(x)}">${esc(x)}</button>`).join("")}</div>`}
+      <div class="fm-choice small" role="group" aria-label="When">${choices.map(([k, l]) => `<button type="button" data-act="actday" data-k="${k}" aria-pressed="${k === sel}">${l}</button>`).join("")}</div>
+      <div class="fm-actmore"><label class="fm-fld sm"${sel === "pick" ? "" : " hidden"} data-pickdate><span>Date</span><input type="date" name="adate" value="${esc(ed?.date || "")}"></label>
+        <label class="fm-fld sm"><span>Time (optional)</span><input type="time" name="atime" value="${esc(ed?.time || "")}"></label>
+        <label class="fm-fld sm"><span>Where (optional)</span><input name="awhere" placeholder="e.g. Marymoor Park" value="${esc(ed?.where || "")}"></label></div>
+      <div class="btnrow"><button class="fm-btn pri" data-act="${ed ? "actsave" : "actadd"}"${ed ? ` data-id="${ed.id}"` : ""}>${ed ? "Save changes" : "Add"}</button>${ed ? `<button class="fm-btn" data-act="actdel" data-id="${ed.id}">Remove</button>` : ""}</div></div>
+    ${H.missed.length ? `<div class="fm-tile s4 fm-actmissed"><h3>Did it happen?</h3><p class="sub">Past activities not marked yet.</p><ul class="fm-acts">${H.missed.map((a) => actRow(a, C, "missed")).join("")}</ul></div>` : ""}
+    <div class="fm-tile s4"><div class="fm-rowsplit"><h3>Coming up</h3><span class="sub">${H.upcoming.length} planned · ${H.upcoming.filter((a) => a.calendarAt).length} in Outlook</span></div>
+      ${H.upcoming.length ? Object.entries(byMonth).map(([m, list]) => `<span class="fm-kicker">${new Date(m + "-15T12:00:00").toLocaleDateString("en-US", { month: "long" })}</span><ul class="fm-acts">${list.map((a) => actRow(a, C, "upcoming")).join("")}</ul>`).join("")
+        : empty("Nothing planned yet. Add something for this weekend above.")}
+      <p class="fm-hint">“Add to Outlook” opens a new event with the name, date, time and place filled in. Choose the family calendar and tap Save. Tap Done once you've done the activity.</p></div>
+    <div class="fm-tile s2"><h3>Someday ideas</h3>${H.ideas.length ? `<ul class="fm-acts">${H.ideas.map((a) => actRow(a, C, "idea")).join("")}</ul>` : empty("Things you'd like to do without a date yet. Choose “Someday” when you add one.")}</div>
+    <div class="fm-tile s2"><div class="fm-rowsplit"><h3>Done</h3><span class="sub"><b>${H.doneMonth}</b> this month</span></div>
+      ${H.done.length ? `<ul class="fm-acts">${H.done.slice(0, 10).map((a) => actRow(a, C, "done")).join("")}</ul>` : empty("Tick an activity once you've done it and it shows here.")}</div>
   </div>`;
+}
+// Reads the add form: what, which day (chip or picked date), time, place.
+function readAct(root, today) {
+  const box = root.querySelector("#actadd"), v = (n) => box.querySelector(`[name=${n}]`)?.value?.trim() || "";
+  const k = box.querySelector("[data-act=actday][aria-pressed=true]")?.dataset.k || "sat";
+  const date = k === "someday" ? null : k === "pick" ? v("adate") || null : dayChoices(today).find((c) => c[0] === k)[2];
+  return { what: v("awhat"), date, time: date ? v("atime") : "", where: v("awhere"), pickedNoDate: k === "pick" && !v("adate") };
 }
 
 /* ── events ──────────────────────────────────────────────── */
@@ -786,8 +838,7 @@ function wire(root, D, C) {
   root.addEventListener("change", async (e) => {
     const t = e.target;
     if (t.dataset.nutnote) { const date = t.dataset.nutnote, note = t.value.trim(); await save("nutrition", (n) => { const meals = { ...(n.meals || {}) }, m = { ...(meals[date] || {}) }; if (note) m.note = note; else delete m.note; meals[date] = m; return { ...n, meals }; }, "meal note"); return; }
-    if (t.dataset.act === "todo" && t.checked) await save("home", (h) => ({ ...h, todos: h.todos.map((x) => (x.id === t.dataset.id ? { ...x, done: true, doneAt: todayISO() } : x)) }), "to-do done");
-    else if (t.dataset.act === "picksource") {
+    if (t.dataset.act === "picksource") {
       const src = (F.pick?.sources || []).find((x) => x.id === t.value); if (!src) return;
       const b = t.closest(".fm-share"), keep = (k) => b.querySelector(`[data-g=${k}]`)?.value || "";
       const kind = { book: "book", podcast: "podcast", article: "article", youtube: "video", video: "video", course: "video" }[src.type] || "book";
@@ -1008,10 +1059,22 @@ function wire(root, D, C) {
       return save("growth", (gr) => ({ ...gr, items: gr.items.map((x) => (x.id === t.dataset.id ? { ...x, status: "discussed", discussedAt: today, ...(takeaway ? { takeaway } : {}) } : x)) }), "talked about an idea");
     }
     // ── home
-    if (act === "addtodo") { const text = val(box, "text"); if (!text) return; return save("home", (h) => ({ ...h, todos: [...(h.todos || []), { id: newId(), text, who: val(box, "who") || "both", ...(val(box, "due") ? { due: val(box, "due") } : {}), done: false }] }), "to-do"); }
-    if (act === "addchore") { const text = val(box, "text"); if (!text) return; return save("home", (h) => ({ ...h, chores: [...(h.chores || []), { id: newId(), text, who: val(box, "who") || "both", every: val(box, "every") || "weekly" }] }), "chore"); }
-    if (act === "chore") return save("home", (h) => ({ ...h, chores: h.chores.map((c) => (c.id === t.dataset.id ? { ...c, last: today } : c)) }), "chore done");
-    if (act === "addappt") { const what = val(box, "what"), date = val(box, "date"); if (!what || !date) return flash("Add a date and what it is.", true); return save("home", (h) => ({ ...h, appointments: [...(h.appointments || []), { id: newId(), date, ...(val(box, "time") ? { time: val(box, "time") } : {}), what, who: val(box, "who") || "both", done: false }] }), "appointment"); }
-    if (act === "appdone") return save("home", (h) => ({ ...h, appointments: h.appointments.map((a) => (a.id === t.dataset.id ? { ...a, done: true } : a)) }), "appointment done");
+    if (act === "actidea") { const i = root.querySelector("#actadd [name=awhat]"); i.value = t.dataset.v; i.focus(); return; }
+    if (act === "actday") { t.closest("[role=group]").querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(b === t))); root.querySelector("[data-pickdate]").hidden = t.dataset.k !== "pick"; F.actDay = t.dataset.k; return; }
+    if (act === "actadd" || act === "actsave") {
+      const a = readAct(root, today); if (!a.what) return flash("What's the activity?", true); if (a.pickedNoDate) return flash("Pick a date, or choose Someday.", true);
+      const fields = { what: a.what, ...(a.date ? { date: a.date } : {}), ...(a.time ? { time: a.time } : {}), ...(a.where ? { where: a.where } : {}) };
+      if (act === "actsave") { const id = t.dataset.id; F.actEdit = null; F.actPick = false; flash("Saved.");
+        return save("home", (h) => ({ ...h, activities: (h.activities || []).map((x) => { if (x.id !== id) return x; const { date, time, where, ...rest } = x; const moved = (date || "") !== (fields.date || "") || (time || "") !== (fields.time || ""); const n = { ...rest, ...fields }; if (moved) delete n.calendarAt; return n; }) }), "family activity changed"); }
+      F.actDay = null; flash(a.date ? `Added for ${dayLabel(a.date)}. Tap “Add to Outlook” to put it on the calendar.` : "Added to someday ideas.");
+      return save("home", (h) => ({ ...h, activities: [...(h.activities || []), { id: newId(), ...fields, status: "planned", by: F.me, added: today }] }), "family activity"); }
+    if (act === "actcal") { const id = t.dataset.id; setTimeout(() => save("home", (h) => ({ ...h, activities: (h.activities || []).map((x) => (x.id === id ? { ...x, calendarAt: new Date().toISOString() } : x)) }), "added to Outlook"), 0); return; }
+    const setAct = (id, fn, msg) => save("home", (h) => ({ ...h, activities: (h.activities || []).map((x) => (x.id === id ? fn(x) : x)) }), msg);
+    if (act === "actdone") { flash("Done. Nice one."); return setAct(t.dataset.id, (x) => ({ ...x, status: "done", doneAt: today }), "family activity done"); }
+    if (act === "actskip") return setAct(t.dataset.id, (x) => ({ ...x, status: "skipped", doneAt: today }), "family activity didn't happen");
+    if (act === "actundo") return setAct(t.dataset.id, (x) => { const { doneAt, ...r } = x; return { ...r, status: "planned" }; }, "family activity back to planned");
+    if (act === "actedit" || act === "actschedule") { F.actEdit = t.dataset.id; F.actPick = act === "actschedule"; draw(); root.ownerDocument.querySelector("#actadd")?.scrollIntoView({ behavior: "smooth" }); return; }
+    if (act === "acteditcancel") { F.actEdit = null; F.actPick = false; return draw(); }
+    if (act === "actdel") { F.actEdit = null; flash("Removed."); return save("home", (h) => ({ ...h, activities: (h.activities || []).filter((x) => x.id !== t.dataset.id) }), "family activity removed"); }
   });
 }

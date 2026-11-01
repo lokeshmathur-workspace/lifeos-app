@@ -170,22 +170,23 @@ export function computeFamily(D, today) {
 
   // ── home ──
   const HM = D.home || {};
-  const every = { daily: 1, weekly: 7, monthly: 30 };
+  const acts = (HM.activities || []).map((a) => ({ ...a, status: a.status || "planned" })), when = (a) => `${a.date || ""}${a.time || ""}`;
   out.home = {
-    todos: (HM.todos || []).filter((t) => !t.done).sort((a, b) => ((a.due || "9999") < (b.due || "9999") ? -1 : 1)),
-    done7: (HM.todos || []).filter((t) => t.done && t.doneAt && daysBetween(t.doneAt, today) <= 7).length,
-    chores: (HM.chores || []).map((c) => { const next = c.last ? addDays(c.last, every[c.every]) : today; return { ...c, next, due: next <= today }; }).sort((a, b) => (a.next < b.next ? -1 : 1)),
-    appointments: (HM.appointments || []).filter((a) => !a.done && a.date >= today).sort((a, b) => (a.date < b.date ? -1 : 1)),
+    upcoming: acts.filter((a) => a.status === "planned" && a.date && a.date >= today).sort((a, b) => (when(a) < when(b) ? -1 : 1)),
+    missed: acts.filter((a) => a.status === "planned" && a.date && a.date < today).sort((a, b) => (when(a) < when(b) ? -1 : 1)),
+    ideas: acts.filter((a) => a.status === "planned" && !a.date),
+    done: acts.filter((a) => a.status !== "planned").sort((a, b) => ((a.date || a.doneAt) < (b.date || b.doneAt) ? 1 : -1)),
+    doneMonth: acts.filter((a) => a.status === "done" && (a.date || a.doneAt || "").slice(0, 7) === today.slice(0, 7)).length,
+    doneWeek: acts.filter((a) => a.status === "done" && (a.date || a.doneAt) >= out.week && (a.date || a.doneAt) <= addDays(out.week, 6)).length,
   };
 
   // ── coming up: the next 14 days across every area ──
   const in14 = (d) => d && d >= today && daysBetween(today, d) <= 14;
   out.comingUp = [
     ...(out.money?.bills || []).filter((b) => in14(b.due)).map((b) => ({ date: b.due, icon: "Bill", text: `${b.name} · $${Math.round(b.amount)}`, area: "money" })),
-    ...out.home.appointments.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "Appointment", text: `${a.what}${a.who && a.who !== "both" ? ` (${name(a.who)})` : ""}`, area: "home" })),
+    ...out.home.upcoming.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "Family", text: a.what, area: "home" })),
     ...out.kids.flatMap((k) => k.appointments.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "Kids", text: `${k.name}: ${a.what}`, area: "kids" }))),
     ...out.us.birthdays.filter((p) => in14(p.next)).map((p) => ({ date: p.next, icon: "Birthday", text: `${p.name}'s birthday`, area: "us" })),
-    ...out.home.todos.filter((t) => t.due && (t.due < today || in14(t.due))).map((t) => ({ date: t.due, icon: t.due < today ? "Overdue" : "To-do", text: t.text, area: "home", overdue: t.due < today })),
   ].sort((a, b) => (a.date < b.date ? -1 : 1));
   return out;
 }

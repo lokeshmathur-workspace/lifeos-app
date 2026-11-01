@@ -23,7 +23,7 @@ export const FILES = {
   recipes: ["recipes.json", { dishes: [], lookups: [] }],
   rel: ["relationships.json", { goals: [], learnings: [], together: [], people: [], appreciation: [] }],
   kids: ["kids.json", {}],
-  home: ["home.json", { todos: [], chores: [], appointments: [] }],
+  home: ["home.json", { activities: [] }],
   growth: ["growth.json", { items: [] }],
 };
 
