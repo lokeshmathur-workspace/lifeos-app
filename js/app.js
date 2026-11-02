@@ -15,7 +15,7 @@ import { taskKey, isOpen, addTasks, setTaskStatus, removeTask, shortDue } from "
 import { openOutlookSync } from "./outlook.js";
 import { renderLearningView } from "./learning/learning.js";
 import { LearningStore } from "./learning/store.js";
-import { loadRoutineConfig, saveRoutineConfig, clearRoutineConfig, setRoutineShare, syncRoutineConfig, publishRoutineConfig } from "./learning/routine.js";
+import { loadRoutineConfig, saveRoutineConfig, clearRoutineConfig, setRoutineShare, syncRoutineConfig, publishRoutineConfig, cleanToken, tokenOk, urlOk } from "./learning/routine.js";
 import { renderNavyaView } from "./navya/navya.js";
 import { NavyaStore, NAVYA_REPO_KEY, DEFAULT_NAVYA_REPO, navyaRepo } from "./navya/store.js";
 import { renderFamilyView } from "./family/family.js";
@@ -360,9 +360,10 @@ function openSettings() {
     boot();
   });
   $("#saveroutine", back)?.addEventListener("click", async (e) => {
-    const url = $("#rurl", back).value.trim();
-    const token = $("#rtoken", back).value.trim() || loadRoutineConfig()?.token || "";
-    if (!url || !token) return;
+    const url = $("#rurl", back).value.trim(), typed = $("#rtoken", back).value.trim();
+    const token = typed ? cleanToken(typed) : loadRoutineConfig()?.token || "";
+    if (!urlOk(url)) return flash("The routine URL should start with https:// (copy it from the routine's API trigger).", true);
+    if (!token || !tokenOk(token)) return flash("That isn't a routine token. Paste only the token: one line, starting sk-ant-, from claude.ai/code/routines.", true);
     e.target.disabled = true; e.target.textContent = "Saving…";
     saveRoutineConfig({ url, token });
     const r = await publishRoutineConfig({ url, token });

@@ -11,6 +11,20 @@ import { GitHubStore } from "../github.js";
 const ROUTINE_CONFIG_KEY = "learning.routine";
 const FIRE_BETA_HEADER = "experimental-cc-routine-2026-04-01";
 
+// A routine token is one unbroken string (today "sk-ant-…"). Anything with spaces or line breaks
+// is pasted text, not a token: a browser can't even send it, and the request fails as if offline.
+export const tokenOk = (t) => typeof t === "string" && /^[\x21-\x7e]{6,400}$/.test(t);
+export const urlOk = (u) => typeof u === "string" && /^https:\/\/[^\s]+$/.test(u);
+// What was pasted into Settings → the token, or null. Pasting a message that contains the token
+// ("Your token: sk-ant-…") still works; pasting anything else doesn't.
+export function cleanToken(raw) {
+  const t = String(raw || "").trim();
+  if (tokenOk(t)) return t;
+  const found = t.match(/sk-ant-[A-Za-z0-9_-]{20,}/g) || [];
+  return found.length === 1 ? found[0] : null;
+}
+const usable = (c) => !!(c && urlOk(c.url) && tokenOk(c.token));
+
 export function loadRoutineConfig() {
   try {
     const raw = localStorage.getItem(ROUTINE_CONFIG_KEY);
@@ -53,7 +67,7 @@ export async function syncRoutineConfig() {
   for (const t of targets) {
     try { const { json, sha } = await t.gh.getFile(t.path); found.push({ t, json, sha }); } catch { /* no access to this repo */ }
   }
-  const best = found.filter((f) => f.json?.url && f.json?.token).sort((a, b) => ((b.json.updatedAt || "") > (a.json.updatedAt || "") ? 1 : -1))[0];
+  const best = found.filter((f) => usable(f.json)).sort((a, b) => ((b.json.updatedAt || "") > (a.json.updatedAt || "") ? 1 : -1))[0];
   const local = loadRoutineConfig();
   if (best) {
     if (!local || local.url !== best.json.url || local.token !== best.json.token) saveRoutineConfig({ url: best.json.url, token: best.json.token });
@@ -63,8 +77,8 @@ export async function syncRoutineConfig() {
     }
     return { url: best.json.url, token: best.json.token };
   }
-  if (local?.url && local?.token && found.length) await publishRoutineConfig(local);
-  return local;
+  if (usable(local) && found.length) await publishRoutineConfig(local);
+  return usable(local) ? local : null;
 }
 
 // Saves (or, with null, removes) the shared copy in every repo this device can reach.
@@ -96,8 +110,10 @@ export class RoutineError extends Error {
 export async function fireRoutine(text) {
   if (shared?.cfg?.kidOnly) throw new RoutineError("Reading runs from a parent's device.", "not_granted");
   let cfg = loadRoutineConfig();
-  if (!cfg?.url || !cfg?.token) cfg = await syncRoutineConfig(); // first use on this device: fetch the shared copy
-  if (!cfg?.url || !cfg?.token) {
+  const bad = cfg?.token && !tokenOk(cfg.token);
+  if (!usable(cfg)) cfg = await syncRoutineConfig(); // first use on this device, or a bad copy here: fetch the shared one
+  if (!usable(cfg)) {
+    if (bad || (cfg?.token && !tokenOk(cfg.token))) throw new RoutineError("The routine token saved in Settings isn't a token: it has spaces or extra text in it. Open ⚙ Settings and paste only the token (one line, starting sk-ant-).", "auth");
     throw new RoutineError("Processing isn't set up yet — add the routine URL and token in Settings.", "not_granted");
   }
   let res;
