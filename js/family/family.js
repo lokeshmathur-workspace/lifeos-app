@@ -629,7 +629,6 @@ function kidTile(D, C, k) {
     <div class="fm-rowsplit"><h3 class="fm-name">${esc(k.name)}</h3><button class="fm-link" data-act="kidfocus" data-f="hopes" data-kid="${k.id}">${hopes.length ? "Change values" : "Choose values"}</button></div>
     ${hopes.length ? `<div class="fm-vchips">${hopes.map((h) => `<span class="fm-vchip on">${esc(h)}</span>`).join("")}</div>` : `<p class="sub">Choose up to 3 values you hope ${esc(k.name)} grows into.</p>`}
     <p class="fm-kidweek"><b class="g">${w.glows.length} glow${w.glows.length === 1 ? "" : "s"}</b> · <b class="r">${w.grows.length} grow${w.grows.length === 1 ? "" : "s"}</b> <span class="sub">this week</span></p>
-    <div class="fm-choice"><button type="button" data-act="kidfocus" data-f="notice" data-kid="${k.id}" data-type="encourage">+ Glow</button><button type="button" data-act="kidfocus" data-f="notice" data-kid="${k.id}" data-type="correct">+ Grow</button></div>
     ${plan ? `<div class="fm-working"><span class="fm-kicker">Working on${plan.workOn.trait ? ` · ${esc(plan.workOn.trait)}` : ""}</span><p>${esc(plan.workOn.plan)}</p></div>` : ""}
     ${w.obs.length ? `<details class="fm-more"><summary>This week's notes (${w.obs.length})</summary><ul class="fm-obs">${w.obs.slice().sort((a, b) => (a.date < b.date ? 1 : -1)).map((o) => obsLine(o, C, o.by === F.me)).join("")}</ul></details>` : ""}
     ${navya}
@@ -639,7 +638,7 @@ function kidTile(D, C, k) {
 function kids(D, C) {
   const named = C.kids.filter((k) => !k.unnamed);
   return `<div class="fm-bento">${kidsNudge(D, C)}
-    <p class="fm-intro">Log a <b>glow</b> when you see a value lived, a <b>grow</b> when something needs work. You talk about them together in Sunday's ${TALK}. Kids' appointments go on Home, tagged with their name.</p>
+    <p class="fm-intro">Log a <b>glow</b> (a value lived) or a <b>grow</b> (something to work on) from <button class="fm-link" data-tab="week">This week</button> → Notice the kids. You talk about them together in Sunday's ${TALK}. Kids' appointments go on Home, tagged with their name.</p>
     ${named.map((k) => kidTile(D, C, k)).join("")}
     ${C.kids.filter((k) => k.unnamed).map((k) => `<div class="fm-tile s2 fam-kid" data-kid="${k.id}"><h3>Your other child</h3><div class="fam-form"><input name="kidname" placeholder="Their name" class="short"><button class="fm-btn sm pri" data-act="namekid">Save name</button></div></div>`).join("")}
   </div>`;
@@ -791,7 +790,8 @@ function growth(D, C) {
   const fed = comp.map((v) => [v, G.filter((g) => g.status === "discussed" && (g.values || []).includes(v)).length, G.filter((g) => g.experiment?.result === "keep" && (g.values || []).includes(v)).length]);
   return `<div class="fm-bento">
     <div class="fm-tile s4"><div class="fm-rowsplit"><div><h3>Grow together</h3><p class="sub">One idea at a time from a book, a podcast or your own thinking. You each reflect, talk about it at ${TALK}, and try something small because of it.</p></div>
-      <div class="fm-btnrow">${F.growthEdit === "new" ? "" : `<button class="fm-btn pri" data-act="newgrowth">Share an idea</button>`}<button class="fm-btn" data-act="growfocus" data-f="year">Our year</button></div></div>
+      <div class="fm-btnrow"><button class="fm-btn" data-act="growfocus" data-f="year">Our year</button></div></div>
+      <p class="sub">Share a learning or idea, and reflect on one, from <button class="fm-link" data-tab="week">This week</button>.</p>
       ${F.growthEdit === "new" ? shareForm(null) : ""}</div>
     ${active.length || past.length ? `<div class="fm-tile s4 fm-exps"><div class="fm-rowsplit"><h3>Experiments we're trying</h3><span class="sub">${active.length} going · ${past.filter((g) => g.experiment.result === "keep").length} kept</span></div>
       ${active.length ? `<ul class="fam-list">${active.map((g) => { const isDue = g.experiment.until <= M.next;
