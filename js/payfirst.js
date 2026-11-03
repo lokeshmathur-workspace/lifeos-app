@@ -11,11 +11,14 @@
 // number of days that merchant charged you (what Monarch can count).
 // Travel counts as kept: business travel is an investment, personal travel an investment in memories.
 // Paycheck contributions (`paystub: true`) always show, with where the figure comes from (`note`,
-// `noteYear`). What goes to the kids (`kind: "kids"`, e.g. Navya's volleyball) is spent with a
-// merchant but is an investment: it sits on the merchants' side in green, outside both totals.
+// `noteYear`); a contribution with `hidden` (the employer match) counts elsewhere (the retirement
+// card) but isn't listed here. What goes to the kids (`kind: "kids"`, e.g. Navya's volleyball) and
+// travel (`kind: "travel"`) is spent with a merchant but on purpose: it sits on the merchants' side,
+// after them, in shades of green, outside both totals ("Spent on purpose").
 
 // Kept rows are grouped by kind, in this order; headings show only when more than one group has money.
-const GROUPS = [["Retirement", ["retirement"]], ["Savings & investing", ["short", "save", "invest"]], ["Paying down debt", ["paydown"]], ["Travel", ["travel"]]];
+const GROUPS = [["Retirement", ["retirement"]], ["Savings & investing", ["short", "save", "invest"]], ["Paying down debt", ["paydown"]]];
+const ON_PURPOSE = ["kids", "travel"];
 
 const usd = (n) => (n == null ? "–" : `$${Math.round(n).toLocaleString("en-US")}`);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -26,15 +29,16 @@ export function computePayFirst(p, range) {
   if (!p) return null;
   const k = range === "year" ? "ytd" : "month";
   const all = (p.kept || []).map((x) => ({ ...x, amt: x[k] || 0, note: range === "year" && x.noteYear ? x.noteYear : x.note }));
-  const kept = all.filter((x) => x.kind !== "kids" && (x.amt > 0 || x.paystub)).sort((a, b) => b.amt - a.amt);
+  const kept = all.filter((x) => !x.hidden && !ON_PURPOSE.includes(x.kind) && (x.amt > 0 || x.paystub)).sort((a, b) => b.amt - a.amt);
   const invested = all.filter((x) => x.kind === "kids" && x.amt > 0).sort((a, b) => b.amt - a.amt);
+  const travel = all.filter((x) => x.kind === "travel" && x.amt > 0).sort((a, b) => b.amt - a.amt);
   const taken = (p.taken || []).map((c) => ({ ...c, amt: c[k] || 0,
     merchants: (c.merchants || []).map((m) => ({ ...m, amt: m[k] || 0, count: range === "year" ? m.ytdCount : m.monthCount })).filter((m) => m.amt > 0).sort((a, b) => b.amt - a.amt) }))
     .filter((c) => c.amt > 0).sort((a, b) => b.amt - a.amt);
   const keptTotal = sum(kept, "amt"), takenTotal = sum(taken, "amt"), earned = sum((p.earned || []).map((x) => ({ amt: x[k] || 0 })), "amt");
   // a category whose merchants aren't known yet stands in for them
   const top = taken.flatMap((c) => (c.merchants.length ? c.merchants : [{ name: c.category, amt: c.amt }]).map((m) => ({ ...m, category: c.category }))).sort((a, b) => b.amt - a.amt);
-  return { range, keptTotal, takenTotal, earned, kept, taken, invested, investedTotal: sum(invested, "amt"), top3: top.slice(0, 3), top3Total: sum(top.slice(0, 3), "amt"),
+  return { range, keptTotal, takenTotal, earned, kept, taken, invested, investedTotal: sum(invested, "amt"), travel, onPurposeTotal: sum(invested, "amt") + sum(travel, "amt"), top3: top.slice(0, 3), top3Total: sum(top.slice(0, 3), "amt"),
     keptShare: keptTotal + takenTotal ? keptTotal / (keptTotal + takenTotal) : 0,
     merchantCount: new Set(top.map((m) => m.name)).size };
 }
@@ -66,13 +70,16 @@ export function payFirstHTML(p, range, w) {
     ${r.earned ? `<p class="pyf-earned">${esc(w.earnedLabel || "Earned")}${range !== "year" && mName ? ` (${mName})` : ` ${period}`}: <b>${usd(r.earned)}</b></p>` : ""}
     <div class="pyf-vs">
       <div class="pyf-side kept"><span>${esc(w.kept)}</span><b>${usd(r.keptTotal)}</b></div>
-      <div class="pyf-side taken"><span>${esc(w.taken)}</span><b>${usd(r.takenTotal)}</b>${r.investedTotal ? `<small class="pyf-inv">+ ${usd(r.investedTotal)} invested in ${esc(w.investedIn || "the kids")}</small>` : ""}</div>
+      <div class="pyf-side taken"><span>${esc(w.taken)}</span><b>${usd(r.takenTotal)}</b>${r.onPurposeTotal ? `<small class="pyf-inv">+ ${usd(r.onPurposeTotal)} ${esc((w.onPurpose || "Spent on purpose").toLowerCase())}</small>` : ""}</div>
     </div>
     <div class="pyf-bar" aria-hidden="true"><i style="width:${Math.round(r.keptShare * 100)}%"></i></div>
     <p class="pyf-ratio">${ratioText}</p>
     <div class="pyf-cols">
       <div><h4>${esc(w.keptHead)}</h4><ul class="pyf-kept">${keptRows || `<li class="pyf-more">Nothing yet ${period}.</li>`}</ul></div>
-      <div><h4>${esc(w.takenHead)}</h4>${r.invested.length ? `<div class="pyf-invested"><div class="pyf-invhead"><span>Invested in ${esc(w.investedIn || "the kids")}</span><b>${usd(r.investedTotal)}</b></div><ul>${r.invested.map((x) => `<li><span>${esc(x.label.replace(/^.*·\s*/, "").replace(/^./, (c) => c.toUpperCase()))}</span><b>${usd(x.amt)}</b></li>`).join("")}</ul></div>` : ""}${cats || `<p class="pyf-more">Nothing ${period}.</p>`}</div>
+      <div><h4>${esc(w.takenHead)}</h4>${cats || `<p class="pyf-more">Nothing ${period}.</p>`}
+        ${r.onPurposeTotal ? `<div class="pyf-purpose"><div class="pyf-purposehead"><h4>${esc(w.onPurpose || "Spent on purpose")}</h4><b>${usd(r.onPurposeTotal)}</b></div>
+          ${r.invested.length ? `<div class="pyf-invested g1"><div class="pyf-invhead"><span>Invested in ${esc(w.investedIn || "the kids")}</span><b>${usd(r.investedTotal)}</b></div><ul>${r.invested.map((x) => `<li><span>${esc(x.label.replace(/^.*·\s*/, "").replace(/^./, (c) => c.toUpperCase()))}</span><b>${usd(x.amt)}</b></li>`).join("")}</ul></div>` : ""}
+          ${r.travel.map((x, i) => `<div class="pyf-invested g${2 + (i % 2)}"><div class="pyf-invhead"><span>${esc(x.label)}</span><b>${usd(x.amt)}</b></div>${x.note ? `<small>${esc(x.note)}</small>` : ""}</div>`).join("")}</div>` : ""}</div>
     </div>
     ${r.top3.length ? `<p class="pyf-nudge"><b>${r.top3.map((m) => esc(m.name)).join(", ").replace(/, ([^,]*)$/, " and $1")}</b> took ${usd(r.top3Total)} ${period}. ${esc(w.payday)} ${range === "year" ? `That's ${usd(r.top3Total)} that could be in ${esc(w.into)}.` : `At that pace that's ${usd(r.top3Total * 12)} a year that could go into ${esc(w.into)}.`}</p>` : ""}
   </div>`;

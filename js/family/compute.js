@@ -58,7 +58,7 @@ export function payFirstData(m, pf, today) {
     const src = inMonth.length ? `${inMonth.length > 1 ? "paystubs" : "paystub"} ${inMonth.map((x) => md(x.date)).join(" & ")}`
       : lastStub ? `${paydays(c, monthStart, monthEnd).length} paychecks at the ${md(lastStub.date)} paystub's amount` : "per paycheck";
     const srcYear = lastStub ? `year to date on the ${md(lastStub.date)} paystub${paydays(c, addDays(lastStub.date, 1), monthEnd).length ? `, plus ${paydays(c, addDays(lastStub.date, 1), monthEnd).length} paychecks since` : ""}` : "per paycheck";
-    return { label: c.label, kind: c.kind || "retirement", paystub: true, note: [c.note, src].filter(Boolean).join(" · "), noteYear: [c.note, srcYear].filter(Boolean).join(" · "), month: r0(Math.max(0, ytd - before)), ytd: r0(ytd) };
+    return { label: c.label, kind: c.kind || "retirement", paystub: true, ...(c.inPayFirst === false ? { hidden: true } : {}), note: [c.note, src].filter(Boolean).join(" · "), noteYear: [c.note, srcYear].filter(Boolean).join(" · "), month: r0(Math.max(0, ytd - before)), ytd: r0(ytd) };
   });
   const paydown = (m.creditLines || []).map((cl) => {
     const net = (mo) => (mo.paid || 0) - (mo.drawn || 0);

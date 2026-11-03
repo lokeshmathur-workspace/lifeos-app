@@ -1337,6 +1337,16 @@ span.fm-vchip{display:inline-block}
 @media (max-width:560px){.fm-oneoff{grid-template-columns:minmax(0,1fr) auto}.fm-oneoff .fm-choice{grid-column:1/-1}}
 .fm-leftout{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
 .fm-loan{align-items:flex-start}.fm-loan>span:first-child{display:flex;flex-direction:column;gap:2px}
+
+/* Pay yourselves first: "Spent on purpose" — after the merchants, three greens */
+.pyf-purpose{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+.pyf-purposehead{display:flex;justify-content:space-between;align-items:baseline;gap:10px;color:var(--good)}
+.pyf-purposehead h4{margin:0;color:var(--good)}.pyf-purposehead b{font-variant-numeric:tabular-nums}
+.pyf-invested{--g:var(--good);margin:0!important;border:1px solid color-mix(in srgb,var(--g) 45%,transparent);background:color-mix(in srgb,var(--g) 14%,transparent);border-left:4px solid var(--g)}
+.pyf-invested.g2{--g:color-mix(in srgb,var(--good) 45%,#1E9EB0)}
+.pyf-invested.g3{--g:color-mix(in srgb,var(--good) 50%,#9AAE2E)}
+.pyf-invested .pyf-invhead,.pyf-invested li b{color:var(--g)}
+.pyf-invested small{display:block;margin-top:2px;font-size:12px;color:var(--pmut,var(--muted))}
 </style>
 </head>
 <body>
