@@ -1329,6 +1329,14 @@ span.fm-vchip{display:inline-block}
 .pyf-invested ul{margin:6px 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px}
 .pyf-invested li{display:flex;justify-content:space-between;gap:10px;font-size:14px;color:var(--ink)}
 .pyf-invested li b{color:var(--good);font-variant-numeric:tabular-nums}
+
+/* Money: one-offs, statement loans */
+.fm-oneoff{display:grid!important;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center}
+.fm-oneoff.pending{background:var(--warn-soft);border-radius:8px;padding:8px 10px!important}
+.fm-oneoff .fm-choice button{flex:0 0 auto;padding:6px 12px}
+@media (max-width:560px){.fm-oneoff{grid-template-columns:minmax(0,1fr) auto}.fm-oneoff .fm-choice{grid-column:1/-1}}
+.fm-leftout{display:block;font-size:11.5px;color:var(--muted);font-weight:400}
+.fm-loan{align-items:flex-start}.fm-loan>span:first-child{display:flex;flex-direction:column;gap:2px}
 </style>
 </head>
 <body>

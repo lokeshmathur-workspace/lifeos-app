@@ -78,8 +78,15 @@ export function computeFamily(D, today) {
   // ── money ──
   const m = D.money;
   if (m) {
-    const full = (m.cashflow || []).filter((c) => c.month < m.month);
-    const cur = (m.cashflow || []).find((c) => c.month === m.month) || null;
+    // One-off income or spending (a stock sale, a one-time payout) skews the picture: it stays out of
+    // income, spending and savings unless the parents chose to include it (config finance.oneOffs).
+    const FC = D.config?.finance || {}, oneDec = FC.oneOffs || {};
+    const oneOffs = (m.cashflow || []).flatMap((c) => (c.oneOffs || []).map((o) => ({ ...o, month: c.month, decision: oneDec[o.id] || null })));
+    const left = (c, kind) => (c.oneOffs || []).filter((o) => o.kind === kind && oneDec[o.id] !== "include").reduce((s, o) => s + (o.amount || 0), 0);
+    const cashflow = (m.cashflow || []).map((c) => { const inc = left(c, "income"), exp = left(c, "expense");
+      if (!inc && !exp) return c; const income = c.income - inc, spending = c.spending - exp; return { ...c, income, spending, savings: income - spending, leftOut: { income: inc, spending: exp } }; });
+    const full = cashflow.filter((c) => c.month < m.month);
+    const cur = cashflow.find((c) => c.month === m.month) || null;
     const el = m.thisMonth?.daysElapsed || null, dim = m.thisMonth?.daysInMonth || null;
     const pace = (v) => (v != null && el && dim ? (v / el) * dim : null);
     const budgeted = (m.budgets || []).filter((b) => b.budget);
@@ -100,7 +107,25 @@ export function computeFamily(D, today) {
       return { ...g, left, pct: g.kind === "debt" ? null : g.target ? r0((g.current / g.target) * 100) : null, months, monthsFaster };
     });
     const in30 = (d) => d >= today && daysBetween(today, d) <= 30;
-    const bills = (m.bills || []).filter((b) => in30(b.due)).sort((a, b) => (a.due < b.due ? -1 : 1));
+    // Loans with figures from their own statements (config finance.loans, e.g. the mortgage) replace
+    // Monarch's stale numbers: their payments go in Bills, their balance and term in Debt.
+    const loans = (FC.loans || []).map((l) => {
+      const pay = l.payment || {}, every = pay.every === "biweekly" ? 14 : null;
+      const dues = [];
+      if (pay.amount && every && pay.anchor) { let d = pay.anchor; while (d < today) d = addDays(d, every); for (; in30(d); d = addDays(d, every)) dues.push(d); }
+      else if (pay.amount && pay.day) for (const d of [today.slice(0, 8) + String(pay.day).padStart(2, "0"), addDays(today.slice(0, 8) + "01", 32).slice(0, 8) + String(pay.day).padStart(2, "0")]) if (in30(d)) dues.push(d);
+      const perMonth = pay.amount && every ? r0((pay.amount * 26) / 12) : l.monthlyDue ? r0(l.monthlyDue) : null; // 26 payments a year
+      return { ...l, dues, perMonth };
+    });
+    const isLoanBill = (b) => loans.some((l) => (l.match || [l.name]).some((x) => (b.name || "").toLowerCase().includes(x.toLowerCase())));
+    const clCfg = FC.creditLines || [];
+    const bills = [...(m.bills || []).filter((b) => in30(b.due) && !isLoanBill(b)),
+      ...loans.flatMap((l) => l.dues.map((due) => ({ name: l.name, amount: l.payment.amount, due, note: l.payment.every === "biweekly" ? "every 2 weeks" : "" }))),
+      ...clCfg.filter((c) => c.statement?.bankDue && in30(c.statement.bankDueDate)).map((c) => ({ name: (m.creditLines || []).find((x) => x.account === c.account)?.name || c.name, amount: c.statement.bankDue, due: c.statement.bankDueDate, note: `bank's minimum · your plan is ${c.minimum ? `$${c.minimum}` : "more"}` }))]
+      .sort((a, b) => (a.due < b.due ? -1 : 1));
+    const loanFor = (d) => loans.find((l) => l.name === d.name || (l.match || []).some((x) => (d.name || "").toLowerCase().includes(x.toLowerCase())));
+    const debtsIn = (m.debts || []).map((d) => { const l = loanFor(d); return l ? { name: l.name, kind: l.kind || d.kind, balance: l.balance, apr: l.apr, monthlyPayment: l.monthlyDue, monthsLeft: l.monthsLeft, payoff: l.payoff, perMonth: l.perMonth, payment: l.payment, split: l.split, asOf: l.asOf, fromStatement: true } : d; });
+    for (const l of loans) if (!debtsIn.some((d) => d.name === l.name)) debtsIn.push({ name: l.name, kind: l.kind, balance: l.balance, apr: l.apr, monthlyPayment: l.monthlyDue, monthsLeft: l.monthsLeft, payoff: l.payoff, perMonth: l.perMonth, payment: l.payment, split: l.split, asOf: l.asOf, fromStatement: true });
     out.money = {
       asOf: m.asOf, month: m.month, stale: m.asOf ? daysBetween(m.asOf.slice(0, 10), today) > 7 : true,
       // no month-end projection for the total or budgets: big one-off payments (tuition, club fees, the
@@ -109,19 +134,21 @@ export function computeFamily(D, today) {
       daysElapsed: el, daysInMonth: dim,
       lastMonth: full.at(-1) || null, avg3Spending: r0(avg(full.slice(-3).map((c) => c.spending))), last3: full.slice(-3).map((c) => ({ month: c.month, spending: c.spending })),
       savingsRate: r1(rate(full.at(-1))), savingsRate3: r1(avg(full.slice(-3).map(rate).filter((x) => x != null))),
-      months: full.slice(-6).map((c) => ({ ...c, rate: r1(rate(c)) })),
+      months: full.slice(-6).map((c) => ({ ...c, rate: r1(rate(c)) })), oneOffs, oneOffsPending: oneOffs.filter((o) => !o.decision),
       overBudget: (m.budgets || []).filter((b) => b.budget && b.spent > b.budget).sort((a, b) => b.spent - b.budget - (a.spent - a.budget)),
       watch, overWatch: r0(overWatch), goals, bills, bills14: bills.filter((b) => daysBetween(today, b.due) <= 14).reduce((s, b) => s + (b.amount || 0), 0),
       // short-term debt = cards, loans and credit lines (the HELOC); a mortgage is long-term, shown on its own
-      debts: (m.debts || []).map((d) => ({ ...d, longTerm: d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""), months: d.monthlyPayment ? Math.ceil(d.balance / d.monthlyPayment) : null })),
-      shortTermTotal: (m.debts || []).filter((d) => !(d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""))).reduce((s, d) => s + (d.balance || 0), 0) + (m.creditLines || []).reduce((s, c) => s + (c.balance || 0), 0),
-      debtTotal: (m.debts || []).reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [], payYourself: payFirstData(m, D.config?.finance?.payFirst, today), navyaMoney: m.navyaMoney || null,
+      debts: debtsIn.map((d) => ({ ...d, longTerm: d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""), months: d.monthsLeft ?? (d.monthlyPayment ? Math.ceil(d.balance / d.monthlyPayment) : null) })),
+      shortTermTotal: debtsIn.filter((d) => !(d.kind ? d.kind === "mortgage" : /mortgage/i.test(d.name || ""))).reduce((s, d) => s + (d.balance || 0), 0) + (m.creditLines || []).reduce((s, c) => s + (c.balance || 0), 0),
+      debtTotal: debtsIn.reduce((s, d) => s + (d.balance || 0), 0), flags: m.flags || [], payYourself: payFirstData(m, D.config?.finance?.payFirst, today), navyaMoney: m.navyaMoney || null,
       // credit lines (the HELOC): short-term debt, never spending — drawn adds to it, paid takes it down
       creditLines: (m.creditLines || []).map((cl) => {
         const months = (cl.months || []).map((x) => ({ ...x, net: (x.drawn || 0) - (x.paid || 0) }));
         const now = months.find((x) => x.month === m.month) || { month: m.month, drawn: 0, paid: 0, interest: 0, net: 0 };
-        const minimum = (D.config?.finance?.creditLines || []).find((c) => c.account === cl.account || c.name === cl.name)?.minimum || null;
-        return { ...cl, minimum, belowMin: minimum != null && cl.balance > 0 && now.paid < minimum, months: months.slice(-6), now, net6: months.slice(-6).reduce((s, x) => s + x.net, 0) };
+        const cc = clCfg.find((c) => c.account === cl.account || c.name === cl.name) || {}, minimum = cc.minimum || null, st = cc.statement || null;
+        // Monarch doesn't report the line's interest; the bank's statement does (rate, this year's interest).
+        const interest = st?.apr ? { apr: st.apr, perMonth: r0((cl.balance * st.apr) / 100 / 12), ytd: st.interestYtd ?? null, lastYear: st.interestLastYear ?? null, asOf: st.asOf } : null;
+        return { ...cl, minimum, interest, limit: st?.limit ?? null, payoff: st?.payoff ?? null, bankDue: st?.bankDue ? { amount: st.bankDue, date: st.bankDueDate } : null, noMonthlyInterest: !(cl.months || []).some((x) => x.interest), belowMin: minimum != null && cl.balance > 0 && now.paid < minimum, months: months.slice(-6), now, net6: months.slice(-6).reduce((s, x) => s + x.net, 0) };
       }),
     };
   } else out.money = null;
