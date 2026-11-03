@@ -1351,6 +1351,26 @@ span.fm-vchip{display:inline-block}
 .pyf-side .pyf-usual{display:block;margin-top:4px;font-size:12.5px;color:var(--pmut,var(--muted));font-weight:400}
 .fm-big3.two{margin-top:10px}
 .rt-tip .rt-fam{font-size:12.5px;color:var(--ink-2)}
+
+/* Simplified Us and Kids: Sunday's card and walk-through, foundations, kid cards */
+.fm-gt .fm-btn.big{font-size:16px;padding:12px 26px;border-radius:10px}
+.fm-gtsteps{margin:12px 0 6px;padding:0;list-style:none;counter-reset:st;display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:8px}
+.fm-gtsteps li{counter-increment:st;display:flex;flex-direction:column;gap:2px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--surface)}
+.fm-gtsteps li b::before{content:counter(st) ". ";color:var(--fam)}
+.fm-walkhead{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.fm-dots{display:flex;gap:6px}.fm-dots i{width:22px;height:6px;border-radius:3px;background:var(--line-2)}.fm-dots i.done{background:var(--fam-soft)}.fm-dots i.now{background:var(--fam)}
+.fm-walk .fm-fbar{position:sticky}
+.fam-list.quotes.big li{font-size:16px;line-height:1.5}
+.fm-issue.big{font-family:"Literata",Georgia,serif;font-size:19px;line-height:1.45}
+.fm-saved{margin:0;padding:12px 14px;list-style:none;background:var(--fam-soft);border-radius:10px;display:flex;flex-direction:column;gap:4px;font-size:15px}
+.fm-found{display:flex;flex-direction:column;gap:6px}
+.fm-mission.sm{font-size:18px;margin:2px 0 4px!important}
+.fm-intro{grid-column:1/-1;margin:0;font-size:14px;color:var(--ink-2);max-width:80ch}
+.fm-kidweek{margin:0;font-size:15px}.fm-kidweek .g{color:var(--good)}.fm-kidweek .r{color:var(--warnc)}
+.fm-kidnavya{margin:0;font-size:13px;color:var(--muted)}
+.fm-for{margin-bottom:-4px}.fm-for button{flex:0 0 auto}
+
+.fm-walk .fm-kidtalk>.fm-rowsplit .fm-name{display:none}.fm-walk .fm-kidtalk>.fm-rowsplit{justify-content:flex-end}
 </style>
 </head>
 <body>

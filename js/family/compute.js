@@ -220,7 +220,7 @@ export function computeFamily(D, today) {
   const in14 = (d) => d && d >= today && daysBetween(today, d) <= 14;
   out.comingUp = [
     ...(out.money?.bills || []).filter((b) => in14(b.due)).map((b) => ({ date: b.due, icon: "Bill", text: `${b.name} · $${Math.round(b.amount)}`, area: "money" })),
-    ...out.home.upcoming.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "Family", text: a.what, area: "home" })),
+    ...out.home.upcoming.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: !a.for || a.for === "family" ? "Family" : a.for === "us" ? "Just us" : name(a.for), text: a.what, area: "home" })),
     ...out.kids.flatMap((k) => k.appointments.filter((a) => in14(a.date)).map((a) => ({ date: a.date, icon: "Kids", text: `${k.name}: ${a.what}`, area: "kids" }))),
     ...out.us.birthdays.filter((p) => in14(p.next)).map((p) => ({ date: p.next, icon: "Birthday", text: `${p.name}'s birthday`, area: "us" })),
   ].sort((a, b) => (a.date < b.date ? -1 : 1));
