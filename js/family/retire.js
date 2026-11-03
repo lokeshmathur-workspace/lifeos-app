@@ -47,7 +47,10 @@ export function retireData(D, today) {
   const extraYearly = target != null && end < target && annuity ? Math.ceil(((target - end) / annuity) / 100) * 100 : 0;
   let laterAge = null;
   if (target != null && end < target) for (let k = 1, b = end; k <= 15; k++) { b = b * (1 + r) + yearly; if (b >= target) { laterAge = rc.retireAge + k; break; } }
-  return { ss, ssOn, ssSaved, ssTotal, bridge, rc, age, n, r, balance, accounts, fromMonarch: !accounts.length && fromMonarch.length > 0, yearly, target, pts, end, neededNow,
+  // the rest of the family's ages along the timeline (shown on hover): the other parent, then the kids
+  const family = [...(rc.people || []).slice(1).filter((p) => p.birthYear).map((p) => [p.name, p.birthYear]),
+    ...(D.config?.kids || []).filter((k) => k.name && k.birthYear).map((k) => [k.name, k.birthYear])];
+  return { ss, ssOn, ssSaved, ssTotal, bridge, rc, age, n, r, balance, family, accounts, fromMonarch: !accounts.length && fromMonarch.length > 0, yearly, target, pts, end, neededNow,
     monthlyNow: balance != null ? (balance * 0.04) / 12 : null, monthlyAt: (end * 0.04) / 12, extraYearly, laterAge };
 }
 
@@ -62,7 +65,7 @@ function chart(R) {
   const line = (k) => pts.map((p, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(p[k]).toFixed(1)}`).join("");
   const everyN = Math.max(1, Math.ceil(pts.length / (narrow ? 4 : 7)));
   const last = pts.length - 1, ahead = R.neededNow != null && R.balance >= R.neededNow;
-  return `<figure class="rt-chart" data-pts='${esc(JSON.stringify(pts.map((p) => [p.age, p.year, Math.round(p.projected), p.needed != null ? Math.round(p.needed) : null])))}'>
+  return `<figure class="rt-chart" data-pts='${esc(JSON.stringify(pts.map((p) => [p.age, p.year, Math.round(p.projected), p.needed != null ? Math.round(p.needed) : null])))}' data-family='${esc(JSON.stringify(R.family || []))}'>
     <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Projected retirement savings against the path to the goal, by age">
       ${ticks.map((v) => `<line class="grid" x1="${L}" x2="${W - Rt}" y1="${y(v)}" y2="${y(v)}"/><text class="ax" x="${L - 8}" y="${y(v) + 4}" text-anchor="end">${big(v)}</text>`).join("")}
       ${pts.map((p, i) => (i % everyN === 0 || i === last ? `<text class="ax" x="${x(i)}" y="${H - 8}" text-anchor="middle">${p.age}</text>` : "")).join("")}
@@ -119,14 +122,14 @@ export function retireHTML(R) {
 // Hover: the year under the pointer, with both values.
 export function wireRetire(root) {
   const fig = root.querySelector(".rt-chart"); if (!fig) return;
-  const pts = JSON.parse(fig.dataset.pts), svg = fig.querySelector("svg"), hair = svg.querySelector(".hair"), tip = fig.querySelector(".rt-tip"), hit = svg.querySelector(".hit");
+  const pts = JSON.parse(fig.dataset.pts), fam = JSON.parse(fig.dataset.family || "[]"), svg = fig.querySelector("svg"), hair = svg.querySelector(".hair"), tip = fig.querySelector(".rt-tip"), hit = svg.querySelector(".hit");
   const L = +hit.getAttribute("x"), Wd = +hit.getAttribute("width");
   const show = (e) => {
     const box = svg.getBoundingClientRect(), vx = ((e.clientX - box.left) / box.width) * svg.viewBox.baseVal.width;
     const i = Math.max(0, Math.min(pts.length - 1, Math.round(((vx - L) / Wd) * (pts.length - 1)))), [age, yr, proj, need] = pts[i];
     const sx = L + (pts.length > 1 ? (i / (pts.length - 1)) * Wd : 0);
     hair.setAttribute("x1", sx); hair.setAttribute("x2", sx); hair.setAttribute("visibility", "visible");
-    tip.hidden = false; tip.innerHTML = `<b>Age ${age} · ${yr}</b><span><i class="k proj"></i>Projected ${usd(proj)}</span>${need != null ? `<span><i class="k need"></i>On track ${usd(need)}</span>` : ""}<span class="sub">${usd((proj * 0.04) / 12)} a month by the 4% rule</span>`;
+    tip.hidden = false; tip.innerHTML = `<b>Age ${age} · ${yr}</b>${fam.length ? `<span class="rt-fam">${fam.map(([nm, by]) => `${esc(nm)} ${yr - by}`).join(" · ")}</span>` : ""}<span><i class="k proj"></i>Projected ${usd(proj)}</span>${need != null ? `<span><i class="k need"></i>On track ${usd(need)}</span>` : ""}<span class="sub">${usd((proj * 0.04) / 12)} a month by the 4% rule</span>`;
     const px = (sx / svg.viewBox.baseVal.width) * box.width; tip.style.left = `${Math.min(Math.max(px - 90, 0), box.width - 180)}px`;
   };
   hit.addEventListener("pointermove", show); hit.addEventListener("pointerdown", show);

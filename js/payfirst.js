@@ -32,13 +32,19 @@ export function computePayFirst(p, range) {
   const kept = all.filter((x) => !x.hidden && !ON_PURPOSE.includes(x.kind) && (x.amt > 0 || x.paystub)).sort((a, b) => b.amt - a.amt);
   const invested = all.filter((x) => x.kind === "kids" && x.amt > 0).sort((a, b) => b.amt - a.amt);
   const travel = all.filter((x) => x.kind === "travel" && x.amt > 0).sort((a, b) => b.amt - a.amt);
-  const taken = (p.taken || []).map((c) => ({ ...c, amt: c[k] || 0,
+  // A usual month: each category's last 3 full months (`last3: [{month, amount}]`), shown on "This month".
+  const usual3 = (c) => (c.last3?.length ? c.last3.reduce((s, x) => s + (x.amount || 0), 0) / c.last3.length : null);
+  const taken = (p.taken || []).map((c) => ({ ...c, amt: c[k] || 0, usual: range === "year" ? null : usual3(c),
     merchants: (c.merchants || []).map((m) => ({ ...m, amt: m[k] || 0, count: range === "year" ? m.ytdCount : m.monthCount })).filter((m) => m.amt > 0).sort((a, b) => b.amt - a.amt) }))
-    .filter((c) => c.amt > 0).sort((a, b) => b.amt - a.amt);
+    .filter((c) => c.amt > 0 || c.usual > 0).sort((a, b) => b.amt - a.amt || (b.usual || 0) - (a.usual || 0));
+  // the usual month for everything merchants took, and the months it's made of
+  const months = range === "year" ? [] : [...new Set((p.taken || []).flatMap((c) => (c.last3 || []).map((x) => x.month)))].sort();
+  const monthTotals = months.map((mo) => ({ month: mo, amount: (p.taken || []).reduce((s, c) => s + ((c.last3 || []).find((x) => x.month === mo)?.amount || 0), 0) }));
+  const takenUsual = monthTotals.length ? monthTotals.reduce((s, x) => s + x.amount, 0) / monthTotals.length : null;
   const keptTotal = sum(kept, "amt"), takenTotal = sum(taken, "amt"), earned = sum((p.earned || []).map((x) => ({ amt: x[k] || 0 })), "amt");
   // a category whose merchants aren't known yet stands in for them
   const top = taken.flatMap((c) => (c.merchants.length ? c.merchants : [{ name: c.category, amt: c.amt }]).map((m) => ({ ...m, category: c.category }))).sort((a, b) => b.amt - a.amt);
-  return { range, keptTotal, takenTotal, earned, kept, taken, invested, investedTotal: sum(invested, "amt"), travel, onPurposeTotal: sum(invested, "amt") + sum(travel, "amt"), top3: top.slice(0, 3), top3Total: sum(top.slice(0, 3), "amt"),
+  return { range, keptTotal, takenTotal, earned, kept, taken, takenUsual, monthTotals, invested, investedTotal: sum(invested, "amt"), travel, onPurposeTotal: sum(invested, "amt") + sum(travel, "amt"), top3: top.slice(0, 3), top3Total: sum(top.slice(0, 3), "amt"),
     keptShare: keptTotal + takenTotal ? keptTotal / (keptTotal + takenTotal) : 0,
     merchantCount: new Set(top.map((m) => m.name)).size };
 }
@@ -61,7 +67,7 @@ export function payFirstHTML(p, range, w) {
   const keptRows = groups.length > 1
     ? groups.map(([h, xs]) => `<li class="pyf-group"><span>${esc(h)}</span><span>${xs.length > 1 ? usd(sum(xs, "amt")) : ""}</span></li>${xs.map(row).join("")}`).join("")
     : r.kept.map(row).join("");
-  const cats = r.taken.map((c) => !c.merchants.length ? `<div class="pyf-cat"><div class="pyf-sum"><span class="pyf-catname">${esc(c.category)}</span><b>${usd(c.amt)}</b>${c.note ? `<span class="pyf-catwho">${esc(c.note)}</span>` : ""}</div></div>` : `<details class="pyf-cat"><summary><span class="pyf-catname">${esc(c.category)}</span><span class="pyf-catwho">${c.merchants.length} ${c.merchants.length === 1 ? takers.replace(/s$/, "") : takers} took</span><b>${usd(c.amt)}</b></summary>
+  const cats = r.taken.map((c) => !c.merchants.length ? `<div class="pyf-cat"><div class="pyf-sum"><span class="pyf-catname">${esc(c.category)}</span><b>${usd(c.amt)}</b>${c.note || c.usual != null ? `<span class="pyf-catwho">${[c.note, c.usual != null ? `usual ${usd(c.usual)}` : ""].filter(Boolean).map(esc).join(" · ")}</span>` : ""}</div></div>` : `<details class="pyf-cat"><summary><span class="pyf-catname">${esc(c.category)}</span><span class="pyf-catwho">${c.merchants.length ? `${c.merchants.length} ${c.merchants.length === 1 ? takers.replace(/s$/, "") : takers} took` : "nothing yet"}${c.usual != null ? ` · usual ${usd(c.usual)}` : ""}</span><b>${usd(c.amt)}</b></summary>
       <ul class="pyf-merch">${c.merchants.slice(0, 8).map((m) => `<li><span><b>${esc(m.name)}</b> took ${usd(m.amt)}</span><span class="pyf-n">${m.count ? `on ${m.count} day${m.count === 1 ? "" : "s"}` : ""}</span></li>`).join("")}
       ${c.merchants.length > 8 ? `<li class="pyf-more">and ${c.merchants.length - 8} more took ${usd(sum(c.merchants.slice(8), "amt"))}</li>` : ""}</ul></details>`).join("");
   return `<div class="pyf">
@@ -70,7 +76,7 @@ export function payFirstHTML(p, range, w) {
     ${r.earned ? `<p class="pyf-earned">${esc(w.earnedLabel || "Earned")}${range !== "year" && mName ? ` (${mName})` : ` ${period}`}: <b>${usd(r.earned)}</b></p>` : ""}
     <div class="pyf-vs">
       <div class="pyf-side kept"><span>${esc(w.kept)}</span><b>${usd(r.keptTotal)}</b></div>
-      <div class="pyf-side taken"><span>${esc(w.taken)}</span><b>${usd(r.takenTotal)}</b>${r.onPurposeTotal ? `<small class="pyf-inv">+ ${usd(r.onPurposeTotal)} ${esc((w.onPurpose || "Spent on purpose").toLowerCase())}</small>` : ""}</div>
+      <div class="pyf-side taken"><span>${esc(w.taken)}</span><b>${usd(r.takenTotal)}</b>${r.takenUsual != null ? `<small class="pyf-usual">a usual month ${usd(r.takenUsual)} · ${r.monthTotals.map((x) => `${new Date(x.month + "-15T12:00:00").toLocaleDateString("en-US", { month: "short" })} ${usd(x.amount)}`).join(" · ")}</small>` : ""}${r.onPurposeTotal ? `<small class="pyf-inv">+ ${usd(r.onPurposeTotal)} ${esc((w.onPurpose || "Spent on purpose").toLowerCase())}</small>` : ""}</div>
     </div>
     <div class="pyf-bar" aria-hidden="true"><i style="width:${Math.round(r.keptShare * 100)}%"></i></div>
     <p class="pyf-ratio">${ratioText}</p>
