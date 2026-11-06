@@ -133,6 +133,7 @@ export function computeFamily(D, today) {
       spent: cur?.spending ?? null, income: cur?.income ?? null, budgetTotal, budgetSpent: budgetTotal ? r0(budgetSpent) : null,
       daysElapsed: el, daysInMonth: dim,
       lastMonth: full.at(-1) || null, avg3Spending: r0(avg(full.slice(-3).map((c) => c.spending))), last3: full.slice(-3).map((c) => ({ month: c.month, spending: c.spending })),
+      avg3Income: r0(avg(full.slice(-3).map((c) => c.income))), last3Income: full.slice(-3).map((c) => ({ month: c.month, income: c.income })), budgetCount: budgeted.length,
       savingsRate: r1(rate(full.at(-1))), savingsRate3: r1(avg(full.slice(-3).map(rate).filter((x) => x != null))),
       months: full.slice(-6).map((c) => ({ ...c, rate: r1(rate(c)) })), oneOffs, oneOffsPending: oneOffs.filter((o) => !o.decision),
       overBudget: (m.budgets || []).filter((b) => b.budget && b.spent > b.budget).sort((a, b) => b.spent - b.budget - (a.spent - a.budget)),
