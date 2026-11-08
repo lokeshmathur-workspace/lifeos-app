@@ -729,7 +729,10 @@ async function uploadStaged(btn) {
 
 async function startRun(kind, id) {
   if (activeRun()) { if (kind === "batch") { ctx.S.navya.batchNote = { id, msg: "Claude is already reading another batch. Try again when it finishes (a few minutes)." }; draw(); } return flash("Claude is already working on something. It'll finish in a few minutes."); }
-  let fired;
+  // For a draft, note the coach file as it is now: the run is done when that file changes. (The
+  // time Claude writes inside it can be rounded, so it can't tell an old draft from a new one.)
+  let fired, base = null;
+  if (kind === "coach") { try { base = (await ctx.store.gh.getFile(`coach/${id}.json`)).sha || null; } catch { /* no file yet */ } }
   try { fired = await fireRoutine(kind === "batch" ? `navya process ${id}` : `navya coach ${id}`); }
   catch (e) {
     if (kind === "batch") {
@@ -740,7 +743,7 @@ async function startRun(kind, id) {
     draw(); return;
   }
   ctx.S.navya.batchNote = null;
-  ls.set(RUN_KEY, { kind, id, firedAt: Date.now(), sessionUrl: fired.sessionUrl });
+  ls.set(RUN_KEY, { kind, id, firedAt: Date.now(), sessionUrl: fired.sessionUrl, ...(kind === "coach" ? { base } : {}) });
   flash(kind === "batch" ? "Reading your screenshots. Usually 2–4 minutes; you can leave this page." : "Drafting this week's coach's read. Usually 2–4 minutes.");
   draw(); startPolling();
 }
@@ -761,7 +764,12 @@ function startPolling() {
     try {
       let done = false;
       if (r.kind === "batch") done = (await ctx.store.getBatch(r.id)).batch?.status === "needs_review";
-      else { const { json } = await ctx.store.gh.getFile(`coach/${r.id}.json`); done = !!json && json.draftedAt && new Date(json.draftedAt).getTime() > r.firedAt - 60000; }
+      else {
+        const { json, sha } = await ctx.store.gh.getFile(`coach/${r.id}.json`);
+        done = !!json && ("base" in r ? !!sha && sha !== r.base
+          // started by an older version of the app: accept a draft dated up to 30 minutes before the start
+          : !!json.draftedAt && new Date(json.draftedAt).getTime() > r.firedAt - 30 * 60000);
+      }
       if (!done) return;
       ls.del(RUN_KEY); clearInterval(pollTimer); pollTimer = null;
       await ctx.store.loadAll();
