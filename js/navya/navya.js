@@ -793,6 +793,10 @@ async function saveBatch(root, btn) {
   await store.recompute();
   flash(`Saved ${R.picked.size} change${R.picked.size === 1 ? "" : "s"}.`);
   N.review = null; N.tab = "hq"; draw();
+  // New numbers in: draft this week's coach's read from them, unless this week's is already
+  // approved (Navya may have seen it) or a draft is on its way. Still needs a parent's approval.
+  const week = sundayOf(todayISO()), co = (data().coach || []).find((c) => c.weekStart === week);
+  if (!ctx.S.kidOnly && co?.status !== "approved" && !activeRun()) await startRun("coach", week);
 }
 
 function readCheckinInputs(root) {
