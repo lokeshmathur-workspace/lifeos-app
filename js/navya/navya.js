@@ -55,6 +55,7 @@ export async function renderNavyaView(store, S, renderApp) {
   }
   draw();
   startPolling();
+  if (!S.kidOnly && !activeRun()) runPendingDraft(); // a queued redraft whose run finished while the app was closed
 }
 
 function data() { return ctx.store.data(); }
@@ -756,7 +757,7 @@ function startPolling() {
   if (pollTimer || !activeRun()) return;
   pollTimer = setInterval(async () => {
     const r = activeRun();
-    if (!r) { clearInterval(pollTimer); pollTimer = null; if (ctx?.S.view === "navya") draw(); return; }
+    if (!r) { clearInterval(pollTimer); pollTimer = null; if (await runPendingDraft()) return; if (ctx?.S.view === "navya") draw(); return; }
     try {
       let done = false;
       if (r.kind === "batch") done = (await ctx.store.getBatch(r.id)).batch?.status === "needs_review";
@@ -764,6 +765,7 @@ function startPolling() {
       if (!done) return;
       ls.del(RUN_KEY); clearInterval(pollTimer); pollTimer = null;
       await ctx.store.loadAll();
+      if (r.kind === "coach" && ls.get(PENDING_KEY, null)) { flash("The draft is in; redrafting it now with the numbers saved since."); await runPendingDraft(); return; }
       flash(r.kind === "batch" ? "Screenshots read. Check & save them with ＋ Add → Screenshots & files." : "This week's coach's read is drafted. Review and approve it on HQ.");
       if (ctx.S.view === "navya") { if (r.kind === "batch") { ctx.S.navya.tab = "snip"; await openReview(r.id); } else draw(); }
     } catch { /* keep polling */ }
@@ -796,7 +798,21 @@ async function saveBatch(root, btn) {
   // New numbers in: draft this week's coach's read from them, unless this week's is already
   // approved (Navya may have seen it) or a draft is on its way. Still needs a parent's approval.
   const week = sundayOf(todayISO()), co = (data().coach || []).find((c) => c.weekStart === week);
-  if (!ctx.S.kidOnly && co?.status !== "approved" && !activeRun()) await startRun("coach", week);
+  if (ctx.S.kidOnly || co?.status === "approved") return;
+  // Something is already running (a draft started by an earlier batch, or a batch being read):
+  // queue one more draft for when it finishes, so this batch's numbers aren't missed.
+  if (activeRun()) { ls.set(PENDING_KEY, week); flash(`Saved ${R.picked.size} change${R.picked.size === 1 ? "" : "s"}. A draft is already on its way; it'll be redrafted with these numbers as soon as it's done.`); return; }
+  await startRun("coach", week);
+}
+// A redraft queued while another run was going: start it once nothing is running, unless that
+// week's read has been approved in the meantime.
+const PENDING_KEY = "navya.coachPending";
+async function runPendingDraft() {
+  const week = ls.get(PENDING_KEY, null);
+  if (!week || activeRun()) return false;
+  ls.del(PENDING_KEY);
+  if ((data().coach || []).find((c) => c.weekStart === week)?.status === "approved") return false;
+  await startRun("coach", week); return true;
 }
 
 function readCheckinInputs(root) {
