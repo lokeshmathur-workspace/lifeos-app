@@ -408,7 +408,7 @@ function gtCard(D, C) {
   return `<div class="fm-tile s4 fm-gt"><div class="fm-rowsplit"><div><span class="fm-kicker">${M.isToday ? "Today" : `${M.day}, ${fmtD(M.next)}`} · about 30 minutes</span><h3 class="fm-name">${TALK}</h3></div>
       <button class="fm-btn pri big" data-act="walkstart">${M.isToday ? "Start" : "Start early"}</button></div>
     <ol class="fm-gtsteps">${steps.map(([k, t]) => `<li><b>${t}</b><span class="sub">${waiting[k] || ""}</span></li>`).join("")}</ol>
-    <p class="sub">One screen at a time. Add things for it during the week from <b>Your turn</b> on Overview.</p></div>`;
+    <p class="sub">One screen at a time. Add things for it during the week from <button class="fm-link" data-tab="week">This week</button> → Your turn.</p></div>`;
 }
 
 function walk(D, C) {
