@@ -255,7 +255,7 @@ function coachCard(co, kid, run, D) {
   const drafting = run?.kind === "coach";
   if (!co) return `<div class="nv-tile s4 coach"><span class="nv-kicker">🧢 Coach's read</span>
     <h2 class="nv-headline">${kid ? "This week's coach's read is on its way 🧢" : "No coach's read yet."}</h2>
-    ${kid ? "" : drafting ? runLine(run) : `<p class="sub">Claude drafts it from this week's numbers; you edit and approve it before Navya sees it.</p><button class="nv-btn pri" data-act="draftcoach">Draft this week's read</button>`}</div>`;
+    ${kid ? "" : `<p class="sub">Claude drafts it from this week's numbers; you edit and approve it before Navya sees it.</p>${redraftBox(null, drafting)}${drafting ? runLine(run) : ""}`}</div>`;
   const N = ctx.S.navya;
   if (!kid && N.coachEdit) return coachEditor(co);
   const list = (a) => (a || []).map((x) => `<li>${esc(x)}</li>`).join("");
@@ -276,12 +276,26 @@ function coachCard(co, kid, run, D) {
         // a new draft is being written over this one: approving or editing now would be lost or block it
         ? `<span class="sub">A new draft is on its way. Approve or edit it once it's in.</span>`
         : `${co.status === "draft" ? `<button class="nv-btn pri" data-act="approvecoach">Approve for Navya</button>` : ""}
-      <button class="nv-btn" data-act="editcoach">Edit</button>`}
-      ${drafting ? "" : co.weekStart >= sundayOf(todayISO()) && co.status === "approved"
-        // an approved read is never rewritten (Navya may have seen it); the next one is for next week
-        ? `<span class="sub">Next read: week of ${esc(fmtD(addDays(co.weekStart, 7)))}. New uploads before then go into it.</span>`
-        : `<button class="nv-btn" data-act="draftcoach" data-week="${co.weekStart >= sundayOf(todayISO()) ? co.weekStart : sundayOf(todayISO())}">${co.weekStart >= sundayOf(todayISO()) ? "Redraft" : "Draft this week's read"}</button>`}</div>${drafting ? runLine(run) : ""}`}
+      <button class="nv-btn" data-act="editcoach">Edit</button>`}</div>
+      ${redraftBox(co, drafting)}${drafting ? runLine(run) : ""}`}
   </div>`;
+}
+
+// Draft or redraft, any time: with an optional note on what to change ("add a sentence about
+// attendance"). The note goes to Claude with the run and stays on the read as `asks`, so later
+// redrafts of that week (also the ones a batch save starts) keep it. Redrafting an approved read
+// puts it back to a draft; while something is running, the request waits for it to finish.
+function redraftBox(co, drafting) {
+  const sun = sundayOf(todayISO()), thisWeek = co && co.weekStart >= sun, week = thisWeek ? co.weekStart : sun;
+  const reopen = thisWeek && co.status === "approved";
+  const label = !thisWeek ? "Draft this week's read" : "Redraft";
+  const asks = thisWeek ? co.asks || [] : [];
+  return `<details class="nv-redraft"><summary class="nv-btn">✏️ ${label}${asks.length ? ` · ${asks.length} earlier request${asks.length === 1 ? "" : "s"}` : ""}</summary>
+    <label class="nv-fld"><span>What should change? (optional)</span><textarea data-redraftask rows="2" maxlength="300" placeholder="e.g. Add a sentence about school attendance"></textarea></label>
+    ${asks.length ? `<p class="sub">Already asked for, and kept in every redraft this week: ${asks.map((a) => `“${esc(a.text)}”`).join(" · ")}</p>` : ""}
+    ${reopen ? `<p class="sub">This read is approved. Redrafting puts it back to a draft; Navya sees last week's read until you approve the new one.</p>` : ""}
+    <div class="nv-btnrow"><button class="nv-btn${co ? "" : " pri"}" data-act="draftcoach" data-week="${week}"${reopen ? ` data-reopen="1"` : ""}>${drafting ? `${label} after this one` : label}</button></div>
+  </details>`;
 }
 
 const AREAS = { school: ["📚", "School"], phone: ["📱", "Phone"], volleyball: ["🏐", "Volleyball"], health: ["🍎", "Health"], character: ["🌱", "Character"], life: ["✨", "Life"] };
@@ -592,7 +606,12 @@ function wire(root, D, C) {
       if (act === "kid" && !ctx.S.kidOnly) { N.kid = !N.kid; ls.set("navya.kidView", N.kid); if (N.kid && PARENT_ONLY.has(N.tab)) N.tab = "hq"; draw(); }
       else if (act === "pyfrange") { N.pyfRange = t.dataset.range; draw(); }
       else if (act === "reload") { N.loaded = false; renderNavyaView(ctx.store, ctx.S, ctx.renderApp); }
-      else if (act === "draftcoach") await startRun("coach", t.dataset.week || sundayOf(todayISO()));
+      else if (act === "draftcoach") {
+        const week = t.dataset.week || sundayOf(todayISO()), reopen = !!t.dataset.reopen;
+        const ask = (t.closest(".nv-redraft")?.querySelector("[data-redraftask]")?.value || "").replace(/\s+/g, " ").trim().slice(0, 300);
+        if (activeRun()) { queueDraft(week, ask, reopen); flash("Got it. The redraft starts as soon as the current run finishes."); draw(); }
+        else await startRun("coach", week, { ask, reopen });
+      }
       else if (act === "approvecoach") await saveCoach(latestCoach(D), { status: "approved", approvedAt: new Date().toISOString() });
       else if (act === "editcoach") { N.coachEdit = true; draw(); }
       else if (act === "share") { if (N.share?.status !== "making") await startShare(); }
@@ -730,13 +749,14 @@ async function uploadStaged(btn) {
   await startRun("batch", id);
 }
 
-async function startRun(kind, id) {
+async function startRun(kind, id, { ask = "", reopen = false } = {}) {
   if (activeRun()) { if (kind === "batch") { ctx.S.navya.batchNote = { id, msg: "Claude is already reading another batch. Try again when it finishes (a few minutes)." }; draw(); } return flash("Claude is already working on something. It'll finish in a few minutes."); }
   // For a draft, note the coach file as it is now: the run is done when that file changes. (The
   // time Claude writes inside it can be rounded, so it can't tell an old draft from a new one.)
-  let fired, base = null;
-  if (kind === "coach") { try { base = (await ctx.store.gh.getFile(`coach/${id}.json`)).sha || null; } catch { /* no file yet */ } }
-  try { fired = await fireRoutine(kind === "batch" ? `navya process ${id}` : `navya coach ${id}`); }
+  let fired, base = null, baseDrafted = null, baseApproved = null;
+  if (kind === "coach") { try { const f = await ctx.store.gh.getFile(`coach/${id}.json`); base = f.sha || null; baseDrafted = f.json?.draftedAt || null; baseApproved = f.json?.approvedAt || null; } catch { /* no file yet */ } }
+  const text = kind === "batch" ? `navya process ${id}` : `navya coach ${id}${reopen ? " reopen" : ""}${ask ? ` ask: ${ask}` : ""}`;
+  try { fired = await fireRoutine(text); }
   catch (e) {
     if (kind === "batch") {
       ctx.S.navya.batchNote = { id, msg: `Couldn't start reading: ${e.message} The files are saved, so nothing is lost.` };
@@ -746,7 +766,7 @@ async function startRun(kind, id) {
     draw(); return;
   }
   ctx.S.navya.batchNote = null;
-  ls.set(RUN_KEY, { kind, id, firedAt: Date.now(), sessionUrl: fired.sessionUrl, ...(kind === "coach" ? { base } : {}) });
+  ls.set(RUN_KEY, { kind, id, firedAt: Date.now(), sessionUrl: fired.sessionUrl, ...(kind === "coach" ? { base, baseDrafted, baseApproved, reopen } : {}) });
   flash(kind === "batch" ? "Reading your screenshots. Usually 2–4 minutes; you can leave this page." : "Drafting this week's coach's read. Usually 2–4 minutes.");
   draw(); startPolling();
 }
@@ -770,12 +790,16 @@ function startPolling() {
       else {
         const { json, sha } = await ctx.store.gh.getFile(`coach/${r.id}.json`);
         // approved meanwhile (another device): the redraft is dropped, never written over an approved read
-        if (json?.status === "approved" && sha !== r.base) {
-          ls.del(RUN_KEY); ls.del(PENDING_KEY); clearInterval(pollTimer); pollTimer = null; await ctx.store.loadAll();
+        if (json?.status === "approved" && sha !== r.base && (!("baseApproved" in r) || json.approvedAt !== r.baseApproved)) {
+          // a queued redraft the parent asked to reopen the approved read still runs; anything else is dropped
+          const q = ls.get(PENDING_KEY, null); if (!q?.reopen) ls.del(PENDING_KEY);
+          ls.del(RUN_KEY); clearInterval(pollTimer); pollTimer = null; await ctx.store.loadAll();
+          if (q?.reopen && await runPendingDraft()) return;
           flash("This week's read was approved while the redraft was running, so the redraft wasn't applied. New uploads go into next week's read.", true);
           if (ctx.S.view === "navya") draw(); return;
         }
-        done = !!json && ("base" in r ? !!sha && sha !== r.base
+        done = !!json && ("baseDrafted" in r ? json.status === "draft" && !!sha && sha !== r.base && json.draftedAt !== r.baseDrafted
+          : "base" in r ? !!sha && sha !== r.base
           // started by an older version of the app: accept a draft dated up to 30 minutes before the start
           : !!json.draftedAt && new Date(json.draftedAt).getTime() > r.firedAt - 30 * 60000);
       }
@@ -818,18 +842,27 @@ async function saveBatch(root, btn) {
   if (ctx.S.kidOnly || co?.status === "approved") return;
   // Something is already running (a draft started by an earlier batch, or a batch being read):
   // queue one more draft for when it finishes, so this batch's numbers aren't missed.
-  if (activeRun()) { ls.set(PENDING_KEY, week); flash(`Saved ${R.picked.size} change${R.picked.size === 1 ? "" : "s"}. A draft is already on its way; it'll be redrafted with these numbers as soon as it's done.`); return; }
+  if (activeRun()) { queueDraft(week, "", false); flash(`Saved ${R.picked.size} change${R.picked.size === 1 ? "" : "s"}. A draft is already on its way; it'll be redrafted with these numbers as soon as it's done.`); return; }
   await startRun("coach", week);
 }
 // A redraft queued while another run was going: start it once nothing is running, unless that
 // week's read has been approved in the meantime.
 const PENDING_KEY = "navya.coachPending";
+function queueDraft(week, ask, reopen) {
+  let q = ls.get(PENDING_KEY, null);
+  if (typeof q === "string") q = { week: q }; // queued by an older version
+  if (!q || q.week !== week) q = { week, ask: "", reopen: false };
+  if (ask && !(q.ask || "").includes(ask)) q.ask = [q.ask, ask].filter(Boolean).join("; ").slice(0, 500);
+  q.reopen = !!(q.reopen || reopen);
+  ls.set(PENDING_KEY, q);
+}
 async function runPendingDraft() {
-  const week = ls.get(PENDING_KEY, null);
-  if (!week || activeRun()) return false;
+  let q = ls.get(PENDING_KEY, null);
+  if (!q || activeRun()) return false;
+  if (typeof q === "string") q = { week: q };
   ls.del(PENDING_KEY);
-  if ((data().coach || []).find((c) => c.weekStart === week)?.status === "approved") return false;
-  await startRun("coach", week); return true;
+  if (!q.reopen && (data().coach || []).find((c) => c.weekStart === q.week)?.status === "approved") return false;
+  await startRun("coach", q.week, { ask: q.ask || "", reopen: !!q.reopen }); return true;
 }
 
 function readCheckinInputs(root) {
