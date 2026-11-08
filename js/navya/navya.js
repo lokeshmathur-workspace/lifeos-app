@@ -272,8 +272,11 @@ function coachCard(co, kid, run, D) {
       <div class="nv-cols3"><div><h4>🔥 What's working</h4><ul>${list(co.working)}</ul></div>
       <div><h4>🎯 What needs work</h4><ul>${list(co.needsWork)}</ul></div>
       <div><h4>🔗 How it connects</h4><p>${esc(co.connection)}</p></div></div></details>
-    ${kid ? "" : `<div class="nv-btnrow">${co.status === "draft" ? `<button class="nv-btn pri" data-act="approvecoach">Approve for Navya</button>` : ""}
-      <button class="nv-btn" data-act="editcoach">Edit</button>
+    ${kid ? "" : `<div class="nv-btnrow">${drafting && co.status === "draft"
+        // a new draft is being written over this one: approving or editing now would be lost or block it
+        ? `<span class="sub">A new draft is on its way. Approve or edit it once it's in.</span>`
+        : `${co.status === "draft" ? `<button class="nv-btn pri" data-act="approvecoach">Approve for Navya</button>` : ""}
+      <button class="nv-btn" data-act="editcoach">Edit</button>`}
       ${drafting ? "" : co.weekStart >= sundayOf(todayISO()) && co.status === "approved"
         // an approved read is never rewritten (Navya may have seen it); the next one is for next week
         ? `<span class="sub">Next read: week of ${esc(fmtD(addDays(co.weekStart, 7)))}. New uploads before then go into it.</span>`
@@ -766,6 +769,12 @@ function startPolling() {
       if (r.kind === "batch") done = (await ctx.store.getBatch(r.id)).batch?.status === "needs_review";
       else {
         const { json, sha } = await ctx.store.gh.getFile(`coach/${r.id}.json`);
+        // approved meanwhile (another device): the redraft is dropped, never written over an approved read
+        if (json?.status === "approved" && sha !== r.base) {
+          ls.del(RUN_KEY); ls.del(PENDING_KEY); clearInterval(pollTimer); pollTimer = null; await ctx.store.loadAll();
+          flash("This week's read was approved while the redraft was running, so the redraft wasn't applied. New uploads go into next week's read.", true);
+          if (ctx.S.view === "navya") draw(); return;
+        }
         done = !!json && ("base" in r ? !!sha && sha !== r.base
           // started by an older version of the app: accept a draft dated up to 30 minutes before the start
           : !!json.draftedAt && new Date(json.draftedAt).getTime() > r.firedAt - 30 * 60000);
