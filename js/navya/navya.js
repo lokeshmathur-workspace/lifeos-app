@@ -287,14 +287,16 @@ function coachCard(co, kid, run, D) {
 // puts it back to a draft; while something is running, the request waits for it to finish.
 function redraftBox(co, drafting) {
   const sun = sundayOf(todayISO()), thisWeek = co && co.weekStart >= sun, week = thisWeek ? co.weekStart : sun;
-  const reopen = thisWeek && co.status === "approved";
-  const label = !thisWeek ? "Draft this week's read" : "Redraft";
+  const reopen = thisWeek && co.status === "approved", next = reopen ? addDays(co.weekStart, 7) : null;
+  const label = !thisWeek ? "Draft this week's read" : reopen ? "Draft next week's read" : "Redraft";
   const asks = thisWeek ? co.asks || [] : [];
   return `<details class="nv-redraft"><summary class="nv-btn">✏️ ${label}${asks.length ? ` · ${asks.length} earlier request${asks.length === 1 ? "" : "s"}` : ""}</summary>
     <label class="nv-fld"><span>What should change? (optional)</span><textarea data-redraftask rows="2" maxlength="300" placeholder="e.g. Add a sentence about school attendance"></textarea></label>
     ${asks.length ? `<p class="sub">Already asked for, and kept in every redraft this week: ${asks.map((a) => `“${esc(a.text)}”`).join(" · ")}</p>` : ""}
-    ${reopen ? `<p class="sub">This read is approved. Redrafting puts it back to a draft; Navya sees last week's read until you approve the new one.</p>` : ""}
-    <div class="nv-btnrow"><button class="nv-btn${co ? "" : " pri"}" data-act="draftcoach" data-week="${week}"${reopen ? ` data-reopen="1"` : ""}>${drafting ? `${label} after this one` : label}</button></div>
+    ${reopen ? `<p class="sub">This read is approved, so new uploads go into next week's read (week of ${esc(fmtD(next))}), drafted ahead for your next review. Navya keeps seeing this one until you approve that. To change this one instead, Redraft this one: it goes back to a draft, and Navya sees last week's read until you approve it again.</p>` : ""}
+    <div class="nv-btnrow">${reopen
+      ? `<button class="nv-btn pri" data-act="draftcoach" data-week="${next}">${drafting ? "Draft next week's after this one" : `Draft next week's read`}</button><button class="nv-btn" data-act="draftcoach" data-week="${week}" data-reopen="1">${drafting ? "Redraft this one after" : "Redraft this one"}</button>`
+      : `<button class="nv-btn${co ? "" : " pri"}" data-act="draftcoach" data-week="${week}">${drafting ? `${label} after this one` : label}</button>`}</div>
   </details>`;
 }
 
@@ -838,8 +840,12 @@ async function saveBatch(root, btn) {
   N.review = null; N.tab = "hq"; draw();
   // New numbers in: draft this week's coach's read from them, unless this week's is already
   // approved (Navya may have seen it) or a draft is on its way. Still needs a parent's approval.
-  const week = sundayOf(todayISO()), co = (data().coach || []).find((c) => c.weekStart === week);
-  if (ctx.S.kidOnly || co?.status === "approved") return;
+  // this week's read is approved (Navya may have seen it): the new numbers go into next week's,
+  // drafted ahead for the next review; Navya keeps seeing the approved one until that's approved
+  const readOf = (w) => (data().coach || []).find((c) => c.weekStart === w);
+  let week = sundayOf(todayISO());
+  if (readOf(week)?.status === "approved") week = addDays(week, 7);
+  if (ctx.S.kidOnly || readOf(week)?.status === "approved") return;
   // Something is already running (a draft started by an earlier batch, or a batch being read):
   // queue one more draft for when it finishes, so this batch's numbers aren't missed.
   if (activeRun()) { queueDraft(week, "", false); flash(`Saved ${R.picked.size} change${R.picked.size === 1 ? "" : "s"}. A draft is already on its way; it'll be redrafted with these numbers as soon as it's done.`); return; }

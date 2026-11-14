@@ -114,7 +114,10 @@ export function computeNavya(f, today) {
   const L = goals?.limits || { socialMin: 90, socialApps: [], shortFormApps: [], messagingApps: [] };
   const isApp = appIn;
   const rows = [...screentime].sort((a, b) => (a.weekStart < b.weekStart ? -1 : 1)).map((w) => {
-    const d = w.daysCovered || 7, sum = (names) => Object.entries(w.appsMin || {}).reduce((s, [n, m]) => s + (isApp(names, n) ? m : 0), 0);
+    // A week in progress counts only the days up to the snapshot: a Friday snapshot is Sun–Fri (6),
+    // never 7 with an empty Saturday, whatever the read said.
+    const upTo = w.asOf && w.weekStart ? Math.min(7, Math.max(1, daysBetween(w.weekStart, String(w.asOf).slice(0, 10)) + 1)) : 7;
+    const d = Math.min(w.daysCovered || 7, upTo), sum = (names) => Object.entries(w.appsMin || {}).reduce((s, [n, m]) => s + (isApp(names, n) ? m : 0), 0);
     const social = sum(L.socialApps) / d;
     return {
       weekStart: w.weekStart, device: w.device, asOf: w.asOf, daysCovered: d, partial: !!w.partialWeek,
