@@ -22,6 +22,8 @@ import { renderFamilyView } from "./family/family.js";
 import { FamilyStore, FAMILY_REPO_KEY, DEFAULT_FAMILY_REPO, familyRepo } from "./family/store.js";
 import { CareerStore, CAREER_FILES } from "./career/store.js";
 import { renderCareerView, copyCareerForOneNote, addImpactEntry } from "./career/career.js";
+import { careerSuggestions } from "./career/sync.js";
+import { careerPullHtml } from "./career/pull.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -550,6 +552,9 @@ async function planningForm(dateISO, doc, monthDoc, weekDoc) {
   const weekDay = new Map((weekDoc.tasks || []).filter((t) => t.assignedDay).map((t) => [t.id, t.assignedDay]));
   const m = doc.morning || {};
   const challenge = [m.potentialChallenge, m.challengePlan].filter(Boolean).join(" — ");
+  // From your career plan: open actions due in the next 7 days or overdue, not yet tasks.
+  const plan = S.careerStore ? await S.careerStore.loadPlan().catch(() => null) : null;
+  S.todayCareer = plan ? careerSuggestions(plan, { until: addDays(dateISO, 7), taskIds: new Set(master.tasks.map((t) => t.id)), dismissed: new Set() }) : [];
 
   return `
     <section class="blk" style="border-top:0;padding-top:0;margin-top:0">
@@ -565,6 +570,7 @@ async function planningForm(dateISO, doc, monthDoc, weekDoc) {
       <h2>Pick today's tasks</h2>
       ${weekFocusHtml(weekDoc)}
       <div class="todaypin" id="todaypin">${todayPinHtml(master)}</div>
+      ${S.todayCareer.length ? `<div class="pillargroup todaycareer" id="todaycareer">${careerPullHtml(S.todayCareer, dateISO, (a) => `<button type="button" class="pull-today" data-id="${esc(a.id)}">+ Today</button>`)}</div>` : ""}
       ${Object.entries(PILLARS)
         .map(([k, label], i) => categoryListHtml(k, label, master.tasks.filter((t) => t.pillar === k && (isOpen(t) || S.picked.has(t.id))), weekDay, i < 2))
         .join("")}
@@ -916,6 +922,29 @@ function wirePicker(weekDoc) {
     e.target.checked ? S.picked.add(e.target.value) : S.picked.delete(e.target.value);
     refreshCounts();
   });
+  // + Today on a career action: it becomes a master task (the action's id, so its status
+  // flows back to the plan), is ticked for today, and joins its category's list.
+  root.addEventListener("click", async (e) => {
+    const btn = e.target.closest(".pull-today");
+    if (S.view !== "today" || !btn) return;
+    const a = (S.todayCareer || []).find((x) => x.id === btn.dataset.id);
+    if (!a) return;
+    btn.disabled = true;
+    const created = await addTasks(S.store, [{ id: a.id, task: a.title, pillar: a.pillar, due: a.due, source: "career" }], `life-os: today ${S.day}`);
+    if (!created) { btn.disabled = false; return; }
+    const t = created[0];
+    S.picked.add(t.id);
+    S.todayCareer = S.todayCareer.filter((x) => x.id !== a.id);
+    const cat = document.querySelector(`.cat[data-cat="${t.pillar}"]`);
+    if (cat && !cat.querySelector(`.catrow[data-id="${t.id}"]`)) {
+      cat.querySelector(".rows").insertAdjacentHTML("beforeend", catRowHtml(t, pickerWeekDay));
+      cat.open = true;
+    }
+    btn.closest(".item")?.remove();
+    if (!S.todayCareer.length) $("#todaycareer")?.remove();
+    refreshCounts();
+  });
+
   // ✓ on a picker row: the task is already done — mark it so in the master list.
   // Undo stays on the row for a few seconds before it leaves the list.
   root.addEventListener("click", async (e) => {
