@@ -502,6 +502,18 @@ label.fld > span{
 .cr-inline{display:flex;gap:8px}.cr-inline>*{flex:1}
 .cr-log{list-style:none;margin:10px 0 0;padding:0;font-size:13.5px}.cr-log li{padding:7px 0;border-top:1px solid var(--line)}.cr-log .d{color:var(--muted);font-size:12px}
 .cr-radar{font-size:14px;line-height:1.55}.cr-radar h3,.cr-radar h4{margin:12px 0 6px;font-size:14px}.cr-radar ul{padding-left:18px}
+.cr-chip{flex:none;border:1px solid var(--line-2);border-radius:999px;padding:2px 9px;font-size:11px;color:var(--muted);min-width:80px;text-align:center}
+.cr-chip.s-in_progress{border-color:var(--d1);color:var(--d1)}.cr-chip.s-done{border-color:var(--good);background:var(--good-soft);color:var(--ink)}.cr-chip.s-missed{border-color:var(--stop);color:var(--stop)}
+.cr-act .sub{display:block;color:var(--muted);font-size:11.5px;margin-top:1px}
+.cr-q{border:1px solid var(--line);border-radius:var(--r);background:var(--surface);margin-bottom:10px;overflow:hidden}
+.cr-q>summary{cursor:pointer;list-style:none}.cr-q>summary::-webkit-details-marker{display:none}
+.cr-q>summary .nm::before{content:"▸ ";color:var(--muted)}.cr-q[open]>summary .nm::before{content:"▾ "}
+.cr-q:not([open])>summary{border-bottom:0}.cr-qobj{font-weight:400;color:var(--muted);font-size:12.5px;margin-left:6px}
+.cr-late{margin:10px 0 0;font-size:13px;color:var(--stop)}
+.cr-review{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:10px}
+.cr-radar code{font-size:12px;background:var(--sunk);padding:1px 4px;border-radius:4px}.cr-radar li{margin:3px 0}
+.cr-review h3{margin:0 0 8px;font-size:13.5px;display:flex;gap:8px;align-items:baseline}.cr-review h3 .n{font-family:"Manrope",sans-serif;font-size:12px;color:var(--muted)}.cr-review h3 .n.late{color:var(--stop)}
+.cr-review ul{margin:0;padding-left:18px;font-size:13px;line-height:1.5}.cr-review .empty{padding:2px 0;font-size:13px}.cr-review .cr-wide{grid-column:1/-1}
 .cr-run{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--ink-2);margin:6px 0 0}
 .cr-run .pulse{width:9px;height:9px;border-radius:50%;background:var(--accent);animation:crpulse 1.2s infinite}
 @keyframes crpulse{50%{opacity:.35}}

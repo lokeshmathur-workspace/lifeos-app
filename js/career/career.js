@@ -10,6 +10,7 @@ import { setTaskStatus } from "../tasks.js";
 import { fireRoutine, RoutineError } from "../learning/routine.js";
 import { quarterOf, careerSummary, applyOps, describeOp, bumpVersion, isOpenAction, daysBetween } from "./sync.js";
 import { buildSections, copyRichText } from "../export.js";
+import { stepperHtml } from "../steps.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -50,10 +51,20 @@ export async function renderCareerView(careerStore, S, renderApp) {
 
 /* ─── render ─────────────────────────────────────────────── */
 
+// ① Plan — what you're aiming at and what's scheduled (and plan changes to approve)
+// ② How it's going — this quarter's actions, indicators, people, outside profile
+// ③ Review — the week looked back on: done, slipped, wins, people, the coach's notes
 function careerHtml(d, tasks) {
   const today = todayISO(), plan = d.plan, sum = careerSummary(plan, d.proposals, today);
   const taskIds = new Set(tasks.map((t) => t.id));
-  const gate = sum.nextGate;
+  const gate = sum.nextGate, S = ctx.S;
+  const pending = (d.proposals?.proposals || []).filter((p) => p.status === "pending").length;
+  const dow = new Date(today + "T12:00:00Z").getUTCDay(); // 0 Sun … 6 Sat
+  const reviewTime = dow === 0 || dow >= 5;
+  let step = S.careerStep;
+  if (!step) step = pending ? "plan" : reviewTime ? "review" : "progress";
+  S.careerStep = step;
+  const body = step === "plan" ? planStep(d, taskIds, today) : step === "review" ? reviewStep(d, today) : progressStep(d, taskIds, today, sum);
   return `<div class="career">
     <div class="datehead cr-head">
       <div>
@@ -63,16 +74,44 @@ function careerHtml(d, tasks) {
       </div>
       ${gate ? `<div class="cr-gate"><span class="k">Next gate</span><b>${esc(gate.title)}</b><span>${esc(fmt(gate.due))} · ${gate.daysLeft < 0 ? `${-gate.daysLeft} days overdue` : gate.daysLeft === 0 ? "today" : `${gate.daysLeft} day${gate.daysLeft === 1 ? "" : "s"} left`}</span></div>` : ""}
     </div>
-    ${proposalsHtml(d)}
-    ${quarterHtml(plan, taskIds, today, sum)}
-    ${indicatorsHtml(plan)}
-    ${habitsHtml(plan)}
-    ${metricsHtml(d.metrics, today)}
-    ${relationshipsHtml(d.relationships, today)}
-    ${impactHtml(d.impact, today)}
-    ${radarHtml(d.radar)}
-    ${coachHtml()}
+    ${stepperHtml([
+      { key: "plan", label: "Plan", note: pending ? `${pending} to approve` : `v${plan.meta?.planVersion || ""}`, done: false },
+      { key: "progress", label: "How it's going", note: `${sum.done}/${sum.total} done${sum.overdue ? ` · ${sum.overdue} overdue` : ""}`, done: false },
+      { key: "review", label: "Review", note: reviewTime ? "ready" : "", done: false },
+    ], step)}
+    <div class="stepbody">${body}</div>
   </div>`;
+}
+
+function planStep(d, taskIds, today) {
+  return `${proposalsHtml(d)}
+    ${scheduleHtml(d.plan, taskIds, today)}
+    ${indicatorsHtml(d.plan, false)}
+    ${habitsHtml(d.plan)}
+    ${targetsHtml(d.metrics)}`;
+}
+
+function progressStep(d, taskIds, today, sum) {
+  const pct = sum.total ? Math.round((100 * sum.done) / sum.total) : 0;
+  return `<section class="blk" style="border-top:0;padding-top:0;margin-top:0">
+      <div class="progressband">
+        <div class="top"><div><span class="num">${sum.done}</span> <span style="color:var(--muted);font-size:14px">of ${sum.total} action${sum.total === 1 ? "" : "s"} done this quarter</span></div><span class="lbl">${sum.total ? pct + "%" : "—"}</span></div>
+        <div class="track"><div class="seg" style="width:${pct}%;background:var(--good)"></div><div class="seg" style="width:${100 - pct}%;background:var(--sunk)"></div></div>
+        ${sum.overdue ? `<p class="cr-late">${sum.overdue} overdue — give each a new date or a smaller next step.</p>` : ""}
+      </div>
+    </section>
+    ${quarterHtml(d.plan, taskIds, today, sum)}
+    ${indicatorsHtml(d.plan, true)}
+    ${relationshipsHtml(d.relationships, today)}
+    ${metricsHtml(d.metrics, today)}`;
+}
+
+function reviewStep(d, today) {
+  return `${weekReviewHtml(d, today)}
+    ${impactHtml(d.impact, today)}
+    ${coachLogHtml(d.log)}
+    ${coachHtml()}
+    ${radarHtml(d.radar)}`;
 }
 
 function proposalsHtml(d) {
@@ -132,18 +171,40 @@ function quarterHtml(plan, taskIds, today, sum) {
   return `<section class="blk"><h2>This quarter <span class="count">${esc(q?.id || "")}</span><span class="spring"></span><span class="cr-qsum">${sum.done} of ${sum.total} done${sum.overdue ? ` · <b class="late">${sum.overdue} overdue</b>` : ""}</span></h2>
     ${q?.objective ? `<p class="fldnote" style="margin:-6px 0 10px">${esc(q.objective)}</p>` : ""}
     ${byTrack.length ? byTrack.map(({ t, items }) => `<div class="pillargroup"><div class="pillarhead"><span class="nm">${esc(t.name)}</span><span class="prog">${items.filter((a) => a.status === "done").length}/${items.length}</span></div>${items.map((a) => actionRow(a, taskIds, today)).join("")}</div>`).join("") : `<p class="empty">Nothing due this quarter.</p>`}
-    ${groups.length ? `<details class="moredetail"><summary>Later — ${later.length} action${later.length === 1 ? "" : "s"}</summary>
-      ${groups.map((g) => `<div class="pillargroup"><div class="pillarhead"><span class="nm">${esc(g.label)}</span><span class="prog">${esc(g.sub || "")}</span></div>${g.items.map((a) => actionRow(a, taskIds, today)).join("")}</div>`).join("")}
-    </details>` : ""}
+    ${later.length ? `<p class="fldnote">${later.length} more action${later.length === 1 ? "" : "s"} after this quarter — see ① Plan.</p>` : ""}
   </section>`;
 }
 
-function indicatorsHtml(plan) {
+// ① Plan: the whole schedule, quarter by quarter, then by year (status shown, not changed here).
+function scheduleHtml(plan, taskIds, today) {
+  const live = (plan.actions || []).filter((a) => a.status !== "dropped");
+  const byDue = (a, b) => (a.due < b.due ? -1 : a.due > b.due ? 1 : 0);
+  const cur = quarterOf(plan, today);
+  const groups = [];
+  for (const q of plan.quarters || []) {
+    if (q.end < today && !live.some((a) => q.start <= a.due && a.due <= q.end && isOpenAction(a))) continue; // a finished quarter with nothing open
+    const items = live.filter((a) => q.start <= a.due && a.due <= q.end).sort(byDue);
+    if (items.length) groups.push({ label: q.id, sub: q.objective, items, open: q === cur });
+  }
+  const lastEnd = (plan.quarters || []).reduce((m, x) => (x.end > m ? x.end : m), "");
+  for (const y of [...new Set(live.filter((a) => a.due > lastEnd).map((a) => a.due.slice(0, 4)))].sort())
+    groups.push({ label: y, sub: "", items: live.filter((a) => a.due > lastEnd && a.due.startsWith(y)).sort(byDue), open: false });
+  const trackName = Object.fromEntries((plan.tracks || []).map((t) => [t.key, t.name]));
+  const row = (a) => `<div class="cr-act${a.status === "done" ? " done" : ""}${a.gate ? " gate" : ""}" data-id="${esc(a.id)}">
+      <span class="cr-chip s-${esc(a.status)}">${esc(STATUS_WORD[a.status] || a.status)}</span>
+      <span class="tx">${a.gate ? `<b class="gatechip">Gate</b> ` : ""}${esc(a.title)}<span class="sub">${esc(trackName[a.track] || a.track)}${taskIds.has(a.id) ? " · in Life OS" : ""}</span></span>
+      <span class="duechip">${esc(fmt(a.due))}</span></div>`;
+  return `<section class="blk"><h2>The schedule <span class="count">${live.length}</span></h2>
+    ${groups.map((g) => `<details class="cr-q"${g.open ? " open" : ""}><summary class="pillarhead"><span class="nm">${esc(g.label)}${g.sub ? ` <span class="cr-qobj">${esc(g.sub)}</span>` : ""}</span><span class="prog">${g.items.filter((a) => a.status === "done").length}/${g.items.length}</span></summary>${g.items.map(row).join("")}</details>`).join("")}
+  </section>`;
+}
+
+function indicatorsHtml(plan, editable) {
   const list = plan.leadingIndicators || [];
   if (!list.length) return "";
-  return `<section class="blk"><h2>Leading indicators</h2><div class="card cr-list">
+  return `<section class="blk"><h2>Leading indicators</h2>${editable ? "" : `<p class="fldnote" style="margin:-6px 0 10px">Early signs the plan is working. Update them in ② How it's going.</p>`}<div class="card cr-list">
     ${list.map((li) => `<div class="cr-row"><span class="tx">${esc(li.text)}</span><span class="duechip">by ${esc(fmt(li.by))}</span>
-      <select data-act="indicator" data-id="${esc(li.id)}">${["not_started", "in_progress", "done", "missed"].map((s) => `<option value="${s}" ${li.status === s ? "selected" : ""}>${STATUS_WORD[s]}</option>`).join("")}</select></div>`).join("")}
+      ${editable ? `<select data-act="indicator" data-id="${esc(li.id)}">${["not_started", "in_progress", "done", "missed"].map((s) => `<option value="${s}" ${li.status === s ? "selected" : ""}>${STATUS_WORD[s]}</option>`).join("")}</select>` : `<span class="cr-chip s-${esc(li.status)}">${esc(STATUS_WORD[li.status] || li.status)}</span>`}</div>`).join("")}
   </div></section>`;
 }
 
@@ -155,11 +216,20 @@ function habitsHtml(plan) {
   </div></section>`;
 }
 
+// ① Plan: the outside-profile measures and where they should be by 2027 and 2029.
+function targetsHtml(m) {
+  if (!m?.measures?.length) return "";
+  return `<section class="blk"><h2>Outside profile targets</h2>
+    <div class="cr-tablewrap"><table class="cr-table"><thead><tr><th>Measure</th><th>Baseline</th><th>2027</th><th>2029</th></tr></thead><tbody>
+    ${m.measures.map((x) => `<tr><td>${esc(x.name)}<span class="unit">${esc(x.unit || "")}</span></td><td>${esc(x.baseline)}</td><td>${esc(x.target2027)}</td><td>${esc(x.target2029)}</td></tr>`).join("")}
+    </tbody></table></div></section>`;
+}
+
 function metricsHtml(m, today) {
   if (!m) return "";
   const latest = {};
   for (const e of [...(m.entries || [])].sort((a, b) => (a.date < b.date ? -1 : 1))) latest[e.key] = e;
-  return `<section class="blk"><h2>Outside profile</h2>
+  return `<section class="blk"><h2>Outside profile — readings</h2>
     <div class="cr-tablewrap"><table class="cr-table"><thead><tr><th>Measure</th><th>Baseline</th><th>2027</th><th>2029</th><th>Latest</th></tr></thead><tbody>
     ${(m.measures || []).map((x) => `<tr><td>${esc(x.name)}<span class="unit">${esc(x.unit || "")}</span></td><td>${esc(x.baseline)}</td><td>${esc(x.target2027)}</td><td>${esc(x.target2029)}</td><td>${latest[x.key] ? `<b>${esc(latest[x.key].value)}</b><span class="unit">${esc(fmt(latest[x.key].date))}</span>` : "—"}</td></tr>`).join("")}
     </tbody></table></div>
@@ -211,21 +281,72 @@ function impactHtml(log, today) {
   </section>`;
 }
 
-// Small markdown → HTML for the radar note: headings, bullets, bold/italic, links.
+// ③ Review: the week — Fri–Sun the current week, otherwise the one just finished.
+function reviewWeek(today) {
+  const dow = new Date(today + "T12:00:00Z").getUTCDay();
+  const mon = mondayOf(today);
+  return dow === 0 || dow >= 5 ? mon : addDays(mon, -7);
+}
+
+function weekReviewHtml(d, today) {
+  const mon = reviewWeek(today), sun = addDays(mon, 6), end = sun < today ? sun : today;
+  const live = (d.plan.actions || []).filter((a) => a.status !== "dropped");
+  const done = live.filter((a) => a.status === "done" && a.completed >= mon && a.completed <= sun);
+  const slipped = live.filter((a) => isOpenAction(a) && a.due <= end).sort((a, b) => (a.due < b.due ? -1 : 1));
+  const next = live.filter((a) => isOpenAction(a) && a.due > end && a.due <= addDays(end, 7)).sort((a, b) => (a.due < b.due ? -1 : 1));
+  const wins = (d.impact?.entries || []).filter((e) => e.date >= mon && e.date <= sun);
+  const people = (d.relationships?.people || []).filter((p) => p.lastContact >= mon && p.lastContact <= sun);
+  const every = d.relationships?.contactEveryDays || 180;
+  const dueCatch = (d.relationships?.people || []).filter((p) => !p.lastContact || daysBetween(p.lastContact, today) > every).length;
+  const list = (items, f, empty) => (items.length ? `<ul>${items.map((x) => `<li>${f(x)}</li>`).join("")}</ul>` : `<p class="empty">${empty}</p>`);
+  return `<section class="blk" style="border-top:0;padding-top:0;margin-top:0"><h2>Week of ${esc(fmt(mon))} <span class="count">${esc(fmt(mon))} – ${esc(fmt(sun))}</span></h2>
+    <div class="cr-review">
+      <div class="card"><h3>Done <span class="n">${done.length}</span></h3>${list(done, (a) => esc(a.title), "No career actions finished this week.")}</div>
+      <div class="card"><h3>Slipped <span class="n late">${slipped.length}</span></h3>${list(slipped, (a) => `${esc(a.title)} <span class="duechip late">due ${esc(fmt(a.due))}</span>`, "Nothing overdue.")}</div>
+      <div class="card"><h3>Wins logged <span class="n">${wins.length}</span></h3>${list(wins, (e) => `<span class="tag">${esc(e.kind)}</span> ${esc(e.text)}`, "Nothing in the impact log this week — add it below.")}</div>
+      <div class="card"><h3>People <span class="n">${people.length}</span></h3>${list(people, (p) => esc(p.name), "No one marked as contacted this week.")}${dueCatch ? `<p class="fldnote">${dueCatch} due a catch-up — see ② How it's going.</p>` : ""}</div>
+      <div class="card cr-wide"><h3>Next 7 days <span class="n">${next.length}</span></h3>${list(next, (a) => `${a.gate ? `<b class="gatechip">Gate</b> ` : ""}${esc(a.title)} <span class="duechip">${esc(fmt(a.due))}</span>`, "Nothing due in the next week.")}</div>
+    </div>
+  </section>`;
+}
+
+// The coach's newest entry in career/log/command-log.md (check-ins, routine runs, decisions).
+function coachLogHtml(log) {
+  const m = String(log || "").match(/^## .*$[\s\S]*?(?=^## |(?![\s\S]))/m);
+  return `<section class="blk"><h2>From your coach</h2>
+    ${m ? `<div class="card cr-radar">${md(m[0])}</div>` : `<p class="empty">No coach notes yet.</p>`}
+    <div class="btnrow"><button class="btn sm" data-act="checkin" ${activeRun() ? "disabled" : ""}>Run my weekly check-in</button></div>
+    <p class="fldnote">The coach reads your week (plan, Life OS week, journal, impact log) and replies with a new entry here and any plan changes as proposals in ① Plan.</p>
+  </section>`;
+}
+
+// Small markdown → HTML for the radar note and the coach's log: headings, bullets (with
+// wrapped continuation lines), paragraphs, bold/italic, `code`, links.
 function md(text) {
-  const inline = (s) => esc(s)
+  const inline = (x) => esc(x)
     .replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>')
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
     .replace(/\*\*([^*]+)\*\*/g, "<b>$1</b>")
     .replace(/(^|\W)\*([^*]+)\*(?=\W|$)/g, "$1<i>$2</i>");
-  const out = [];
-  let list = false;
+  // group lines into blocks: heading, list item, paragraph
+  const blocks = [];
   for (const raw of String(text || "").split("\n")) {
     const l = raw.trimEnd();
     const h = l.match(/^(#{1,4})\s+(.*)$/), li = l.match(/^\s*[-*]\s+(.*)$/);
-    if (!li && list) { out.push("</ul>"); list = false; }
-    if (h) out.push(`<h${Math.min(4, h[1].length + 2)}>${inline(h[2])}</h${Math.min(4, h[1].length + 2)}>`);
-    else if (li) { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${inline(li[1])}</li>`); }
-    else if (l.trim()) out.push(`<p>${inline(l)}</p>`);
+    const last = blocks[blocks.length - 1];
+    if (!l.trim()) { blocks.push({ t: "gap" }); continue; }
+    if (h) blocks.push({ t: "h", n: h[1].length, s: h[2] });
+    else if (li) blocks.push({ t: "li", s: li[1] });
+    else if (last && (last.t === "li" || last.t === "p")) last.s += " " + l.trim(); // wrapped line
+    else blocks.push({ t: "p", s: l.trim() });
+  }
+  const out = [];
+  let list = false;
+  for (const b of blocks) {
+    if (b.t !== "li" && list) { out.push("</ul>"); list = false; }
+    if (b.t === "h") out.push(`<h${Math.min(4, b.n + 2)}>${inline(b.s)}</h${Math.min(4, b.n + 2)}>`);
+    else if (b.t === "li") { if (!list) { out.push("<ul>"); list = true; } out.push(`<li>${inline(b.s)}</li>`); }
+    else if (b.t === "p") out.push(`<p>${inline(b.s)}</p>`);
   }
   if (list) out.push("</ul>");
   return out.join("");
@@ -250,6 +371,8 @@ function coachHtml() {
 
 /* ─── coach run state ───────────────────────────────────── */
 
+const logHead = (log) => (String(log || "").match(/^## .*$/m) || [""])[0];
+
 function activeRun() {
   const r = ls.get(RUN_KEY, null);
   if (!r) return null;
@@ -266,13 +389,14 @@ function startPolling() {
     const r = activeRun();
     if (!r || ctx?.S.view !== "career") { clearInterval(pollTimer); pollTimer = null; if (!r && ctx?.S.view === "career") ctx.renderApp(); return; }
     try {
-      const { json } = await ctx.cs.gh.getFile("career/state/proposals.json");
+      const [{ json }, log] = await Promise.all([ctx.cs.gh.getFile("career/state/proposals.json"), ctx.cs.gh.getText("career/log/command-log.md").catch(() => null)]);
       const fresh = (json?.proposals || []).filter((p) => !r.seen.includes(p.id));
-      if (fresh.length) {
+      const newNote = "logHead" in r && logHead(log) !== r.logHead;
+      if (fresh.length || newNote) {
         ls.del(RUN_KEY);
         clearInterval(pollTimer);
         pollTimer = null;
-        flash(`Your coach sent ${fresh.length} proposal${fresh.length === 1 ? "" : "s"}.`);
+        flash(fresh.length ? `Your coach sent ${fresh.length} proposal${fresh.length === 1 ? "" : "s"}.` : "Your coach added a note — see ③ Review.");
         ctx.cs.invalidate();
         ctx.renderApp();
       }
@@ -285,6 +409,8 @@ function startPolling() {
 function wire(d, tasks) {
   const main = document.getElementById("main"), S = ctx.S;
   main.onclick = async (e) => {
+    const st = e.target.closest("[data-step]");
+    if (st) { S.careerStep = st.dataset.step; S.crReject = null; S.crPerson = null; ctx.renderApp(); return; }
     const t = e.target.closest("[data-act]");
     if (!t || t.tagName === "SELECT") return;
     const act = t.dataset.act;
@@ -303,6 +429,7 @@ function wire(d, tasks) {
       else if (act === "contacted") await contacted(t.dataset.id, t);
       else if (act === "addimpact") await addImpact(t);
       else if (act === "ask") await ask(t);
+      else if (act === "checkin") { t.disabled = true; await fireCoach("career check-in", t); }
     } catch (err) {
       flash(err?.message || "Couldn't save.", true);
       t.disabled = false;
@@ -467,7 +594,10 @@ async function ask(btn) {
   if (!text) return flash("Write what happened first.", true);
   btn.disabled = true;
   // "career check" (and any other "career …" job) goes as typed; anything else is an ask
-  const fire = /^career\s/i.test(text) ? text : `career ask ${text}`;
+  await fireCoach(/^career\s/i.test(text) ? text : `career ask ${text}`, btn);
+}
+
+async function fireCoach(fire, btn) {
   let fired;
   try {
     fired = await fireRoutine(fire);
@@ -477,7 +607,7 @@ async function ask(btn) {
     return;
   }
   const seen = (ctx.cs.cache?.proposals?.proposals || []).map((p) => p.id);
-  ls.set(RUN_KEY, { firedAt: Date.now(), text: fire, sessionUrl: fired.sessionUrl || "", seen });
+  ls.set(RUN_KEY, { firedAt: Date.now(), text: fire, sessionUrl: fired.sessionUrl || "", seen, logHead: logHead(ctx.cs.cache?.log) });
   flash("Sent to your coach.");
   ctx.renderApp();
 }

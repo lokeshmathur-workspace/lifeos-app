@@ -31,6 +31,7 @@ export class CareerStore {
     const files = await Promise.all(keys.map((k) => this.gh.getFile(CAREER_FILES[k]).catch(() => ({ json: null, sha: null }))));
     const out = { at: Date.now(), radar: null };
     keys.forEach((k, i) => { out[k] = files[i].json; this.shas[k] = files[i].sha; });
+    out.log = await this.gh.getText("career/log/command-log.md").catch(() => null);
     try {
       const tree = await this.gh.listTree();
       const newest = tree.map((e) => e.path.match(RADAR)).filter(Boolean).sort((a, b) => (a[1] < b[1] ? 1 : -1))[0];
