@@ -5,7 +5,9 @@
 // Task shape: { id, task, pillar, status, due, created, completed, source,
 //               outlookKey?, outlookCategories? }
 //   status  — "not_started" | "in_progress" | "done"
-//   source  — "manual" | "outlook" | "migrated"
+//   source  — "manual" | "outlook" | "migrated" | "career"
+//   career tasks reuse the career action's id (CA…); intentionId links a task to the
+//   month intention it was added from (recompute sets the intention's status from it)
 import { nextTaskId } from "./compact.js";
 import { todayISO } from "./dateutil.js";
 
@@ -29,7 +31,7 @@ export function taskKey(text) {
 
 export function newTask(existingDocs, fields) {
   const today = todayISO();
-  const id = nextTaskId(today, existingDocs);
+  const id = fields.id || nextTaskId(today, existingDocs);
   return {
     id,
     task: fields.task.trim(),
@@ -40,6 +42,7 @@ export function newTask(existingDocs, fields) {
     completed: "",
     source: fields.source || "manual",
     ...(fields.outlookKey ? { outlookKey: fields.outlookKey, outlookCategories: fields.outlookCategories || "" } : {}),
+    ...(fields.intentionId ? { intentionId: fields.intentionId } : {}),
   };
 }
 
@@ -50,10 +53,13 @@ export async function addTasks(store, items, message) {
   const doc = await store.updateTasks((d) => {
     created = [];
     for (const it of items) {
+      // a fixed id (a career action) that's already on the list is reused, not duplicated
+      const existing = it.id && d.tasks.find((t) => t.id === it.id);
+      if (existing) { created.push(existing); continue; }
       const t = newTask([d.tasks, created], it);
       created.push(t);
     }
-    d.tasks = [...d.tasks, ...created];
+    d.tasks = [...d.tasks, ...created.filter((t) => !d.tasks.includes(t))];
     return d;
   }, message || `life-os: add ${items.length} task(s)`);
   return doc ? created : null;
@@ -76,4 +82,23 @@ export async function removeTask(store, id) {
     d.tasks = d.tasks.filter((t) => t.id !== id);
     return d;
   }, "life-os: remove task");
+}
+
+// Links an existing master task to a month intention (intentionId), unless it is the
+// intention's own id already (career).
+export async function linkIntention(store, taskId, intentionId) {
+  if (taskId === intentionId) return store.getTasks();
+  return store.updateTasks((d) => {
+    d.tasks = d.tasks.map((t) => (t.id === taskId ? { ...t, intentionId } : t));
+    return d;
+  }, "life-os: link task to intention");
+}
+
+// I{YYYYMM}-{N}: the next free intention id in a month file.
+export function nextIntentionId(monthKey, intentions) {
+  const ym = monthKey.replace("-", "");
+  const re = new RegExp(`^I${ym}-(\\d+)$`);
+  let n = 0;
+  for (const it of intentions || []) { const m = String(it.id || "").match(re); if (m) n = Math.max(n, +m[1]); }
+  return `I${ym}-${n + 1}`;
 }

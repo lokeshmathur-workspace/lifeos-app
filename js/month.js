@@ -11,7 +11,9 @@ import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
 import { perHabitAvg, loadMonthWeeks, monthGlanceHtml, monthReviewHtml, wireMonthReview, monthReviewable } from "./reviews.js";
 import { stepperHtml, reviewNudgeHtml, soFarLines, soFarHtml, dayPlanTasks } from "./steps.js";
-import { isOpen } from "./tasks.js";
+import { isOpen, addTasks, nextIntentionId, linkIntention } from "./tasks.js";
+import { careerSuggestions } from "./career/sync.js";
+import { careerPullHtml } from "./career/pull.js";
 import { taskListHtml, wireTaskList } from "./tasklist.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -107,7 +109,19 @@ export async function renderMonthView(store, S, renderApp) {
   // Open tasks from the master list, offered as intentions per category.
   const master = editable ? await store.getTasks() : { tasks: [] };
   const intentTexts = new Set(intentions.map((it) => it.intention.trim().toLowerCase()));
-  const openList = master.tasks.filter((t) => isOpen(t) && !intentTexts.has(t.task.trim().toLowerCase()));
+  const intentIds = new Set(intentions.map((it) => it.id).filter(Boolean));
+  const openList = master.tasks.filter((t) => isOpen(t) && !intentIds.has(t.id) && !(t.intentionId && intentIds.has(t.intentionId)) && !intentTexts.has(t.task.trim().toLowerCase()));
+
+  // "From your career plan": open actions due this month or overdue, not yet a master
+  // task or an intention, not dismissed for this month.
+  const plan = editable && S.careerStore ? await S.careerStore.loadPlan().catch(() => null) : null;
+  const careerPull = plan
+    ? careerSuggestions(plan, {
+        until: `${monthKey}-${String(daysInMonth(year, monthNum)).padStart(2, "0")}`,
+        taskIds: new Set([...master.tasks.map((t) => t.id), ...intentIds]),
+        dismissed: new Set(monthDoc.dismissedCareer || []),
+      })
+    : [];
 
   // ① Plan · ② How it's going · ③ Review — same three steps as Week and Today.
   const today = todayISO();
@@ -160,7 +174,7 @@ export async function renderMonthView(store, S, renderApp) {
       <h2>Intentions <span class="count">${total || ""}</span></h2>
       ${editable ? `<p class="fldnote" style="margin:-6px 0 10px">Write one per category, or pick from your task list below.</p>` : ""}
       ${Object.entries(PILLARS)
-        .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable, "plan"))
+        .map(([key, label]) => intentionGroupHtml(key, label, intentions, editable, "plan", careerPull))
         .join("")}
     </section>
     ${editable ? taskListHtml(openList, (S.monthListOpen ||= new Set()), { addLabel: "+ Intention", addTitle: "Add as this month's intention", daySelect: false, emptyText: "Every open task is already an intention this month." }) : ""}
@@ -261,10 +275,10 @@ export async function renderMonthView(store, S, renderApp) {
     <div class="stepbody">${step === "plan" ? planStep : step === "review" ? reviewStep : progressStep}</div>`;
 
   wireMonthReview(reviewCtx);
-  wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master);
+  wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master, careerPull);
 }
 
-function intentionGroupHtml(key, label, intentions, editable, mode = "plan") {
+function intentionGroupHtml(key, label, intentions, editable, mode = "plan", careerPull = []) {
   const rows = intentions
     .map((it, i) => ({ it, i }))
     .filter(({ it }) => it.pillar === key);
@@ -304,6 +318,9 @@ function intentionGroupHtml(key, label, intentions, editable, mode = "plan") {
           )
           .join("") || (editable ? "" : `<p class="empty" style="padding:10px 14px;font-size:12.5px">No intentions.</p>`)
       }
+      ${editable && mode === "plan" ? careerPullHtml(careerPull.filter((a) => a.pillar === key), todayISO(), (a) => `<button class="pull-career-int" data-id="${esc(a.id)}">+ Intention</button>
+          <button class="pull-career-task" data-id="${esc(a.id)}">+ Add as task</button>
+          <button class="dismiss-career" data-id="${esc(a.id)}" title="Not this month">×</button>`) : ""}
       ${
         editable && mode === "plan"
           ? `<div class="addrow" data-pillar="${key}">
@@ -383,7 +400,7 @@ function calendarGrid(year, month, daysMap) {
     </div>`;
 }
 
-function wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master) {
+function wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master, careerPull = []) {
   $("#prevmonth")?.addEventListener("click", () => {
     S.month = addMonths(monthKey, -1);
     S.monthReviewEditing = false;
@@ -529,7 +546,7 @@ function wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master) {
       const input = row.querySelector(".newintinput");
       const text = input.value.trim();
       if (!text) return;
-      const intentions = [...(monthDoc.intentions || []), { intention: text, pillar, status: "not_started", progress: 0 }];
+      const intentions = [...(monthDoc.intentions || []), { id: nextIntentionId(monthKey, monthDoc.intentions), intention: text, pillar, status: "not_started", progress: 0 }];
       monthDoc.intentions = intentions;
       saveIntentions(intentions);
       renderApp();
@@ -543,12 +560,48 @@ function wireMonth(store, S, renderApp, monthKey, monthDoc, editable, master) {
     mById: new Map((master?.tasks || []).map((t) => [t.id, t])),
     renderApp,
     onAdd: async (t) => {
-      const intentions = [...(monthDoc.intentions || []), { intention: t.task, pillar: t.pillar, status: "not_started", progress: 0 }];
+      // A career task's intention uses the action id; any other gets I{YYYYMM}-{N} and the
+      // task is linked to it, so the intention follows the task's status.
+      const id = /^CA\d{8}-\d+$/.test(t.id) ? t.id : nextIntentionId(monthKey, monthDoc.intentions);
+      const intentions = [...(monthDoc.intentions || []), { id, intention: t.task, pillar: t.pillar, status: t.status === "in_progress" ? "in_progress" : "not_started", progress: 0 }];
       monthDoc.intentions = intentions;
       const ok = await saveIntentions(intentions);
+      if (ok) await linkIntention(store, t.id, id);
       if (ok) flash("Added as an intention.");
       return ok;
     },
+  });
+
+  // From your career plan: + Intention (id = action id), + Add as task (master task with
+  // the action's id), × hides it for this month.
+  document.querySelectorAll(".pull-career-int").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const a = careerPull.find((x) => x.id === btn.dataset.id);
+      if (!a) return;
+      btn.disabled = true;
+      const intentions = [...(monthDoc.intentions || []), { id: a.id, intention: a.title, pillar: a.pillar, status: a.status === "in_progress" ? "in_progress" : "not_started", progress: 0 }];
+      monthDoc.intentions = intentions;
+      if (await saveIntentions(intentions)) flash("Added as an intention.");
+      renderApp();
+    });
+  });
+  document.querySelectorAll(".pull-career-task").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const a = careerPull.find((x) => x.id === btn.dataset.id);
+      if (!a) return;
+      btn.disabled = true;
+      const created = await addTasks(store, [{ id: a.id, task: a.title, pillar: a.pillar, due: a.due, source: "career" }], `life-os: month-plan ${monthKey}`);
+      if (created) flash("Added to your task list.");
+      renderApp();
+    });
+  });
+  document.querySelectorAll(".dismiss-career").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const dismissedCareer = [...(monthDoc.dismissedCareer || []), btn.dataset.id];
+      monthDoc.dismissedCareer = dismissedCareer;
+      if (await store.saveMonth(monthKey, { dismissedCareer }, true, `life-os: month-plan ${monthKey}`)) flash("Dismissed for this month.");
+      renderApp();
+    });
   });
 
   const saveKeyDates = (keyDates) => store.saveMonth(monthKey, { keyDates }, true, `life-os: month-plan ${monthKey}`);

@@ -14,7 +14,9 @@
 import { PILLARS, BIZ, VIT } from "./constants.js";
 import { mondayOf, sundayOf, isoWeekNumber, shortDate, dayOfWeekName, addDays, DAYKEYS, todayISO, nowHM, D, monthKeyOf } from "./dateutil.js";
 import { hphAvg, evening } from "./derive.js";
-import { addTasks, setTaskStatus, isOpen } from "./tasks.js";
+import { addTasks, setTaskStatus, isOpen, nextIntentionId } from "./tasks.js";
+import { careerSuggestions } from "./career/sync.js";
+import { careerPullHtml } from "./career/pull.js";
 import { flash } from "./flash.js";
 import { buildSections, copyRichText } from "./export.js";
 import { pillarHealth, monthDates } from "./month.js";
@@ -94,10 +96,18 @@ export async function renderWeekView(store, S, renderApp) {
     const m = mById.get(t.id);
     if (!m) return t;
     const status = m.status === "done" ? "done" : t.status === "carried_forward" ? "carried_forward" : m.status;
-    return { ...t, task: m.task, pillar: m.pillar, status };
+    return { ...t, task: m.task, pillar: m.pillar, status, ...(m.intentionId ? { intentionId: m.intentionId } : {}) };
   });
   const inWeek = new Set(tasks.map((t) => t.id));
   const openList = editable ? master.tasks.filter((t) => isOpen(t) && !inWeek.has(t.id)) : [];
+
+  // "From your career plan": open career actions due by the end of the month this week
+  // ends in (overdue included), not yet master tasks, not dismissed for this week.
+  const plan = editable && S.careerStore ? await S.careerStore.loadPlan().catch(() => null) : null;
+  const weekEnd = sundayOf(weekOf), monthEnd = `${weekEnd.slice(0, 7)}-${String(new Date(Date.UTC(+weekEnd.slice(0, 4), +weekEnd.slice(5, 7), 0)).getUTCDate()).padStart(2, "0")}`;
+  const careerPull = plan
+    ? careerSuggestions(plan, { until: monthEnd, taskIds: new Set(master.tasks.map((t) => t.id)), dismissed: new Set(weekDoc.dismissedCareer || []) })
+    : [];
   const done = tasks.filter((t) => t.status === "done").length;
   const inprog = tasks.filter((t) => t.status === "in_progress").length;
   const total = tasks.length;
@@ -169,7 +179,7 @@ export async function renderWeekView(store, S, renderApp) {
       <h2>This week's tasks <span class="count">${total || ""}</span></h2>
       ${editable ? `<p class="fldnote" style="margin:-6px 0 10px">Add tasks per category, pull in last week's unfinished ones and this month's intentions, or pick from your task list below.</p>` : ""}
       ${Object.entries(PILLARS)
-        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, "plan"))
+        .map(([key, label]) => pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, "plan", careerPull))
         .join("")}
     </section>
     ${editable ? taskListHtml(openList, (S.weekListOpen ||= new Set()), { addLabel: "+ Week", addTitle: "Add to this week", daySelect: true, emptyText: "Everything open is already on this week's board." }) : ""}
@@ -276,10 +286,10 @@ export async function renderWeekView(store, S, renderApp) {
     <div class="stepbody">${step === "plan" ? planStep : step === "review" ? reviewStep : progressStep}</div>`;
 
   wireWeekReview(reviewCtx);
-  wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById);
+  wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById, { careerPull, monthKey: monthKeyOf(todayISO()), intentions });
 }
 
-function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, mode = "plan") {
+function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable, dismissedIntentions, dismissedCarryForward, mode = "plan", careerPull = []) {
   const inPillar = tasks.filter((t) => t.pillar === key);
   // "progress" = tick things off only; adding, removing and pull-ins live in "plan".
   if (mode === "progress") {
@@ -301,6 +311,8 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
     </div>`;
   }
   const usedTexts = new Set(inPillar.map((t) => t.task.trim().toLowerCase()));
+  // an intention with an id is "on the board" when a board task is linked to it by id
+  const linkedIds = new Set(inPillar.flatMap((t) => [t.id, t.intentionId]).filter(Boolean));
   // Pull-ins are an editing affordance — a past (read-only) week must never show
   // an actionable "+ Add as task" button, since its handlers aren't wired (see
   // wireWeek's early `if (!editable) return`) and it shouldn't be editable anyway.
@@ -308,11 +320,13 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
     ? intentions.filter(
         (it) =>
           it.pillar === key &&
-          !usedTexts.has(it.intention.trim().toLowerCase()) &&
+          it.status !== "done" &&
+          !(it.id ? linkedIds.has(it.id) : usedTexts.has(it.intention.trim().toLowerCase())) &&
           !dismissedIntentions.has(it.intention.trim().toLowerCase())
       )
     : [];
   const carryPullins = editable ? prevIncomplete.filter((t) => t.pillar === key && !dismissedCarryForward.has(t.id)) : [];
+  const careerPullins = editable ? careerPull.filter((a) => a.pillar === key) : [];
 
   if (!editable && !inPillar.length && !monthPullins.length && !carryPullins.length) return "";
 
@@ -343,7 +357,7 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
             (it) => `
         <div class="item">
           <span>${esc(it.intention)}</span>
-          <button class="pull-month" data-pillar="${key}" data-text="${esc(it.intention)}">+ Add as task</button>
+          <button class="pull-month" data-pillar="${key}" data-text="${esc(it.intention)}" data-iid="${esc(it.id || "")}">+ Add as task</button>
           <button class="dismiss-month" data-text="${esc(it.intention)}" title="Not relevant this week">×</button>
         </div>`
           )
@@ -351,6 +365,8 @@ function pillarGroupHtml(key, label, tasks, intentions, prevIncomplete, editable
       </div>`
           : ""
       }
+      ${careerPullHtml(careerPullins, todayISO(), (a) => `<button class="pull-career" data-id="${esc(a.id)}">+ Add as task</button>
+          <button class="dismiss-career" data-id="${esc(a.id)}" title="Not this week">×</button>`)}
       ${
         carryPullins.length
           ? `<div class="frommonth">
@@ -414,7 +430,7 @@ function coreTableHtml(dates, daysMap, which, defs) {
     </table>`;
 }
 
-function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById) {
+function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete, mById, { careerPull = [], monthKey, intentions = [] } = {}) {
   $("#prevweek")?.addEventListener("click", () => {
     S.week = addDays(weekOf, -7);
     S.weekReviewEditing = false;
@@ -522,12 +538,28 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
 
   document.querySelectorAll(".pull-month").forEach((btn) => {
     btn.addEventListener("click", async () => {
+      btn.disabled = true;
       const pillar = btn.dataset.pillar;
       const text = btn.dataset.text;
-      const created = await addTasks(store, [{ task: text, pillar }], `life-os: weekly ${weekOf}`);
+      // The intention gets an id (older ones have none) so its task links to it by id.
+      let iid = btn.dataset.iid;
+      if (!iid) {
+        const m = await store.updateMonth(monthKey, (d) => {
+          const it = (d.intentions || []).find((x) => !x.id && x.intention.trim().toLowerCase() === text.trim().toLowerCase());
+          if (!it) return null;
+          it.id = iid = nextIntentionId(monthKey, d.intentions);
+          return d;
+        }, `life-os: month-plan ${monthKey}`);
+        if (!m) iid = "";
+      }
+      // An open task already linked to this intention goes on the board; otherwise a new one.
+      const linked = iid && (await store.getTasks()).tasks.find((t) => isOpen(t) && (t.id === iid || t.intentionId === iid));
+      const career = /^CA\d{8}-\d+$/.test(iid || "");
+      const created = linked ? [linked]
+        : await addTasks(store, [career ? { id: iid, task: text, pillar, source: "career" } : { task: text, pillar, ...(iid ? { intentionId: iid } : {}) }], `life-os: weekly ${weekOf}`);
       if (!created) return;
       const id = created[0].id;
-      const tasks = [...(weekDoc.tasks || []), { id, task: text, pillar, assignedDay: "", status: "not_started", source: "manual" }];
+      const tasks = [...(weekDoc.tasks || []), { id, task: created[0].task, pillar: created[0].pillar, assignedDay: "", status: "not_started", source: created[0].source === "career" ? "career" : "manual" }];
       weekDoc.tasks = tasks;
       const ok = await saveTasks(tasks);
       if (ok) flash("Added from this month's intentions.");
@@ -551,6 +583,33 @@ function wireWeek(store, S, renderApp, weekOf, weekDoc, editable, prevIncomplete
       weekDoc.tasks = tasks;
       const ok = await saveTasks(tasks);
       if (ok) flash("Carried forward from last week.");
+      renderApp();
+    });
+  });
+
+  // From your career plan: the master task takes the action's id, so its status flows back
+  // to the plan (recompute) and the Career tab.
+  document.querySelectorAll(".pull-career").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const a = careerPull.find((x) => x.id === btn.dataset.id);
+      if (!a) return;
+      btn.disabled = true;
+      const created = await addTasks(store, [{ id: a.id, task: a.title, pillar: a.pillar, due: a.due, source: "career" }], `life-os: weekly ${weekOf}`);
+      if (!created) return;
+      const t = created[0];
+      const tasks = [...(weekDoc.tasks || []), { id: t.id, task: t.task, pillar: t.pillar, assignedDay: "", status: t.status === "done" ? "done" : "not_started", source: "career" }];
+      weekDoc.tasks = tasks;
+      const ok = await saveTasks(tasks);
+      if (ok) flash("Added from your career plan.");
+      renderApp();
+    });
+  });
+  document.querySelectorAll(".dismiss-career").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const dismissedCareer = [...(weekDoc.dismissedCareer || []), btn.dataset.id];
+      weekDoc.dismissedCareer = dismissedCareer;
+      const ok = await store.saveWeek(weekOf, { dismissedCareer }, true, `life-os: weekly ${weekOf}`);
+      if (ok) flash("Dismissed for this week.");
       renderApp();
     });
   });

@@ -20,6 +20,8 @@ import { renderNavyaView } from "./navya/navya.js";
 import { NavyaStore, NAVYA_REPO_KEY, DEFAULT_NAVYA_REPO, navyaRepo } from "./navya/store.js";
 import { renderFamilyView } from "./family/family.js";
 import { FamilyStore, FAMILY_REPO_KEY, DEFAULT_FAMILY_REPO, familyRepo } from "./family/store.js";
+import { CareerStore, CAREER_FILES } from "./career/store.js";
+import { renderCareerView, copyCareerForOneNote, addImpactEntry } from "./career/career.js";
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const esc = (s) =>
@@ -62,6 +64,8 @@ export async function boot() {
   S.partner = !!cfg.partner;
   S.familyStore = new FamilyStore(cfg, flash);
   S.fam = null;
+  // Career tab: career/ in the same Claude repo, owner's device only.
+  S.careerStore = cfg.family || cfg.partner || cfg.kidOnly ? null : new CareerStore(S.store.gh);
   // Navya's own phone: her view only, and never the reading routine's settings (its token
   // could start a session that reaches the Claude repo)
   S.kidOnly = !!cfg.kidOnly;
@@ -150,7 +154,28 @@ function renderApp() {
   if (S.view === "learning") return renderLearningView(S.learningStore, S, renderApp);
   if (S.view === "navya") return renderNavyaView(S.navyaStore, S, renderApp);
   if (S.view === "family") return renderFamilyView(S.familyStore, S, renderApp);
+  if (S.view === "career") return renderCareerView(S.careerStore, S, renderApp);
 }
+
+// Back in view (another app, another tab, the phone woke up): a Claude session, a routine
+// or the other device may have written meanwhile. Drop the cached copies so the next read
+// is fresh, and redraw Today/Week/Month/Career — unless something is being typed.
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "hidden") { hiddenAt = Date.now(); return; }
+  if (!S.store || !hiddenAt || Date.now() - hiddenAt < 5000) return;
+  hiddenAt = 0;
+  if (loadPinHash() && !S.unlocked) return;
+  S.store.invalidate();
+  S.careerStore?.invalidate();
+  if (!["today", "week", "month", "career"].includes(S.view)) return;
+  const typing = S.planning || S.eveningEditing || S.weekReviewEditing || S.monthReviewEditing || S.crPerson || S.crReject
+    || [...document.querySelectorAll("#main textarea, #main input:not([type=range]):not([type=checkbox]):not([type=radio])")].some((el) => el.value !== el.defaultValue);
+  if (!typing) renderApp();
+});
+
+// recompute.js rewrote plan.json (a task's status changed): keep the Career tab's copy in step.
+window.addEventListener("lifeos:career-plan", (e) => S.careerStore?.setPlan(e.detail));
 
 window.addEventListener("lifeos:open-settings", openSettings);
 
@@ -200,7 +225,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const btn = e.currentTarget;
     const original = btn.textContent;
     try {
-      if (S.view === "week") {
+      if (S.view === "career") {
+        await copyCareerForOneNote(S.careerStore);
+      } else if (S.view === "week") {
         await copyWeekForOneNote(S.store, S.week);
       } else if (S.view === "month") {
         await copyMonthForOneNote(S.store, S.month);
@@ -409,8 +436,50 @@ async function renderToday() {
     html.push(daySummary(dateISO, doc));
   }
 
+  // Fridays: "Impact this week?" — one line into the career impact log.
+  const impactAsk = await fridayImpactPrompt(dateISO);
+  if (impactAsk) html.push(impactAsk);
+
   main().innerHTML = html.join("");
   wireToday(dateISO, doc, monthDoc, weekDoc);
+  wireImpactPrompt(dateISO);
+}
+
+async function fridayImpactPrompt(dateISO) {
+  if (!S.careerStore || dateISO !== todayISO() || dayOfWeekName(dateISO) !== "Friday" || S.planning || S.eveningEditing) return "";
+  try {
+    const { json } = await S.store.gh.getFile(CAREER_FILES.impact);
+    if (!json || (json.entries || []).some((e) => e.kind === "impact" && e.date >= mondayOf(dateISO))) return "";
+  } catch {
+    return "";
+  }
+  return `
+    <section class="blk" id="impactask">
+      <h2>Impact this week?</h2>
+      <div class="card">
+        <p class="fldnote" style="margin:0 0 8px">What moved, the number, who benefited. Goes into your career impact log.</p>
+        <textarea id="impacttext" rows="2"></textarea>
+        <div class="btnrow"><button class="btn sm pri" id="impactsave">Log it</button><button class="btn sm" id="impactskip">Not this week</button></div>
+      </div>
+    </section>`;
+}
+
+function wireImpactPrompt(dateISO) {
+  $("#impactskip")?.addEventListener("click", () => $("#impactask")?.remove());
+  $("#impactsave")?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    const text = ($("#impacttext")?.value || "").trim();
+    if (!text) return flash("Write what moved first.", true);
+    btn.disabled = true;
+    try {
+      await addImpactEntry(S.careerStore, { date: dateISO, kind: "impact", text });
+      flash("Logged in your impact log.");
+      $("#impactask")?.remove();
+    } catch {
+      flash("Couldn't save to the impact log.", true);
+      btn.disabled = false;
+    }
+  });
 }
 
 function dateHead(dateISO) {

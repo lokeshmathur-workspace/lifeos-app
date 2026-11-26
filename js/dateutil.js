@@ -111,3 +111,13 @@ export const nowStamp = () =>
     .format(new Date())
     .replace(/[^\d]/g, "")
     .slice(0, 12);
+
+// "YYYY-MM-DDTHH:MM:SS", Pacific — the local-timestamp format of Life OS and career files.
+export const localStamp = () => {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
+      .formatToParts(new Date())
+      .map((x) => [x.type, x.value])
+  );
+  return `${p.year}-${p.month}-${p.day}T${p.hour === "24" ? "00" : p.hour}:${p.minute}:${p.second}`;
+};

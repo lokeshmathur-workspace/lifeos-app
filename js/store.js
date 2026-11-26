@@ -63,6 +63,9 @@ const COMPUTED_PATH = "life-os/state/computed.json";
 const TASKS_PATH = "life-os/state/tasks.json";
 
 const emptyTasksDoc = () => ({ tasks: [], outlook: { lastImport: "", ignored: [] } });
+const STALE_MS = 5 * 60 * 1000; // a cached copy older than this is re-read before saving
+const blankDay = (dateISO) => ({ date: dateISO, dayOfWeek: "" });
+const blankWeek = (weekOf) => ({ weekNumber: isoWeekNumber(weekOf), weekOf, weekEnding: sundayOf(weekOf), keyFocus: "", tasks: [] });
 
 function defaultMonthDoc(monthKey) {
   const [year, monthNum] = monthKey.split("-").map(Number);
@@ -87,6 +90,7 @@ export class Store {
     this.weeks = new Map(); // weekOf (Monday) -> { doc, sha }
     this.months = new Map(); // monthKey ("YYYY-MM") -> { doc, sha }
     this.saveTimers = new Map(); // path -> timeout id
+    this.pending = new Map(); // path -> merged patch not yet confirmed saved (re-applied on a conflict)
     this.onFlash = onFlash || (() => {});
     this.recomputeTimer = null;
     this.tasks = null; // { doc, sha } for the master task list
@@ -100,7 +104,7 @@ export class Store {
     const { json, sha } = await this.gh.getFile(TASKS_PATH);
     const doc = json || emptyTasksDoc();
     if (!doc.outlook) doc.outlook = { lastImport: "", ignored: [] };
-    this.tasks = { doc, sha };
+    this.tasks = { doc, sha, at: Date.now() };
     return doc;
   }
 
@@ -115,12 +119,13 @@ export class Store {
     const waits = [0, 600, 1500];
     for (let attempt = 0; attempt < waits.length; attempt++) {
       if (waits[attempt]) await new Promise((r) => setTimeout(r, waits[attempt]));
-      const cur = await this.getTasks(attempt > 0);
+      const cur = await this.getTasks(attempt > 0 || Date.now() - (this.tasks?.at || 0) > STALE_MS);
       const next = fn(structuredClone(cur));
       try {
         const { sha } = await this.gh.putFile(TASKS_PATH, next, this.tasks.sha, message || "life-os: tasks");
-        this.tasks = { doc: next, sha };
+        this.tasks = { doc: next, sha, at: Date.now() };
         this.lastTasksError = "";
+        this._scheduleRecompute(); // career actions and linked intentions follow task status
         return next;
       } catch (e) {
         this.lastTasksError =
@@ -141,18 +146,48 @@ export class Store {
   // cycles, core-step toggles) coalesce into a single background call instead
   // of one per click. Best-effort: failures are silent (see recompute.js).
   _scheduleRecompute(dateISO) {
+    if (dateISO && (!this.recomputeDate || dateISO > this.recomputeDate)) this.recomputeDate = dateISO;
     clearTimeout(this.recomputeTimer);
     this.recomputeTimer = setTimeout(() => {
-      refreshComputed(this, dateISO);
+      const d = this.recomputeDate;
+      this.recomputeDate = null;
+      refreshComputed(this, d);
     }, 4000);
+  }
+
+  // Drops every cached file that has no unsaved change, so the next read fetches the
+  // newest copy (and sha). Called when the app comes back into view: a Claude session,
+  // a routine or the other device may have written meanwhile.
+  invalidate() {
+    const keep = (path) => this.saveTimers.has(path) || this.pending.has(path);
+    for (const d of [...this.docs.keys()]) if (!keep(journalPath(d))) { this.docs.delete(d); this.exists.delete(d); }
+    for (const w of [...this.weeks.keys()]) if (!keep(weekPath(w))) this.weeks.delete(w);
+    for (const m of [...this.months.keys()]) if (!keep(monthPath(m))) this.months.delete(m);
+    this.tasks = null;
+  }
+
+  // fn(doc) -> newDoc for a month file, against the newest copy (re-read and re-applied
+  // on a conflict). Used where the change depends on what's there (recompute's
+  // intention sync). Returns the new doc, or null if fn wrote nothing / the save failed.
+  async updateMonth(monthKey, fn, message) {
+    try {
+      const cached = this.months.get(monthKey);
+      const first = cached && !this.pending.has(monthPath(monthKey)) && Date.now() - (cached.at || 0) < STALE_MS ? { doc: cached.doc, sha: cached.sha } : null;
+      let wrote = false;
+      const res = await this.gh.updateJson(monthPath(monthKey), (d) => { const n = fn(d); wrote = !!n; return n; }, message, { blank: () => defaultMonthDoc(monthKey), first });
+      if (res.doc) this.months.set(monthKey, { doc: res.doc, sha: res.sha, at: Date.now() });
+      return wrote ? res.doc : null;
+    } catch {
+      return null;
+    }
   }
 
   async getDay(dateISO) {
     if (this.docs.has(dateISO)) return this.docs.get(dateISO).doc;
     const { json, sha } = await this.gh.getFile(journalPath(dateISO));
     this.exists.set(dateISO, json != null);
-    const doc = json || { date: dateISO, dayOfWeek: "" };
-    this.docs.set(dateISO, { doc, sha });
+    const doc = json || blankDay(dateISO);
+    this.docs.set(dateISO, { doc, sha, at: Date.now() });
     return doc;
   }
 
@@ -200,14 +235,8 @@ export class Store {
   async getWeek(weekOf) {
     if (this.weeks.has(weekOf)) return this.weeks.get(weekOf).doc;
     const { json, sha } = await this.gh.getFile(weekPath(weekOf));
-    const doc = json || {
-      weekNumber: isoWeekNumber(weekOf),
-      weekOf,
-      weekEnding: sundayOf(weekOf),
-      keyFocus: "",
-      tasks: [],
-    };
-    this.weeks.set(weekOf, { doc, sha });
+    const doc = json || blankWeek(weekOf);
+    this.weeks.set(weekOf, { doc, sha, at: Date.now() });
     return doc;
   }
 
@@ -215,18 +244,17 @@ export class Store {
   // file — carry-forward and pull-ins write their tasks into the target week's own
   // patch before calling this.
   saveWeek(weekOf, patch, immediate, message) {
-    const cur = this.weeks.get(weekOf) || {
-      doc: { weekNumber: isoWeekNumber(weekOf), weekOf, weekEnding: sundayOf(weekOf), keyFocus: "", tasks: [] },
-      sha: null,
-    };
+    const cur = this.weeks.get(weekOf) || { doc: blankWeek(weekOf), sha: null, at: 0 };
     const merged = deepMerge({ ...cur.doc }, patch);
-    this.weeks.set(weekOf, { doc: merged, sha: cur.sha });
+    this.weeks.set(weekOf, { ...cur, doc: merged });
     return this._write(
       weekPath(weekOf),
       () => this.weeks.get(weekOf),
       (next) => this.weeks.set(weekOf, next),
       message || `life-os: week ${weekOf}`,
-      immediate
+      immediate,
+      patch,
+      () => blankWeek(weekOf)
     );
   }
 
@@ -237,39 +265,63 @@ export class Store {
     if (this.months.has(monthKey)) return this.months.get(monthKey).doc;
     const { json, sha } = await this.gh.getFile(monthPath(monthKey));
     const doc = json || defaultMonthDoc(monthKey);
-    this.months.set(monthKey, { doc, sha });
+    this.months.set(monthKey, { doc, sha, at: Date.now() });
     return doc;
   }
 
   // Same deepMerge/debounce contract as saveWeek.
   saveMonth(monthKey, patch, immediate, message) {
-    const cur = this.months.get(monthKey) || { doc: defaultMonthDoc(monthKey), sha: null };
+    const cur = this.months.get(monthKey) || { doc: defaultMonthDoc(monthKey), sha: null, at: 0 };
     const merged = deepMerge({ ...cur.doc }, patch);
-    this.months.set(monthKey, { doc: merged, sha: cur.sha });
+    this.months.set(monthKey, { ...cur, doc: merged });
     return this._write(
       monthPath(monthKey),
       () => this.months.get(monthKey),
       (next) => this.months.set(monthKey, next),
       message || `life-os: month ${monthKey}`,
-      immediate
+      immediate,
+      patch,
+      () => defaultMonthDoc(monthKey)
     );
   }
 
   // Resolves true/false (never rejects) so fire-and-forget callers stay safe,
   // while a caller that wants real confirmation can `if (await store.saveX(...))`.
   // Errors are always reported via onFlash regardless of whether the caller checks.
-  _write(path, getCache, setCache, message, immediate, debounceMs = 500) {
+  //
+  // Conflict-safe: every patch since the last confirmed save is kept (this.pending). If
+  // the cached copy is older than 5 minutes, or GitHub rejects the write because the
+  // file changed (another device, a Claude session, a routine), the newest copy is
+  // re-read, the pending patch is re-applied on top (field-level, like deepMerge), and
+  // the write is retried — up to 3 tries.
+  _write(path, getCache, setCache, message, immediate, patch = {}, blank = () => ({}), debounceMs = 500) {
     clearTimeout(this.saveTimers.get(path));
+    this.saveTimers.delete(path);
+    this.pending.set(path, deepMerge(this.pending.get(path) || {}, structuredClone(patch)));
     const doWrite = async () => {
-      const cache = getCache();
-      try {
-        const { sha } = await this.gh.putFile(path, cache.doc, cache.sha, message);
-        setCache({ ...cache, sha });
-        return true;
-      } catch (e) {
-        this.onFlash(e instanceof GitHubStoreError ? e.message : "Couldn't save.", true);
-        return false;
+      this.saveTimers.delete(path);
+      const sent = this.pending.get(path);
+      const waits = [0, 600, 1500];
+      for (let attempt = 0; attempt < waits.length; attempt++) {
+        if (waits[attempt]) await new Promise((r) => setTimeout(r, waits[attempt]));
+        let cache = getCache();
+        try {
+          if (attempt > 0 || !cache.at || Date.now() - cache.at > STALE_MS) {
+            const { json, sha } = await this.gh.getFile(path);
+            cache = { doc: deepMerge(structuredClone(json || blank()), structuredClone(this.pending.get(path) || sent || {})), sha, at: Date.now() };
+            setCache(cache);
+          }
+          const { sha } = await this.gh.putFile(path, cache.doc, cache.sha, message);
+          setCache({ ...getCache(), sha, at: Date.now() });
+          if (this.pending.get(path) === sent) this.pending.delete(path);
+          return true;
+        } catch (e) {
+          if (e instanceof GitHubStoreError && e.code === "conflict" && attempt < waits.length - 1) continue;
+          this.onFlash(e instanceof GitHubStoreError ? e.message : "Couldn't save.", true);
+          return false;
+        }
       }
+      return false;
     };
     if (immediate) return doWrite();
     this.saveTimers.set(path, setTimeout(doWrite, debounceMs));
@@ -281,16 +333,18 @@ export class Store {
   // just the optimistic local update above) can await it. Callers that don't
   // care can ignore the return value — it also just works as fire-and-forget.
   saveDay(dateISO, patch, immediate, message) {
-    const cur = this.docs.get(dateISO) || { doc: { date: dateISO, dayOfWeek: "" }, sha: null };
+    const cur = this.docs.get(dateISO) || { doc: blankDay(dateISO), sha: null, at: 0 };
     const merged = deepMerge({ ...cur.doc }, patch);
-    this.docs.set(dateISO, { doc: merged, sha: cur.sha });
+    this.docs.set(dateISO, { ...cur, doc: merged });
     this._scheduleRecompute(dateISO);
     return this._write(
       journalPath(dateISO),
       () => this.docs.get(dateISO),
       (next) => this.docs.set(dateISO, next),
       message || `life-os: journal ${dateISO}`,
-      immediate
+      immediate,
+      patch,
+      () => blankDay(dateISO)
     );
   }
 

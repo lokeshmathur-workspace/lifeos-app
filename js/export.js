@@ -165,7 +165,7 @@ function triggerDownload(filename, mimeType, content) {
 }
 
 // Full backup: every journal file + every week file + every month file +
-// state/current.json, as one JSON file — the same shape
+// state/current.json + career/state/*, as one JSON file — the same shape
 // lifeos-rebuild/reference/seed-data.json used, so a future restore (or
 // sync_from_app.py-style import) has a stable format to target.
 export async function downloadFullBackup(store) {
@@ -195,10 +195,16 @@ export async function downloadFullBackup(store) {
     if (doc?.monthKey) months[doc.monthKey] = doc;
   }
   const { json: state } = await store.gh.getFile("life-os/state/current.json");
+  // The career plan (career/state/*), when the repo has one.
+  const career = {};
+  for (const [name, path] of [["plan", "plan.json"], ["proposals", "proposals.json"], ["metrics", "metrics.json"], ["relationships", "relationships.json"], ["impactLog", "impact-log.json"]]) {
+    const { json } = await store.gh.getFile(`career/state/${path}`).catch(() => ({ json: null }));
+    if (json) career[name] = json;
+  }
 
   const payload = {
     exportedAt: new Date().toISOString(),
-    schemaVersion: "2.1",
+    schemaVersion: "2.2",
     owner: "Lokesh",
     source: "lifeos-app full backup",
     days: Object.keys(journal).length,
@@ -206,6 +212,7 @@ export async function downloadFullBackup(store) {
     journal,
     weeks,
     months,
+    ...(Object.keys(career).length ? { career } : {}),
   };
   triggerDownload(
     `lifeos-backup-${new Date().toISOString().slice(0, 10)}.json`,

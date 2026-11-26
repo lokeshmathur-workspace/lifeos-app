@@ -85,6 +85,40 @@ export class GitHubStore {
     return { json: JSON.parse(text), sha: body.sha };
   }
 
+  // Raw text of a file (e.g. a markdown note), or null on 404.
+  async getText(path) {
+    const res = await this._request(`contents/${encodeURIComponent(path)}?ref=${this.branch}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new GitHubStoreError(`Couldn't read ${path} (${res.status}).`, "unknown", res.status);
+    return base64ToUtf8((await res.json()).content);
+  }
+
+  // Read → fn(doc) → write, against the newest copy: on a conflict (another device,
+  // a Claude session, a routine) it re-reads and re-applies fn, up to 3 tries.
+  // fn gets a fresh copy (or blank() when the file doesn't exist) and returns the new
+  // doc, or null to write nothing. Resolves { doc, sha } (doc is the stored doc when
+  // nothing was written).
+  async updateJson(path, fn, message, { blank = () => ({}), first = null } = {}) {
+    const waits = [0, 600, 1500];
+    let cur = first;
+    for (let attempt = 0; attempt < waits.length; attempt++) {
+      if (waits[attempt]) await new Promise((r) => setTimeout(r, waits[attempt]));
+      if (!cur || attempt > 0) {
+        const { json, sha } = await this.getFile(path);
+        cur = { doc: json, sha };
+      }
+      const next = fn(structuredClone(cur.doc ?? blank()));
+      if (!next) return cur;
+      try {
+        const { sha } = await this.putFile(path, next, cur.sha, message);
+        return { doc: next, sha };
+      } catch (e) {
+        if (e instanceof GitHubStoreError && e.code === "conflict" && attempt < waits.length - 1) continue;
+        throw e;
+      }
+    }
+  }
+
   // Just the blob sha (null on 404) — for binary files like photos, where
   // getFile()'s JSON.parse would throw before the sha could be read.
   async getSha(path) {

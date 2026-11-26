@@ -112,12 +112,12 @@ function coreAvg(docs, key) {
 }
 
 // Full computed.json shape, given every loaded day doc keyed by date, plus the
-// two counts that come from outside life-os/journal (learning queue, career sprint).
+// what comes from outside life-os/journal (learning queue, career plan summary).
 // Note: the four PyFloat-wrapped fields (weekToDate/monthToDate hphAvg,
 // top3CompletionRate, businessCoreAvg, vitalityCoreAvg) hold their number at
 // `.value` — this shape is for writing computed.json via store.saveComputed(),
 // not for direct UI consumption; unwrap `.value` if rendering these live.
-export function computeAll(daysMap, { learningPending = 0, careerSprint = {} } = {}) {
+export function computeAll(daysMap, { learningPending = 0, career = {} } = {}) {
   if (daysMap.size === 0) {
     return {
       generatedAt: new Date().toISOString().slice(0, 10),
@@ -126,7 +126,7 @@ export function computeAll(daysMap, { learningPending = 0, careerSprint = {} } =
       weekToDate: {},
       monthToDate: {},
       learningPending,
-      careerSprint,
+      career,
     };
   }
 
@@ -192,6 +192,6 @@ export function computeAll(daysMap, { learningPending = 0, careerSprint = {} } =
       pillarHealth,
     },
     learningPending,
-    careerSprint,
+    career,
   };
 }
