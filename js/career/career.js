@@ -69,7 +69,8 @@ function careerHtml(d, tasks) {
     <div class="datehead cr-head">
       <div>
         <div class="sub">Career · plan v${esc(plan.meta?.planVersion || "—")}</div>
-        <h1 class="serif">${esc(plan.northStar?.now || "Career")}</h1>
+        <h1 class="serif">${esc(plan.northStar?.title || plan.northStar?.now || "Career")}</h1>
+        ${plan.northStar?.title && plan.northStar?.now ? `<p class="cr-next">Next milestone: <b>${esc(plan.northStar.now)}</b></p>` : ""}
         <p class="cr-role">Target role: <b>${esc(plan.targetRole?.primary || "—")}</b>${plan.targetRole?.alternate ? ` · alternate: ${esc(plan.targetRole.alternate)}` : ""}</p>
       </div>
       ${gate ? `<div class="cr-gate"><span class="k">Next gate</span><b>${esc(gate.title)}</b><span>${esc(fmt(gate.due))} · ${gate.daysLeft < 0 ? `${-gate.daysLeft} days overdue` : gate.daysLeft === 0 ? "today" : `${gate.daysLeft} day${gate.daysLeft === 1 ? "" : "s"} left`}</span></div>` : ""}
@@ -621,7 +622,7 @@ export async function copyCareerForOneNote(cs) {
   const sum = careerSummary(plan, d.proposals, today), q = quarterOf(plan, today);
   const open = (plan.actions || []).filter((a) => a.status !== "dropped" && ((q && q.start <= a.due && a.due <= q.end) || (isOpenAction(a) && a.due < today)));
   const groups = [
-    { heading: "North star", blocks: [{ type: "para", text: plan.northStar?.now }, { type: "kv", label: "Target role", value: plan.targetRole?.primary }, { type: "kv", label: "Next gate", value: sum.nextGate ? `${sum.nextGate.title} (${shortDate(sum.nextGate.due)}, ${sum.nextGate.daysLeft} days)` : "" }] },
+    { heading: "North star", blocks: [{ type: "para", text: plan.northStar?.title || plan.northStar?.now }, ...(plan.northStar?.title ? [{ type: "kv", label: "Next milestone", value: plan.northStar.now }] : []), { type: "kv", label: "Target role", value: plan.targetRole?.primary }, { type: "kv", label: "Next gate", value: sum.nextGate ? `${sum.nextGate.title} (${shortDate(sum.nextGate.due)}, ${sum.nextGate.daysLeft} days)` : "" }] },
     { heading: `This quarter${q ? ` · ${q.id}` : ""}: ${sum.done} of ${sum.total} done${sum.overdue ? `, ${sum.overdue} overdue` : ""}`, blocks: [{ type: "tasks", items: open.map((a) => ({ task: `${a.title} — ${shortDate(a.due)}`, status: a.status })) }] },
     { heading: "Recent impact", blocks: [{ type: "list", items: [...(d.impact?.entries || [])].sort((a, b) => (a.date < b.date ? 1 : -1)).slice(0, 5).map((e) => `${e.date} · ${e.kind}: ${e.text}`) }] },
   ];
